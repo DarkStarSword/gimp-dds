@@ -380,9 +380,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
 
    if(src != pixels)
       free(src);
-   
-   fclose(fp);
-
+    
    gimp_drawable_detach(drawable);
    
    return(1);
