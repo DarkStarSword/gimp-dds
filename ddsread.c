@@ -331,6 +331,9 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
    unsigned int height = hdr->height >> level;
    unsigned int size = hdr->pitch_or_linsize >> (2 * level);
    int format = DDS_COMPRESS_NONE;
+
+   if(width < 1) width = 1;
+   if(height < 1) height = 1;
    
    layer_name = (level) ? g_strdup_printf("%smipmap%d", prefix, level) :
                           g_strdup_printf("%smain surface", prefix);
