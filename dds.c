@@ -50,7 +50,7 @@ GimpPlugInInfo PLUG_IN_INFO =
 
 DDSSaveVals ddsvals =
 {
-	DDS_COMPRESS_NONE, 0
+	DDS_COMPRESS_NONE, FALSE, FALSE
 };
 
 MAIN()
@@ -80,7 +80,8 @@ static void query(void)
 		{GIMP_PDB_STRING, "filename", "The name of the file to save the image as"},
 		{GIMP_PDB_STRING, "raw_filename", "The name entered"},
 		{GIMP_PDB_INT32, "compression_format", "Compression format"},
-		{GIMP_PDB_INT32, "generate_mipmaps", "Generate mipmaps"}
+		{GIMP_PDB_INT32, "generate_mipmaps", "Generate mipmaps"},
+      {GIMP_PDB_INT32, "swap_ra", "Swap red and alpha channels (RGBA images only)"}
 	};
 	static gint nsave_args = sizeof(save_args) / sizeof(save_args[0]);
 	
@@ -210,6 +211,7 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
 			   {
 					ddsvals.compression = param[5].data.d_int32;
 					ddsvals.mipmaps = param[6].data.d_int32;
+               ddsvals.swapRA = param[7].data.d_int32;
 					if(ddsvals.compression < DDS_COMPRESS_NONE ||
 						ddsvals.compression > DDS_COMPRESS_DXT5)
 						status = GIMP_PDB_CALLING_ERROR;

@@ -27,6 +27,7 @@ typedef struct
 {
 	int compression;
 	int mipmaps;
+   int swapRA;
 } DDSSaveVals;
 
 extern DDSSaveVals ddsvals;

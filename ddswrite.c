@@ -148,7 +148,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    int num_mipmaps;
    unsigned int rowbytes;
    guchar *pixels;
-   unsigned char *src, *dst;
+   unsigned char *src, *dst, c;
    unsigned char hdr[DDS_HEADERSIZE];
    unsigned int flags = 0, caps = 0, size = 0, offset = 0;
    char *format;
@@ -224,7 +224,23 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    gimp_pixel_rgn_get_rect(&rgn, pixels, 0, 0, drawable->width, drawable->height);
    
    if(bpp >= 3)
+   {
       src = (unsigned char*)pixels;
+      
+      if(ddsvals.swapRA && bpp == 4)
+      {
+         for(y = 0; y < drawable->height; ++y)
+         {
+            for(x = 0; x < drawable->width; ++x)
+            {
+               c = src[y * (drawable->width * 4) + (x * 4)];
+               src[y * (drawable->width * 4) + (x * 4)] =
+                  src[y * (drawable->width * 4) + (x * 4) + 3];
+               src[y * (drawable->width * 4) + (x * 4) + 3] = c;
+            }
+         }
+      }
+   }
    else
    {
       if(drawable_type == GIMP_GRAY_IMAGE)
@@ -409,6 +425,11 @@ static void mipmaps_clicked(GtkWidget *widget, gpointer data)
    ddsvals.mipmaps = !ddsvals.mipmaps;
 }
 
+static void swapra_clicked(GtkWidget *widget, gpointer data)
+{
+   ddsvals.swapRA = !ddsvals.swapRA;
+}
+
 static gint save_dialog(gint32 drawable)
 {
    GtkWidget *dlg;
@@ -496,6 +517,14 @@ static gint save_dialog(gint32 drawable)
    gtk_signal_connect(GTK_OBJECT(check), "clicked",
                       GTK_SIGNAL_FUNC(mipmaps_clicked), 0);
    gtk_widget_show(check);
+
+   check = gtk_check_button_new_with_label("Swap red and alpha");
+   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check), ddsvals.swapRA);
+   gtk_box_pack_start(GTK_BOX(vbox), check, 0, 0, 0);
+   gtk_signal_connect(GTK_OBJECT(check), "clicked",
+                      GTK_SIGNAL_FUNC(swapra_clicked), 0);
+   gtk_widget_show(check);
+   gtk_widget_set_sensitive(check, gimp_drawable_type(drawable) == GIMP_RGBA_IMAGE);
    
    gtk_widget_show(dlg);
    

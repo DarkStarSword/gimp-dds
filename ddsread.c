@@ -100,8 +100,8 @@ gint32 read_dds(gchar *filename)
       return(-1);
    }
    
-   //if(hdr.pixelfmt.flags & DDPF_FOURCC)
-   //   hdr.pixelfmt.flags |= DDPF_ALPHAPIXELS;
+   if(hdr.pixelfmt.flags & DDPF_FOURCC)
+      hdr.pixelfmt.flags |= DDPF_ALPHAPIXELS;
    
    d.bpp = hdr.pixelfmt.bpp >> 3;
    d.gimp_bpp = (hdr.pixelfmt.flags & DDPF_ALPHAPIXELS) ? 4 : 3;
