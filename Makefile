@@ -1,5 +1,5 @@
 
-GIMPTOOL=gimptool-2.1
+GIMPTOOL=gimptool-2.0
 
 CC=gcc
 CFLAGS=-O3 -Wall `$(GIMPTOOL) --cflags` -DGETTEXT_PACKAGE
