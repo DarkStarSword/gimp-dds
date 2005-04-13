@@ -27,11 +27,10 @@
 #include <GL/glut.h>
 #include <GL/glext.h>
 
-#include <gdk-pixbuf/gdk-pixbuf.h>
-
 #include "dds.h"
 
-#define IS_POT(x)  (!((x) & ((x) - 1)))
+#define IS_POT(x)      (!((x) & ((x) - 1)))
+#define LERP(a, b, t)  ((a) + ((b) - (a)) * (t))
 
 static int extension_supported(const char *ext)
 {
@@ -155,38 +154,66 @@ int dxt_decompress(unsigned char *dst, unsigned char *src, int format,
    return(1);
 }
 
-static int generate_mipmaps_gdkpixbuf(unsigned char *dst, unsigned char *src,
-                                      unsigned int width, unsigned int height,
-                                      int bpp, int mipmaps)
+static void scale_image(unsigned char *dst, int dw, int dh,
+                        unsigned char *src, int sw, int sh,
+                        int bpp)
+{
+   int n, x, y;
+   int hm1 = sh - 1;
+   int wm1 = sw - 1;
+   int xfl, yfl;
+   float xsrc, ysrc;
+   float dx, dy, val;
+   unsigned char *s, *d;
+   int rowbytes = sw * bpp;
+      
+   d = dst;
+      
+   for(y = 0; y < dh; ++y)
+   {
+      ysrc = ((float)y / (float)dh) * (float)hm1;
+      yfl = (int)ysrc;
+      dy = ysrc - (float)yfl;
+      for(x = 0; x < dw; ++x)
+      {
+         xsrc = ((float)x / (float)dw) * (float)wm1;
+         xfl = (int)xsrc;
+         dx = xsrc - (float)xfl;
+         
+         s = src + ((yfl * rowbytes) + (xfl * bpp));
+         for(n = 0; n < bpp; ++n)
+         {
+            val = LERP(LERP(s[0], s[bpp], dx),
+                       LERP(s[rowbytes], s[rowbytes + bpp], dx),
+                       dy);
+            *d++ = (unsigned char)val;
+            s++;
+         }
+      }
+   }
+}
+
+static int generate_mipmaps_npot(unsigned char *dst, unsigned char *src,
+                                 unsigned int width, unsigned int height,
+                                 int bpp, int mipmaps)
 {
    int i;
    unsigned int w, h;
    unsigned int offset;
-   GdkPixbuf *img, *mip;
-   
-   img = gdk_pixbuf_new_from_data(src, GDK_COLORSPACE_RGB, bpp == 4, 8,
-                                  width, height, width * bpp, 0, 0);
-   
+
    memcpy(dst, src, width * height * bpp);
-   
    offset = width * height * bpp;
    
    for(i = 1; i < mipmaps; ++i)
    {
       w = width  >> i;
       h = height >> i;
-      if(w == 0) w = 1;
-      if(h == 0) h = 1;
+      if(w < 1) w = 1;
+      if(h < 1) h = 1;
       
-      mip = gdk_pixbuf_scale_simple(img, w, h, GDK_INTERP_BILINEAR);
-      memcpy(dst + offset, gdk_pixbuf_get_pixels(mip), w * h * bpp);
-
+      scale_image(dst + offset, w, h, src, width, height, bpp);
       offset += (w * h * bpp);
-      
-      g_object_unref(G_OBJECT(mip));
    }
-   
-   g_object_unref(G_OBJECT(img));
    
    return(1);
 }
@@ -201,7 +228,7 @@ int generate_mipmaps(unsigned char *dst, unsigned char *src,
    unsigned int offset;
    
    if(!(IS_POT(width) && IS_POT(height)))
-      return(generate_mipmaps_gdkpixbuf(dst, src, width, height, bpp, mipmaps));
+      return(generate_mipmaps_npot(dst, src, width, height, bpp, mipmaps));
    
    format = (bpp == 4) ? GL_RGBA : GL_RGB;
    
@@ -217,8 +244,8 @@ int generate_mipmaps(unsigned char *dst, unsigned char *src,
    {
       w = width  >> i;
       h = height >> i;
-      if(w == 0) w = 1;
-      if(h == 0) h = 1;
+      if(w < 1) w = 1;
+      if(h < 1) h = 1;
       
       glGetTexImage(GL_TEXTURE_2D, i, format, GL_UNSIGNED_BYTE, dst + offset);
 
