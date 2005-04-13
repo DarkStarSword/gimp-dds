@@ -389,9 +389,9 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
             if(interactive_dds)
                gimp_progress_update((double)y / (double)hdr->height);
          }
-         
+
          if((hdr->flags & DDSD_PITCH) &&
-            !fread(buf, hdr->pitch_or_linsize >> level, 1, fp))
+            !fread(buf, width * d->bpp, 1, fp))
          {
             g_message("Unexpected EOF.\n");
             return(0);
