@@ -200,7 +200,7 @@ int generate_mipmaps(unsigned char *dst, unsigned char *src,
    GLenum format;
    unsigned int offset;
    
-   if(!(IS_POT(width) && !IS_POT(height)))
+   if(!(IS_POT(width) && IS_POT(height)))
       return(generate_mipmaps_gdkpixbuf(dst, src, width, height, bpp, mipmaps));
    
    format = (bpp == 4) ? GL_RGBA : GL_RGB;
