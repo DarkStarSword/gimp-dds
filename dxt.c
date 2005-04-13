@@ -21,12 +21,17 @@
 */
 
 #include <string.h>
+#include <math.h>
 #include <GL/gl.h>
 #include <GL/glu.h>
 #include <GL/glut.h>
 #include <GL/glext.h>
 
+#include <gdk-pixbuf/gdk-pixbuf.h>
+
 #include "dds.h"
+
+#define IS_POT(x)  (!((x) & ((x) - 1)))
 
 static int extension_supported(const char *ext)
 {
@@ -83,6 +88,9 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
    GLenum internal = 0;
    int i, size;
    
+   if(!(IS_POT(width) && IS_POT(height)))
+      return(0);
+   
    if(format == DDS_COMPRESS_DXT1)
    {
       internal = (bpp == 4) ? GL_COMPRESSED_RGBA_S3TC_DXT1_EXT :
@@ -123,6 +131,9 @@ int dxt_decompress(unsigned char *dst, unsigned char *src, int format,
 {
    GLenum internal;
    
+   if(!(IS_POT(width) && IS_POT(height)))
+      return(0);
+   
    switch(format)
    {
       case DDS_COMPRESS_DXT1:
@@ -144,6 +155,42 @@ int dxt_decompress(unsigned char *dst, unsigned char *src, int format,
    return(1);
 }
 
+static int generate_mipmaps_gdkpixbuf(unsigned char *dst, unsigned char *src,
+                                      unsigned int width, unsigned int height,
+                                      int bpp, int mipmaps)
+{
+   int i;
+   unsigned int w, h;
+   unsigned int offset;
+   GdkPixbuf *img, *mip;
+   
+   img = gdk_pixbuf_new_from_data(src, GDK_COLORSPACE_RGB, bpp == 4, 8,
+                                  width, height, width * bpp, 0, 0);
+   
+   memcpy(dst, src, width * height * bpp);
+   
+   offset = width * height * bpp;
+   
+   for(i = 1; i < mipmaps; ++i)
+   {
+      w = width  >> i;
+      h = height >> i;
+      if(w == 0) w = 1;
+      if(h == 0) h = 1;
+      
+      mip = gdk_pixbuf_scale_simple(img, w, h, GDK_INTERP_BILINEAR);
+      memcpy(dst + offset, gdk_pixbuf_get_pixels(mip), w * h * bpp);
+
+      offset += (w * h * bpp);
+      
+      g_object_unref(G_OBJECT(mip));
+   }
+   
+   g_object_unref(G_OBJECT(img));
+   
+   return(1);
+}
+
 int generate_mipmaps(unsigned char *dst, unsigned char *src,
                      unsigned int width, unsigned int height, int bpp,
                      int mipmaps)
@@ -152,6 +199,9 @@ int generate_mipmaps(unsigned char *dst, unsigned char *src,
    unsigned int w, h;
    GLenum format;
    unsigned int offset;
+   
+   if(!(IS_POT(width) && !IS_POT(height)))
+      return(generate_mipmaps_gdkpixbuf(dst, src, width, height, bpp, mipmaps));
    
    format = (bpp == 4) ? GL_RGBA : GL_RGB;
    
@@ -163,17 +213,16 @@ int generate_mipmaps(unsigned char *dst, unsigned char *src,
    
    offset = width * height * bpp;
    
-   w = width >> 1;
-   h = height >> 1;
-   if(w == 0) w = 1;
-   if(h == 0) h = 1;
-   
    for(i = 1; i < mipmaps; ++i)
    {
+      w = width  >> i;
+      h = height >> i;
+      if(w == 0) w = 1;
+      if(h == 0) h = 1;
+      
       glGetTexImage(GL_TEXTURE_2D, i, format, GL_UNSIGNED_BYTE, dst + offset);
+
       offset += (w * h * bpp);
-      w >>= 1;
-      h >>= 1;
    }
    
    return(1);

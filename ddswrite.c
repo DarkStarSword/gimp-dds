@@ -33,6 +33,8 @@
 #include "dds.h"
 #include "dxt.h"
 
+#define IS_POT(x)  (!((x) & ((x) - 1)))
+
 static gint save_dialog(gint32 drawable);
 static void save_dialog_response(GtkWidget *widget, gint response_id, gpointer data);
 static void compression_selected(GtkWidget *widget, gpointer data);
@@ -177,7 +179,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    if(num_layers == 6)
    {
       for(i = 0; i < 6; ++i)
-         cubmap_faces[i] = -1;
+         cubemap_faces[i] = -1;
       
       for(i = 0; i < 6; ++i)
       {
@@ -190,7 +192,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
          }
       }
       
-      cubmap = 1;
+      cubemap = 1;
       for(i = 0; i < 6; ++i)
       {
          if(cubemap_faces[i] == -1)
@@ -202,6 +204,14 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    }
    */
    
+   if((ddsvals.compression != DDS_COMPRESS_NONE) &&
+      !(IS_POT(drawable->width) && IS_POT(drawable->height)))
+   {
+      ddsvals.compression = DDS_COMPRESS_NONE;
+      g_message("DDS: Cannot compress non power-of-2 sized images.\n"
+                "Saved image will not be compressed.");
+   }
+
    switch(drawable_type)
    {
       case GIMP_RGB_IMAGE:
