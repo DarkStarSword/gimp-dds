@@ -138,7 +138,7 @@ static int get_num_mipmaps(int width, int height)
 static unsigned int get_mipmapped_size(int width, int height, int bpp,
                                        int level, int num, int format)
 {
-   int w, h, n = level;
+   int w, h, n = 0;
    unsigned int size = 0;
    
    w = width >> level;
@@ -171,7 +171,7 @@ static unsigned int get_volume_mipmapped_size(int width, int height,
                                               int depth, int bpp, int level,
                                               int num, int format)
 {
-   int w, h, d, n = level;
+   int w, h, d, n = 0;
    unsigned int size = 0;
    
    w = width >> level;
@@ -247,6 +247,7 @@ static void write_layer(FILE *fp, gint32 drawable_id, int w, int h, int bpp,
             size = get_mipmapped_size(w, h, bpp, i, 1, DDS_COMPRESS_NONE);
             fwrite(dst + offset, 1, size, fp);
             offset += size;
+            printf("wrote mipmap %d (%d)\n", i, size);
          }
           
          free(dst);
@@ -524,12 +525,9 @@ static void savetype_selected(GtkWidget *widget, gpointer data)
       case 2:
          ddsvals.cubemap = 0;
          ddsvals.volume = 1;
-         if(ddsvals.mipmaps)
-         {
-            ddsvals.compression = DDS_COMPRESS_NONE;
-            gtk_menu_set_active(GTK_MENU(compress_menu), DDS_COMPRESS_NONE);
-            gtk_widget_set_sensitive(compress_opt, 0);
-         }
+         ddsvals.compression = DDS_COMPRESS_NONE;
+         gtk_menu_set_active(GTK_MENU(compress_menu), DDS_COMPRESS_NONE);
+         gtk_widget_set_sensitive(compress_opt, 0);
          break;
    }
 }
@@ -538,20 +536,6 @@ static void toggle_clicked(GtkWidget *widget, gpointer data)
 {
    int *flag = (int*)data;
    (*flag) = !(*flag);
-   if(widget == mipmap_check)
-   {
-      if(ddsvals.volume)
-      {
-         if(*flag)
-         {
-            ddsvals.compression = DDS_COMPRESS_NONE;
-            gtk_menu_set_active(GTK_MENU(compress_menu), DDS_COMPRESS_NONE);
-            gtk_widget_set_sensitive(compress_opt, 0);
-         }
-         else
-            gtk_widget_set_sensitive(compress_opt, 1);
-      }
-   }
 }
 
 static gint save_dialog(gint32 image_id, gint32 drawable_id)
@@ -618,15 +602,16 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
          drawable = gimp_drawable_get(cubemap_faces[0]);
          w = drawable->width;
          h = drawable->height;
-         for(i = 1; i < 6; ++i)
+         gimp_drawable_detach(drawable);
+         for(i = 1; i < 6 && is_cubemap; ++i)
          {
             drawable = gimp_drawable_get(cubemap_faces[i]);
             if(drawable->width  != w ||
                drawable->height != h)
             {
                is_cubemap = 0;
-               break;
             }
+            gimp_drawable_detach(drawable);
          }
          
          if(is_cubemap == 0)
@@ -668,15 +653,16 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
       drawable = gimp_drawable_get(layers[0]);
       w = drawable->width;
       h = drawable->height;
-      for(i = 1; i < num_layers; ++i)
+      gimp_drawable_detach(drawable);
+      for(i = 1; i < num_layers && is_volume; ++i)
       {
          drawable = gimp_drawable_get(layers[i]);
          if(drawable->width  != w ||
             drawable->height != h)
          {
             is_volume = 0;
-            break;
          }
+         gimp_drawable_detach(drawable);
       }
       
       if(!is_volume)
@@ -714,6 +700,9 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
       ddsvals.volume = 1;
    
    type = gimp_drawable_type(drawable_id);
+   
+   w = gimp_image_width(image_id);
+   h = gimp_image_height(image_id);
    
    dlg = gimp_dialog_new("Save as DDS", "dds",
                          0, GTK_WIN_POS_MOUSE, gimp_standard_help_func, 0,
@@ -787,7 +776,6 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    
    compress_opt = opt;
    compress_menu = menu;
-
    
    label = gtk_label_new("Save:");
    gtk_widget_show(label);
@@ -852,7 +840,7 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    gtk_widget_show(check);
    gtk_widget_set_sensitive(check, type == GIMP_RGBA_IMAGE);
    
-   if(is_volume && ddsvals.volume && ddsvals.mipmaps)
+   if(is_volume && ddsvals.volume)
    {
       ddsvals.compression = DDS_COMPRESS_NONE;
       gtk_menu_set_active(GTK_MENU(compress_menu), DDS_COMPRESS_NONE);

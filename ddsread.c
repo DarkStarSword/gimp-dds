@@ -104,9 +104,11 @@ gint32 read_dds(gchar *filename)
       hdr.pixelfmt.flags |= DDPF_ALPHAPIXELS;
    
    d.bpp = hdr.pixelfmt.bpp >> 3;
-   d.gimp_bpp = (hdr.pixelfmt.flags & DDPF_ALPHAPIXELS) ? 4 : 3;
+   //d.gimp_bpp = (hdr.pixelfmt.flags & DDPF_ALPHAPIXELS) ? 4 : 3;
+   d.gimp_bpp = d.bpp;
    
-   image = gimp_image_new(hdr.width, hdr.height, GIMP_RGB);
+   image = gimp_image_new(hdr.width, hdr.height,
+                          d.bpp <= 2 ? GIMP_GRAY : GIMP_RGB);
    if(image == -1)
    {
       g_message("Can't allocate new image.\n");
@@ -312,6 +314,7 @@ static int validate_header(dds_header_t *hdr)
    }
    
    if((hdr->pixelfmt.flags & DDPF_RGB) &&
+      (hdr->pixelfmt.bpp !=  8) &&      
       (hdr->pixelfmt.bpp != 16) &&
       (hdr->pixelfmt.bpp != 24) &&
       (hdr->pixelfmt.bpp != 32))
@@ -329,6 +332,7 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
 {
    GimpDrawable *drawable;
    GimpPixelRgn pixel_region;
+   GimpImageType type = GIMP_RGB_IMAGE;
    gchar *layer_name;
    gint x, y, z, n;
    gint32 layer;
@@ -340,12 +344,18 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
    if(width < 1) width = 1;
    if(height < 1) height = 1;
    
+   switch(d->bpp)
+   {
+      case 1: type = GIMP_GRAY_IMAGE;  break;
+      case 2: type = GIMP_GRAYA_IMAGE; break;
+      case 3: type = GIMP_RGB_IMAGE;   break;
+      case 4: type = GIMP_RGBA_IMAGE;  break;
+   }
+   
    layer_name = (level) ? g_strdup_printf("mipmap %d %s", level, prefix) :
                           g_strdup_printf("main surface %s", prefix);
    
-   layer = gimp_layer_new(image, layer_name, width, height,
-                          (hdr->pixelfmt.flags & DDPF_ALPHAPIXELS) ?
-                          GIMP_RGBA_IMAGE : GIMP_RGB_IMAGE, 100,
+   layer = gimp_layer_new(image, layer_name, width, height, type, 100,
                           GIMP_NORMAL_MODE);
    g_free(layer_name);
    
@@ -412,17 +422,30 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
             if(d->bpp > 1) pixel += ((unsigned int)buf[z + 1] <<  8);
             if(d->bpp > 2) pixel += ((unsigned int)buf[z + 2] << 16);
             if(d->bpp > 3) pixel += ((unsigned int)buf[z + 3] << 24);
-            
-            pixels[pos] =
-               (pixel >> d->rshift << (8 - d->rbits) & d->rmask) * 255 / d->rmask;
-            pixels[pos + 1] =
-               (pixel >> d->gshift << (8 - d->gbits) & d->gmask) * 255 / d->gmask;
-            pixels[pos + 2] =
-               (pixel >> d->bshift << (8 - d->bbits) & d->bmask) * 255 / d->bmask;
-            if(hdr->pixelfmt.flags & DDPF_ALPHAPIXELS)
+
+            if(d->bpp >= 3)
             {
-               pixels[pos + 3] =
-                  (pixel >> d->ashift << (8 - d->abits) & d->amask) * 255 / d->amask;
+               pixels[pos] =
+                  (pixel >> d->rshift << (8 - d->rbits) & d->rmask) * 255 / d->rmask;
+               pixels[pos + 1] =
+                  (pixel >> d->gshift << (8 - d->gbits) & d->gmask) * 255 / d->gmask;
+               pixels[pos + 2] =
+                  (pixel >> d->bshift << (8 - d->bbits) & d->bmask) * 255 / d->bmask;
+               if(hdr->pixelfmt.flags & DDPF_ALPHAPIXELS)
+               {
+                  pixels[pos + 3] =
+                     (pixel >> d->ashift << (8 - d->abits) & d->amask) * 255 / d->amask;
+               }
+            }
+            else
+            {
+               pixels[pos] =
+                  (pixel >> d->rshift << (8 - d->rbits) & d->rmask) * 255 / d->rmask;
+               if(hdr->pixelfmt.flags & DDPF_ALPHAPIXELS)
+               {
+                  pixels[pos + 1] =
+                     (pixel >> d->ashift << (8 - d->abits) & d->amask) * 255 / d->amask;
+               }
             }
             
             z += d->bpp;
