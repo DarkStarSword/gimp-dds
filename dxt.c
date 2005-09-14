@@ -90,10 +90,19 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
                  int mipmaps)
 {
    GLenum internal = 0;
+   GLenum type = GL_RGB;
    int i, size;
    
    if(!(IS_POT(width) && IS_POT(height)))
       return(0);
+   
+   switch(bpp)
+   {
+      case 1: type = GL_LUMINANCE;       break;
+      case 2: type = GL_LUMINANCE_ALPHA; break;
+      case 3: type = GL_RGB;             break;
+      case 4: type = GL_RGBA;            break;
+   }
    
    if(format == DDS_COMPRESS_DXT1)
    {
@@ -110,7 +119,7 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
                    mipmaps > 1 ? GL_TRUE : GL_FALSE);
    
    glTexImage2D(GL_TEXTURE_2D, 0, internal, width, height, 0, 
-                (bpp == 4) ? GL_RGBA : GL_RGB, GL_UNSIGNED_BYTE, src);
+                type, GL_UNSIGNED_BYTE, src);
 
    glGetCompressedTexImage(GL_TEXTURE_2D, 0, dst);
    
@@ -133,10 +142,18 @@ int dxt_decompress(unsigned char *dst, unsigned char *src, int format,
                    unsigned int size, unsigned int width, unsigned int height,
                    int bpp)
 {
-   GLenum internal;
+   GLenum internal, type = GL_RGB;
    
    if(!(IS_POT(width) && IS_POT(height)))
       return(0);
+
+   switch(bpp)
+   {
+      case 1: type = GL_LUMINANCE;       break;
+      case 2: type = GL_LUMINANCE_ALPHA; break;
+      case 3: type = GL_RGB;             break;
+      case 4: type = GL_RGBA;            break;
+   }
    
    switch(format)
    {
@@ -153,8 +170,7 @@ int dxt_decompress(unsigned char *dst, unsigned char *src, int format,
    }
    
    glCompressedTexImage2D(GL_TEXTURE_2D, 0, internal, width, height, 0, size, src);
-   glGetTexImage(GL_TEXTURE_2D, 0, bpp == 4 ? GL_RGBA : GL_RGB,
-                 GL_UNSIGNED_BYTE, dst);
+   glGetTexImage(GL_TEXTURE_2D, 0, type, GL_UNSIGNED_BYTE, dst);
    
    return(1);
 }
