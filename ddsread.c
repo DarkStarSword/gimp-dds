@@ -103,9 +103,16 @@ gint32 read_dds(gchar *filename)
    if(hdr.pixelfmt.flags & DDPF_FOURCC)
       hdr.pixelfmt.flags |= DDPF_ALPHAPIXELS;
    
-   d.bpp = hdr.pixelfmt.bpp >> 3;
-   //d.gimp_bpp = (hdr.pixelfmt.flags & DDPF_ALPHAPIXELS) ? 4 : 3;
-   d.gimp_bpp = d.bpp;
+   if(hdr.pixelfmt.flags & DDPF_FOURCC)
+   {
+      d.bpp = d.gimp_bpp = 4;
+   }
+   else
+   {
+      d.bpp = hdr.pixelfmt.bpp >> 3;
+      //d.gimp_bpp = (hdr.pixelfmt.flags & DDPF_ALPHAPIXELS) ? 4 : 3;
+      d.gimp_bpp = d.bpp;
+   }
    
    image = gimp_image_new(hdr.width, hdr.height,
                           d.bpp <= 2 ? GIMP_GRAY : GIMP_RGB);
@@ -332,7 +339,7 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
 {
    GimpDrawable *drawable;
    GimpPixelRgn pixel_region;
-   GimpImageType type = GIMP_RGB_IMAGE;
+   GimpImageType type = GIMP_RGBA_IMAGE;
    gchar *layer_name;
    gint x, y, z, n;
    gint32 layer;
