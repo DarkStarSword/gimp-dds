@@ -100,6 +100,24 @@ gint32 read_dds(gchar *filename)
       return(-1);
    }
    
+   /* a lot of DDS images out there don't have this for some reason -_- */
+   if(hdr.pitch_or_linsize == 0)
+   {
+      if(hdr.pixelfmt.flags & DDPF_FOURCC) /* assume linear size */
+      {
+         hdr.pitch_or_linsize = ((hdr.width + 3) >> 2) * ((hdr.height + 3) >> 2);
+         if(hdr.pixelfmt.fourcc[3] == '1')
+            hdr.pitch_or_linsize *= 8;
+         else
+            hdr.pitch_or_linsize *= 16;
+      }
+      else /* assume pitch */
+      {
+         hdr.pitch_or_linsize = hdr.height * hdr.width *
+            (hdr.pixelfmt.bpp >> 3);
+      }
+   }
+   
    if(hdr.pixelfmt.flags & DDPF_FOURCC)
       hdr.pixelfmt.flags |= DDPF_ALPHAPIXELS;
    
@@ -299,8 +317,11 @@ static int validate_header(dds_header_t *hdr)
    
    if((hdr->flags & DDSD_PITCH) == (hdr->flags & DDSD_LINEARSIZE))
    {
-      g_message("Either DDSD_PITCH or DDSD_LINEARSIZE must be set.\n");
-      return(0);
+      g_message("Warning: DDSD_PITCH or DDSD_LINEARSIZE is not set.\n");
+      if(hdr->pixelfmt.flags & DDPF_FOURCC)
+         hdr->flags |= DDSD_LINEARSIZE;
+      else
+         hdr->flags |= DDSD_PITCH;
    }
    
    if((hdr->pixelfmt.flags & DDPF_FOURCC) ==
@@ -329,7 +350,7 @@ static int validate_header(dds_header_t *hdr)
       g_message("Invalid BPP.\n");
       return(0);
    }
-
+   
    return(1);
 }
 
