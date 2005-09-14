@@ -33,6 +33,10 @@ int dxt_decompress(unsigned char *dst, unsigned char *src, int format,
 int generate_mipmaps(unsigned char *dst, unsigned char *src,
                      unsigned int width, unsigned int height, int bpp,
                      int mipmaps);
+int generate_volume_mipmaps(unsigned char *dst, unsigned char *src,
+                            unsigned int width, unsigned int height, 
+                            unsigned int depth, int bpp, int mipmaps);
+
 
 #endif
 

@@ -19,6 +19,7 @@
 	the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
 	Boston, MA 02111-1307, USA.
 */
+#define GL_GLEXT_PROTOTYPES
 
 #include <string.h>
 #include <math.h>
@@ -31,6 +32,8 @@
 
 #define IS_POT(x)      (!((x) & ((x) - 1)))
 #define LERP(a, b, t)  ((a) + ((b) - (a)) * (t))
+
+static int has_npot = 0;
 
 static int extension_supported(const char *ext)
 {
@@ -70,6 +73,8 @@ char *initialize_opengl(void)
    if(!extension_supported("GL_SGIS_generate_mipmap"))
       return("GL_SGIS_generate_mipmap is not supported by your OpenGL "
              "implementation.\n");
+   
+   has_npot = extension_supported("GL_ARB_texture_non_power_of_two");
 
    glPixelStorei(GL_PACK_ALIGNMENT, 1);
    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -224,13 +229,19 @@ int generate_mipmaps(unsigned char *dst, unsigned char *src,
 {
    int i;
    unsigned int w, h;
-   GLenum format;
+   GLenum format = 0;
    unsigned int offset;
    
-   if(!(IS_POT(width) && IS_POT(height)))
+   if(!(IS_POT(width) && IS_POT(height)) && !has_npot)
       return(generate_mipmaps_npot(dst, src, width, height, bpp, mipmaps));
    
-   format = (bpp == 4) ? GL_RGBA : GL_RGB;
+   switch(bpp)
+   {
+      case 1: format = GL_LUMINANCE;       break;
+      case 2: format = GL_LUMINANCE_ALPHA; break;
+      case 3: format = GL_RGB;             break;
+      case 4: format = GL_RGBA;            break;
+   }
    
    glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP_SGIS, GL_TRUE);
    glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0,
@@ -250,6 +261,48 @@ int generate_mipmaps(unsigned char *dst, unsigned char *src,
       glGetTexImage(GL_TEXTURE_2D, i, format, GL_UNSIGNED_BYTE, dst + offset);
 
       offset += (w * h * bpp);
+   }
+   
+   return(1);
+}
+
+int generate_volume_mipmaps(unsigned char *dst, unsigned char *src,
+                            unsigned int width, unsigned int height,
+                            unsigned int depth, int bpp, int mipmaps)
+{
+   int i;
+   unsigned int w, h, d;
+   GLenum format = 0;
+   unsigned int offset;
+   
+   switch(bpp)
+   {
+      case 1: format = GL_LUMINANCE;       break;
+      case 2: format = GL_LUMINANCE_ALPHA; break;
+      case 3: format = GL_RGB;             break;
+      case 4: format = GL_RGBA;            break;
+   }
+   
+   glTexParameteri(GL_TEXTURE_3D, GL_GENERATE_MIPMAP_SGIS, GL_TRUE);
+   glTexImage3D(GL_TEXTURE_3D, 0, format, width, height, depth, 0,
+                format, GL_UNSIGNED_BYTE, src);
+   
+   memcpy(dst, src, width * height * bpp * depth);
+   
+   offset = width * height * bpp * depth;
+   
+   for(i = 1; i < mipmaps; ++i)
+   {
+      w = width  >> i;
+      h = height >> i;
+      d = depth >> i;
+      if(w < 1) w = 1;
+      if(h < 1) h = 1;
+      if(d < 1) d = 1;
+      
+      glGetTexImage(GL_TEXTURE_3D, i, format, GL_UNSIGNED_BYTE, dst + offset);
+
+      offset += (w * h * bpp * d);
    }
    
    return(1);

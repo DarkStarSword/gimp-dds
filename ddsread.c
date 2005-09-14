@@ -135,10 +135,13 @@ gint32 read_dds(gchar *filename)
    d.amask = hdr.pixelfmt.amask >> d.ashift << (8 - d.abits);
 
    if(!(hdr.caps.caps2 & DDSCAPS2_CUBEMAP) &&
-      !load_layer(fp, &hdr, &d, image, 0, "", &l, pixels, buf))
+      !(hdr.caps.caps2 & DDSCAPS2_VOLUME))
    {
-      fclose(fp);
-      return(-1);
+      if(!load_layer(fp, &hdr, &d, image, 0, "", &l, pixels, buf))
+      {
+         fclose(fp);
+         return(-1);
+      }
    }
    
    if(hdr.caps.caps1 & DDSCAPS_COMPLEX)
@@ -146,37 +149,37 @@ gint32 read_dds(gchar *filename)
       if(hdr.caps.caps2 & DDSCAPS2_CUBEMAP)
       {
          if((hdr.caps.caps2 & DDSCAPS2_CUBEMAP_POSITIVEX) &&
-            !load_face(fp, &hdr, &d, image, "positive x ", &l, pixels, buf))
+            !load_face(fp, &hdr, &d, image, "(positive x)", &l, pixels, buf))
          {
             fclose(fp);
             return(-1);
          }
          if((hdr.caps.caps2 & DDSCAPS2_CUBEMAP_NEGATIVEX) &&
-            !load_face(fp, &hdr, &d, image, "negative x ", &l, pixels, buf))
+            !load_face(fp, &hdr, &d, image, "(negative x)", &l, pixels, buf))
          {
             fclose(fp);
             return(-1);
          }
          if((hdr.caps.caps2 & DDSCAPS2_CUBEMAP_POSITIVEY) &&
-            !load_face(fp, &hdr, &d, image, "positive y ", &l, pixels, buf))
+            !load_face(fp, &hdr, &d, image, "(positive y)", &l, pixels, buf))
          {
             fclose(fp);
             return(-1);
          }
          if((hdr.caps.caps2 & DDSCAPS2_CUBEMAP_NEGATIVEY) &&
-            !load_face(fp, &hdr, &d, image, "negative y ", &l, pixels, buf))
+            !load_face(fp, &hdr, &d, image, "(negative y)", &l, pixels, buf))
          {
             fclose(fp);
             return(-1);
          }
          if((hdr.caps.caps2 & DDSCAPS2_CUBEMAP_POSITIVEZ) &&
-            !load_face(fp, &hdr, &d, image, "positive z ", &l, pixels, buf))
+            !load_face(fp, &hdr, &d, image, "(positive z)", &l, pixels, buf))
          {
             fclose(fp);
             return(-1);
          }
          if((hdr.caps.caps2 & DDSCAPS2_CUBEMAP_NEGATIVEZ) &&
-            !load_face(fp, &hdr, &d, image, "negative z ", &l, pixels, buf))
+            !load_face(fp, &hdr, &d, image, "(negative z)", &l, pixels, buf))
          {
             fclose(fp);
             return(-1);
@@ -189,7 +192,7 @@ gint32 read_dds(gchar *filename)
          char *plane;
          for(i = 0; i < hdr.depth; ++i)
          {
-            plane = g_strdup_printf("z = %d ", i);
+            plane = g_strdup_printf("(z = %d)", i);
             if(!load_layer(fp, &hdr, &d, image, 0, plane, &l, pixels, buf))
             {
                g_free(plane);
@@ -198,16 +201,18 @@ gint32 read_dds(gchar *filename)
             }
             g_free(plane);
          }
-         
+      
          if((hdr.flags & DDSD_MIPMAPCOUNT) &&
             (hdr.caps.caps1 & DDSCAPS_MIPMAP))
          {
             for(level = 1; level < hdr.num_mipmaps; ++level)
             {
-               for(i = 0; i < hdr.depth; ++i)
+               int n = hdr.depth >> level;
+               if(n < 1) n = 1;
+               for(i = 0; i < n; ++i)
                {
-                  plane = g_strdup_printf("z = %d ", i);
-                  if(!load_layer(fp, &hdr, &d, image, 0, plane, &l, pixels, buf))
+                  plane = g_strdup_printf("(z = %d)", i);
+                  if(!load_layer(fp, &hdr, &d, image, level, plane, &l, pixels, buf))
                   {
                      g_free(plane);
                      fclose(fp);
@@ -335,8 +340,8 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
    if(width < 1) width = 1;
    if(height < 1) height = 1;
    
-   layer_name = (level) ? g_strdup_printf("%smipmap%d", prefix, level) :
-                          g_strdup_printf("%smain surface", prefix);
+   layer_name = (level) ? g_strdup_printf("mipmap %d %s", level, prefix) :
+                          g_strdup_printf("main surface %s", prefix);
    
    layer = gimp_layer_new(image, layer_name, width, height,
                           (hdr->pixelfmt.flags & DDPF_ALPHAPIXELS) ?

@@ -187,7 +187,8 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
 			   export = gimp_export_image(&imageID, &drawableID, "DDS",
                                        (GIMP_EXPORT_CAN_HANDLE_RGB |
                                         GIMP_EXPORT_CAN_HANDLE_GRAY |
-                                        GIMP_EXPORT_CAN_HANDLE_ALPHA));
+                                        GIMP_EXPORT_CAN_HANDLE_ALPHA |
+                                        GIMP_EXPORT_CAN_HANDLE_LAYERS));
 			   if(export == GIMP_EXPORT_CANCEL)
 			   {
 					values[0].data.d_status = GIMP_PDB_CANCEL;
