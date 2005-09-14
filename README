@@ -12,10 +12,10 @@ Features
 * Automatic mipmap generation on save
 * Load mipmaps into separate layers
 * Load cube map faces and volume map slices into separate layers
+* Cube and volume map saving
     
 Planned features
 ==========================================    
-* Cube and volume map saving
 * Custom mipmaps
 
 Installation
