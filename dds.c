@@ -50,7 +50,7 @@ GimpPlugInInfo PLUG_IN_INFO =
 
 DDSSaveVals ddsvals =
 {
-	DDS_COMPRESS_NONE, FALSE, FALSE
+	DDS_COMPRESS_NONE, 0, 0, 0
 };
 
 MAIN()
@@ -81,7 +81,8 @@ static void query(void)
 		{GIMP_PDB_STRING, "raw_filename", "The name entered"},
 		{GIMP_PDB_INT32, "compression_format", "Compression format"},
 		{GIMP_PDB_INT32, "generate_mipmaps", "Generate mipmaps"},
-      {GIMP_PDB_INT32, "swap_ra", "Swap red and alpha channels (RGBA images only)"}
+      {GIMP_PDB_INT32, "swap_ra", "Swap red and alpha channels (RGBA images only)"},
+      {GIMP_PDB_INT32, "savetype", "How to save the image (0 = selected layer, 1 = cube map, 2 = volume map"}
 	};
 	static gint nsave_args = sizeof(save_args) / sizeof(save_args[0]);
 	

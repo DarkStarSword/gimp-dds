@@ -67,10 +67,169 @@ const char *cubemap_face_names[3][6] =
 
 static gint cubemap_faces[6];
 static gint is_cubemap = 0;
+static gint is_volume = 0;
 
 GtkWidget *mipmap_check;
 GtkWidget *compress_opt;
 GtkWidget *compress_menu;
+
+static int check_cubemap(gint32 image_id)
+{
+   gint *layers, num_layers;
+   int cubemap = 0, i, j, k, w, h;
+   char *layer_name;
+   GimpDrawable *drawable;
+   GimpImageType type;
+
+   layers = gimp_image_get_layers(image_id, &num_layers);
+   
+   if(num_layers == 6)
+   {
+      for(i = 0; i < 6; ++i)
+         cubemap_faces[i] = -1;
+      
+      for(i = 0; i < 6; ++i)
+      {
+         layer_name = (char*)gimp_drawable_get_name(layers[i]);
+         for(j = 0; j < 6; ++j)
+         {
+            for(k = 0; k < 3; ++k)
+            {
+               if(strstr(layer_name, cubemap_face_names[k][j]))
+               {
+                  if(cubemap_faces[j] == -1)
+                  {
+                     cubemap_faces[j] = layers[i];
+                     break;
+                  }
+               }
+            }
+         }
+      }
+      
+      cubemap = 1;
+      
+      /* check for 6 valid faces */
+      for(i = 0; i < 6; ++i)
+      {
+         if(cubemap_faces[i] == -1)
+         {
+            cubemap = 0;
+            break;
+         }
+      }
+      
+      /* make sure they are all the same size */
+      if(cubemap)
+      {
+         drawable = gimp_drawable_get(cubemap_faces[0]);
+         w = drawable->width;
+         h = drawable->height;
+         gimp_drawable_detach(drawable);
+         for(i = 1; i < 6 && cubemap; ++i)
+         {
+            drawable = gimp_drawable_get(cubemap_faces[i]);
+            if(drawable->width  != w ||
+               drawable->height != h)
+            {
+               cubemap = 0;
+            }
+            gimp_drawable_detach(drawable);
+         }
+         
+         if(cubemap == 0)
+         {
+            g_message("DDS: It appears that your image is a cube map,\n"
+                      "but not all layers are the same size, thus a cube\n"
+                      "map cannot be written.");
+         }
+      }
+      
+      /* make sure they are all the same type */
+      if(cubemap)
+      {
+         type = gimp_drawable_type(cubemap_faces[0]);
+         for(i = 1; i < 6; ++i)
+         {
+            if(gimp_drawable_type(cubemap_faces[i]) != type)
+            {
+               cubemap = 0;
+               break;
+            }
+         }
+         
+         if(cubemap == 0)
+         {
+            g_message("DDS: It appears that your image is a cube map,\n"
+                      "but not all layers are the same type, thus a cube\n"
+                      "map cannot be written (Perhaps some layers have\n"
+                      "transparency and others do not?).");
+         }
+      }
+   }
+   
+   return(cubemap);
+}
+
+static int check_volume(gint32 image_id)
+{
+   gint *layers, num_layers;
+   int volume = 0, i, w, h;
+   GimpDrawable *drawable;
+   GimpImageType type;
+   
+   layers = gimp_image_get_layers(image_id, &num_layers);
+   
+   if(num_layers > 1)
+   {
+      volume = 1;
+      
+      drawable = gimp_drawable_get(layers[0]);
+      w = drawable->width;
+      h = drawable->height;
+      gimp_drawable_detach(drawable);
+      for(i = 1; i < num_layers && volume; ++i)
+      {
+         drawable = gimp_drawable_get(layers[i]);
+         if(drawable->width  != w ||
+            drawable->height != h)
+         {
+            volume = 0;
+         }
+         gimp_drawable_detach(drawable);
+      }
+      
+      if(!volume)
+      {
+         g_message("DDS: It appears your image may be a volume map,\n"
+                   "but not all layers are the same size, thus a volume\n"
+                   "map cannot be written.");
+      }
+   
+      if(volume)
+      {
+         type = gimp_drawable_type(layers[0]);
+         for(i = 1; i < num_layers; ++i)
+         {
+            if(gimp_drawable_type(layers[i]) != type)
+            {
+               volume = 0;
+               break;
+            }
+         }
+         
+         if(!volume)
+         {
+            g_message("DDS: It appears your image may be a volume map,\n"
+                      "but not all layers are the same type, thus a volume\n"
+                      "map cannot be written (Perhaps some layers have\n"
+                      "transparency and others do not?).");
+         }
+      }
+   }
+
+   return(volume);
+}
 
 GimpPDBStatusType write_dds(gchar *filename, gint32 image_id, gint32 drawable_id)
 {
@@ -91,9 +250,35 @@ GimpPDBStatusType write_dds(gchar *filename, gint32 image_id, gint32 drawable_id
          return(GIMP_PDB_EXECUTION_ERROR);
    }
    
+   is_cubemap = check_cubemap(image_id);
+   is_volume = check_volume(image_id);
+   
    if(interactive_dds)
+   {
       if(!save_dialog(image_id, drawable_id))
          return(GIMP_PDB_CANCEL);
+   }
+   else
+   {
+      if(ddsvals.savetype == DDS_SAVE_CUBEMAP && !is_cubemap)
+      {
+         g_message("DDS: Cannot save image as cube map");
+         return(GIMP_PDB_EXECUTION_ERROR);
+      }
+      
+      if(ddsvals.savetype == DDS_SAVE_VOLUMEMAP && !is_volume)
+      {
+         g_message("DDS: Cannot save image as volume map");
+         return(GIMP_PDB_EXECUTION_ERROR);
+      }
+      
+      if(ddsvals.savetype == DDS_SAVE_VOLUMEMAP &&
+         ddsvals.compression != DDS_COMPRESS_NONE)
+      {
+         g_message("DDS: Cannot save volume map with compression");
+         return(GIMP_PDB_EXECUTION_ERROR);
+      }
+   }
    
    fp = fopen(filename, "wb");
    if(fp == 0)
@@ -410,7 +595,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    else
       num_mipmaps = 1;
    
-   if(ddsvals.cubemap && is_cubemap)
+   if(ddsvals.savetype == DDS_SAVE_CUBEMAP && is_cubemap)
    {
       caps |= DDSCAPS_COMPLEX;
       caps2 |= (DDSCAPS2_CUBEMAP |
@@ -421,7 +606,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
                 DDSCAPS2_CUBEMAP_POSITIVEZ |
                 DDSCAPS2_CUBEMAP_NEGATIVEZ);
    }
-   else if(ddsvals.volume)
+   else if(ddsvals.savetype == DDS_SAVE_VOLUMEMAP && is_volume)
    {
       PUT32(hdr + 24, num_layers);
       flags |= DDSD_DEPTH;
@@ -462,15 +647,23 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
 
    fwrite(hdr, DDS_HEADERSIZE, 1, fp);
 
-   if(ddsvals.cubemap)
+   if(ddsvals.savetype == DDS_SAVE_CUBEMAP)
    {
       for(i = 0; i < 6; ++i)
+      {
          write_layer(fp, cubemap_faces[i], w, h, bpp, num_mipmaps);
+         if(interactive_dds)
+            gimp_progress_update((float)(i + 1) / 6.0);
+      }
    }
-   else if(ddsvals.volume)
+   else if(ddsvals.savetype == DDS_SAVE_VOLUMEMAP)
    {
       for(i = 0; i < num_layers; ++i)
+      {
          write_layer(fp, layers[i], w, h, bpp, 1);
+         if(interactive_dds)
+            gimp_progress_update((float)i / (float)num_layers);
+      }
       
       if(num_mipmaps > 1)
          write_volume_mipmaps(fp, layers, w, h, num_layers, bpp, num_mipmaps);
@@ -510,21 +703,15 @@ static void savetype_selected(GtkWidget *widget, gpointer data)
 {
    int n = (int)data;
 
+   ddsvals.savetype = n;
+   
    switch(n)
    {
       case 0:
-         ddsvals.cubemap = 0;
-         ddsvals.volume = 0;
-         gtk_widget_set_sensitive(compress_opt, 1);
-         break;
       case 1:
-         ddsvals.cubemap = 1;
-         ddsvals.volume = 0;
          gtk_widget_set_sensitive(compress_opt, 1);
          break;
       case 2:
-         ddsvals.cubemap = 0;
-         ddsvals.volume = 1;
          ddsvals.compression = DDS_COMPRESS_NONE;
          gtk_menu_set_active(GTK_MENU(compress_menu), DDS_COMPRESS_NONE);
          gtk_widget_set_sensitive(compress_opt, 0);
@@ -548,156 +735,15 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    GtkWidget *menu;
    GtkWidget *menuitem;
    GtkWidget *check;
-   GimpDrawable *drawable;
    GimpImageType type;
-   gint i, j, k, *layers, num_layers, w, h;
-   char *layer_name;
-   int is_volume = 0;
-
-   layers = gimp_image_get_layers(image_id, &num_layers);
-   
-   /* cubemap detection */
-   
-   is_cubemap = 0;
-
-   if(num_layers == 6)
-   {
-      for(i = 0; i < 6; ++i)
-         cubemap_faces[i] = -1;
-      
-      for(i = 0; i < 6; ++i)
-      {
-         layer_name = (char*)gimp_drawable_get_name(layers[i]);
-         for(j = 0; j < 6; ++j)
-         {
-            for(k = 0; k < 3; ++k)
-            {
-               if(strstr(layer_name, cubemap_face_names[k][j]))
-               {
-                  if(cubemap_faces[j] == -1)
-                  {
-                     cubemap_faces[j] = layers[i];
-                     break;
-                  }
-               }
-            }
-         }
-      }
-      
-      is_cubemap = 1;
-      
-      /* check for 6 valid faces */
-      for(i = 0; i < 6; ++i)
-      {
-         if(cubemap_faces[i] == -1)
-         {
-            is_cubemap = 0;
-            break;
-         }
-      }
-      
-      /* make sure they are all the same size */
-      if(is_cubemap)
-      {
-         drawable = gimp_drawable_get(cubemap_faces[0]);
-         w = drawable->width;
-         h = drawable->height;
-         gimp_drawable_detach(drawable);
-         for(i = 1; i < 6 && is_cubemap; ++i)
-         {
-            drawable = gimp_drawable_get(cubemap_faces[i]);
-            if(drawable->width  != w ||
-               drawable->height != h)
-            {
-               is_cubemap = 0;
-            }
-            gimp_drawable_detach(drawable);
-         }
-         
-         if(is_cubemap == 0)
-         {
-            g_message("DDS: It appears that your image is a cube map,\n"
-                      "but not all layers are the same size, thus a cube\n"
-                      "map cannot be written.");
-         }
-      }
-      
-      /* make sure they are all the same type */
-      if(is_cubemap)
-      {
-         type = gimp_drawable_type(cubemap_faces[0]);
-         for(i = 1; i < 6; ++i)
-         {
-            if(gimp_drawable_type(cubemap_faces[i]) != type)
-            {
-               is_cubemap = 0;
-               break;
-            }
-         }
-         
-         if(is_cubemap == 0)
-         {
-            g_message("DDS: It appears that your image is a cube map,\n"
-                      "but not all layers are the same type, thus a cube\n"
-                      "map cannot be written (Perhaps some layers have\n"
-                      "transparency and others do not?).");
-         }
-      }
-   }
-   
-   /* detect volume texture */
-   if(num_layers > 1)
-   {
-      is_volume = 1;
-      
-      drawable = gimp_drawable_get(layers[0]);
-      w = drawable->width;
-      h = drawable->height;
-      gimp_drawable_detach(drawable);
-      for(i = 1; i < num_layers && is_volume; ++i)
-      {
-         drawable = gimp_drawable_get(layers[i]);
-         if(drawable->width  != w ||
-            drawable->height != h)
-         {
-            is_volume = 0;
-         }
-         gimp_drawable_detach(drawable);
-      }
-      
-      if(!is_volume)
-      {
-         g_message("DDS: It appears your image may be a volume map,\n"
-                   "but not all layers are the same size, thus a volume\n"
-                   "map cannot be written.");
-      }
-   
-      if(is_volume)
-      {
-         type = gimp_drawable_type(layers[0]);
-         for(i = 1; i < num_layers; ++i)
-         {
-            if(gimp_drawable_type(layers[i]) != type)
-            {
-               is_volume = 0;
-               break;
-            }
-         }
-         
-         if(!is_volume)
-         {
-            g_message("DDS: It appears your image may be a volume map,\n"
-                      "but not all layers are the same type, thus a volume\n"
-                      "map cannot be written (Perhaps some layers have\n"
-                      "transparency and others do not?).");
-         }
-      }
-   }
+   int w, h;
    
    if(is_cubemap)
-      ddsvals.cubemap = 1;
+      ddsvals.savetype = DDS_SAVE_CUBEMAP;
    else if(is_volume)
-      ddsvals.volume = 1;
+      ddsvals.savetype = DDS_SAVE_VOLUMEMAP;
+   else
+      ddsvals.savetype = DDS_SAVE_SELECTED_LAYER;
    
    type = gimp_drawable_type(drawable_id);
    
@@ -795,30 +841,25 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    menuitem = gtk_menu_item_new_with_label("Selected layer");
    gtk_signal_connect(GTK_OBJECT(menuitem), "activate",
                       GTK_SIGNAL_FUNC(savetype_selected),
-                      (gpointer)0);
+                      (gpointer)DDS_SAVE_SELECTED_LAYER);
    gtk_widget_show(menuitem);
    gtk_menu_append(GTK_MENU(menu), menuitem);
    menuitem = gtk_menu_item_new_with_label("As cube map");
    gtk_signal_connect(GTK_OBJECT(menuitem), "activate",
                       GTK_SIGNAL_FUNC(savetype_selected),
-                      (gpointer)1);
+                      (gpointer)DDS_SAVE_CUBEMAP);
    gtk_widget_show(menuitem);
    gtk_menu_append(GTK_MENU(menu), menuitem);
    gtk_widget_set_sensitive(menuitem, is_cubemap);
    menuitem = gtk_menu_item_new_with_label("As volume map");
    gtk_signal_connect(GTK_OBJECT(menuitem), "activate",
                       GTK_SIGNAL_FUNC(savetype_selected),
-                      (gpointer)2);
+                      (gpointer)DDS_SAVE_VOLUMEMAP);
    gtk_widget_show(menuitem);
    gtk_menu_append(GTK_MENU(menu), menuitem);
    gtk_widget_set_sensitive(menuitem, is_volume);
    
-   if(!ddsvals.cubemap && !ddsvals.volume)
-      gtk_menu_set_active(GTK_MENU(menu), 0);
-   else if(ddsvals.cubemap)
-      gtk_menu_set_active(GTK_MENU(menu), 1);
-   else
-      gtk_menu_set_active(GTK_MENU(menu), 2);
+   gtk_menu_set_active(GTK_MENU(menu), ddsvals.savetype);
    
    gtk_option_menu_set_menu(GTK_OPTION_MENU(opt), menu);
    
@@ -840,7 +881,7 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    gtk_widget_show(check);
    gtk_widget_set_sensitive(check, type == GIMP_RGBA_IMAGE);
    
-   if(is_volume && ddsvals.volume)
+   if(is_volume && ddsvals.savetype == DDS_SAVE_VOLUMEMAP)
    {
       ddsvals.compression = DDS_COMPRESS_NONE;
       gtk_menu_set_active(GTK_MENU(compress_menu), DDS_COMPRESS_NONE);

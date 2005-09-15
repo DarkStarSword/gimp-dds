@@ -31,6 +31,13 @@ typedef enum
    DDS_COMPRESS_DXT5
 } DDS_COMPRESSION_TYPE;
 
+typedef enum
+{
+   DDS_SAVE_SELECTED_LAYER = 0,
+   DDS_SAVE_CUBEMAP,
+   DDS_SAVE_VOLUMEMAP
+} DDS_SAVE_TYPE;
+
 #define DDS_HEADERSIZE             128
 
 #define DDSD_CAPS                  0x00000001
