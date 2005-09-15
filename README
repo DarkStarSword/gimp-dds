@@ -16,6 +16,7 @@ Features
     
 Planned features
 ==========================================    
+* Pixel conversion selection for custom formats (RGBA4, R5G6B5, RGB10A2, etc.)
 * Custom mipmaps
 
 Installation
