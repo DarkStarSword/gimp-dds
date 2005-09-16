@@ -7,10 +7,29 @@ The only required packages that must be installed to build the plugin
   1) gimp version 2.0.0 or later
   2) pkg-config version 0.14 or later
   3) glut library version 3.7 or later
+  4) GLEW library version 1.3.3 or later
     
 For RedHat and Mandrake Linux distributions, you'll need to have the 'devel'
 RPMs installed for Gtk+, Glib and GIMP.
-  
+
+Building for Windows with mingw
+=======================================
+
+To compile the plugin for use with the Windows version of GIMP you'll need
+to use the MingW environment (http://www.mingw.org).  You'll need to install
+the runtime and development packages for the following libraries:
+
+   1) gimp 2.x
+   2) glib2
+   3) gtk+2
+   4) pango
+   5) atk
+   6) pkg-config
+   7) glut
+   8) GLEW
+   
+To build, type "make WIN32=1"
+     
 Installation
 =======================================
 

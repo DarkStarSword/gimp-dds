@@ -19,43 +19,20 @@
 	the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
 	Boston, MA 02111-1307, USA.
 */
-#define GL_GLEXT_PROTOTYPES
 
 #include <string.h>
 #include <math.h>
-#include <GL/gl.h>
-#include <GL/glu.h>
+#include <GL/glew.h>
 #include <GL/glut.h>
-#include <GL/glext.h>
 
 #include "dds.h"
 
 #define IS_POT(x)      (!((x) & ((x) - 1)))
 #define LERP(a, b, t)  ((a) + ((b) - (a)) * (t))
 
-static int has_npot = 0;
-
-static int extension_supported(const char *ext)
-{
-   const char *start, *where, *end;
-   int len = strlen(ext);
-   
-   end = start = (char *)glGetString(GL_EXTENSIONS);
-   
-   while((where = strstr(end, ext)))
-   {
-      end = where + len;
-      
-      if((where == start || *(where - 1) == ' ') &&
-         (*end == ' ' || *end == 0))
-         return(1);
-   }
-   return(0);
-}
-
 char *initialize_opengl(void)
 {
-   int argc = 1;
+   int argc = 1, err;
    char *argv[] = { "dds" };
 
    glutInit(&argc, argv);
@@ -63,25 +40,26 @@ char *initialize_opengl(void)
    glutInitWindowSize(1, 1);
    glutCreateWindow("GIMP DDS");
 
-   if(!extension_supported("GL_ARB_texture_compression"))
+   err = glewInit();
+   if(err != GLEW_OK)
+      return((char*)glewGetErrorString(err));
+
+   if(!GLEW_ARB_texture_compression)
       return("GL_ARB_texture_compression is not supported by your OpenGL "
              "implementation.\n");
-   if(!extension_supported("GL_S3_s3tc") &&
-      !extension_supported("GL_EXT_texture_compression_s3tc"))
+   if(!GLEW_S3_s3tc && !GLEW_EXT_texture_compression_s3tc)
       return("GL_S3_s3tc or GL_EXT_texture_compression_s3tc is not supported "
              "by your OpenGL implementation.\n");
-   if(!extension_supported("GL_SGIS_generate_mipmap"))
+   if(!GLEW_SGIS_generate_mipmap)
       return("GL_SGIS_generate_mipmap is not supported by your OpenGL "
              "implementation.\n");
-   
-   has_npot = extension_supported("GL_ARB_texture_non_power_of_two");
 
    glPixelStorei(GL_PACK_ALIGNMENT, 1);
    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
    glHint(GL_TEXTURE_COMPRESSION_HINT_ARB, GL_NICEST);
    glHint(GL_GENERATE_MIPMAP_HINT_SGIS, GL_NICEST);
-   
+
    return(0);
 }
 
@@ -248,7 +226,7 @@ int generate_mipmaps(unsigned char *dst, unsigned char *src,
    GLenum format = 0;
    unsigned int offset;
    
-   if(!(IS_POT(width) && IS_POT(height)) && !has_npot)
+   if(!(IS_POT(width) && IS_POT(height)) && !GLEW_ARB_texture_non_power_of_two)
       return(generate_mipmaps_npot(dst, src, width, height, bpp, mipmaps));
    
    switch(bpp)
