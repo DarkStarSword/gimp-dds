@@ -29,6 +29,7 @@ typedef struct
 	int mipmaps;
    int swapRA;
    int savetype;
+   int format;
 } DDSSaveVals;
 
 extern DDSSaveVals ddsvals;

@@ -72,6 +72,38 @@ static gint is_volume = 0;
 GtkWidget *mipmap_check;
 GtkWidget *compress_opt;
 GtkWidget *compress_menu;
+GtkWidget *format_opt;
+
+static struct
+{
+   int compression;
+   char *string;
+} compression_strings[] =
+{
+   {DDS_COMPRESS_NONE, "None"},
+   {DDS_COMPRESS_DXT1, "DXT1"},
+   {DDS_COMPRESS_DXT3, "DXT3"},
+   {DDS_COMPRESS_DXT5, "DXT5"},
+   {-1, 0}
+};
+
+static struct
+{
+   int format;
+   char *string;
+} format_strings[] =
+{
+   {DDS_FORMAT_DEFAULT, "Default"},
+   {DDS_FORMAT_RGB8, "RGB8"},
+   {DDS_FORMAT_RGBA8, "RGBA8"},
+   {DDS_FORMAT_BGR8, "BGR8"},
+   {DDS_FORMAT_BGRA8, "BGRA8"},
+   {DDS_FORMAT_R5G6B5, "R5G6B5"},
+   {DDS_FORMAT_RGBA4, "RGBA4"},
+   {DDS_FORMAT_RGB5A1, "RGB5A1"},
+   {DDS_FORMAT_RGB10A2, "RGB10A2"},
+   {-1, 0}
+};
 
 static int check_cubemap(gint32 image_id)
 {
@@ -389,13 +421,189 @@ static unsigned int get_volume_mipmapped_size(int width, int height,
    return(size);
 }
 
+#define TO_R5G6B5(r, g, b) \
+   (unsigned short)((unsigned short)((((r) >> 3) & 0x1f) << 11) |\
+                    (unsigned short)((((g) >> 2) & 0x3f) <<  5) |\
+                    (unsigned short)((((b) >> 3) & 0x1f)      ))
+#define TO_RGBA4(r, g, b, a) \
+   (unsigned short)((unsigned short)((((a) >> 4) & 0x0f) << 12) |\
+                    (unsigned short)((((r) >> 4) & 0x0f) <<  8) |\
+                    (unsigned short)((((g) >> 4) & 0x0f) <<  4) |\
+                    (unsigned short)((((b) >> 4) & 0x0f)      ))
+#define TO_RGB5A1(r, g, b, a) \
+   (unsigned short)((unsigned short)((((a) >> 7) & 0x01) << 15) |\
+                    (unsigned short)((((r) >> 3) & 0x1f) << 10) |\
+                    (unsigned short)((((g) >> 3) & 0x1f) <<  5) |\
+                    (unsigned short)((((b) >> 3) & 0x1f)      ))
+#define TO_RGB10A2(r, g, b, a) \
+   (unsigned int)((unsigned int)((((a) >> 6) & 0x003) << 30) | \
+                  (unsigned int)((((r) << 2) & 0x3ff) << 20) | \
+                  (unsigned int)((((g) << 2) & 0x3ff) << 10) | \
+                  (unsigned int)((((b) << 2) & 0x3ff)      ))
+
+static void convert_pixels(unsigned char *dst, unsigned char *src, int format,
+                           int w, int h, int bpp, int mipmaps)
+{
+   unsigned int i, num_pixels;
+   unsigned char r, g, b, a;
+   
+   num_pixels = get_mipmapped_size(w, h, 1, 0, mipmaps, DDS_COMPRESS_NONE);
+   
+   for(i = 0; i < num_pixels; ++i)
+   {
+      if(bpp == 1)
+      {
+         r = g = b = src[i];
+         a = 255;
+      }
+      else if(bpp == 2)
+      {
+         r = g = b = src[2 * i];
+         a = src[2 * i + 1];
+      }
+      else if(bpp == 3)
+      {
+         r = src[3 * i + 0];
+         g = src[3 * i + 1];
+         b = src[3 * i + 2];
+         a = 255;
+      }
+      else
+      {
+         r = src[4 * i + 0];
+         g = src[4 * i + 1];
+         b = src[4 * i + 2];
+         a = src[4 * i + 3];
+      }
+      
+      switch(format)
+      {
+         case DDS_FORMAT_RGB8:
+            dst[3 * i + 0] = r;
+            dst[3 * i + 1] = g;
+            dst[3 * i + 2] = b;
+            break;
+         case DDS_FORMAT_RGBA8:
+            dst[4 * i + 0] = r;
+            dst[4 * i + 1] = g;
+            dst[4 * i + 2] = b;
+            dst[4 * i + 3] = a;
+            break;
+         case DDS_FORMAT_BGR8:
+            dst[3 * i + 0] = b;
+            dst[3 * i + 1] = g;
+            dst[3 * i + 2] = r;
+            break;
+         case DDS_FORMAT_BGRA8:
+            dst[4 * i + 0] = b;
+            dst[4 * i + 1] = g;
+            dst[4 * i + 2] = r;
+            dst[4 * i + 3] = a;
+            break;
+         case DDS_FORMAT_R5G6B5:
+            *((unsigned short*)(&dst[2 * i])) = TO_R5G6B5(r, g, b);
+            break;   
+         case DDS_FORMAT_RGBA4:
+            *((unsigned short*)(&dst[2 * i])) = TO_RGBA4(r, g, b, a);
+            break;
+         case DDS_FORMAT_RGB5A1:
+            *((unsigned short*)(&dst[2 * i])) = TO_RGB5A1(r, g, b, a);
+            break;
+         case DDS_FORMAT_RGB10A2:
+            *((unsigned int*)(&dst[4 * i])) = TO_RGB10A2(r, g, b, a);
+            break;
+         default:
+            break;
+      }
+   }
+}
+
+static void convert_volume_pixels(unsigned char *dst, unsigned char *src,
+                                  int format, int w, int h, int d, int bpp,
+                                  int mipmaps)
+{
+   unsigned int i, num_pixels;
+   unsigned char r, g, b, a;
+   
+   num_pixels = get_volume_mipmapped_size(w, h, d, 1, 0, mipmaps,
+                                          DDS_COMPRESS_NONE);
+   
+   for(i = 0; i < num_pixels; ++i)
+   {
+      if(bpp == 1)
+      {
+         r = g = b = src[i];
+         a = 255;
+      }
+      else if(bpp == 2)
+      {
+         r = g = b = src[2 * i];
+         a = src[2 * i + 1];
+      }
+      else if(bpp == 3)
+      {
+         r = src[3 * i + 0];
+         g = src[3 * i + 1];
+         b = src[3 * i + 2];
+         a = 255;
+      }
+      else
+      {
+         r = src[4 * i + 0];
+         g = src[4 * i + 1];
+         b = src[4 * i + 2];
+         a = src[4 * i + 3];
+      }
+      
+      switch(format)
+      {
+         case DDS_FORMAT_RGB8:
+            dst[3 * i + 0] = r;
+            dst[3 * i + 1] = g;
+            dst[3 * i + 2] = b;
+            break;
+         case DDS_FORMAT_RGBA8:
+            dst[4 * i + 0] = r;
+            dst[4 * i + 1] = g;
+            dst[4 * i + 2] = b;
+            dst[4 * i + 3] = a;
+            break;
+         case DDS_FORMAT_BGR8:
+            dst[3 * i + 0] = b;
+            dst[3 * i + 1] = g;
+            dst[3 * i + 2] = r;
+            break;
+         case DDS_FORMAT_BGRA8:
+            dst[4 * i + 0] = b;
+            dst[4 * i + 1] = g;
+            dst[4 * i + 2] = r;
+            dst[4 * i + 3] = a;
+            break;
+         case DDS_FORMAT_R5G6B5:
+            *((unsigned short*)(&dst[2 * i])) = TO_R5G6B5(r, g, b);
+            break;   
+         case DDS_FORMAT_RGBA4:
+            *((unsigned short*)(&dst[2 * i])) = TO_RGBA4(r, g, b, a);
+            break;
+         case DDS_FORMAT_RGB5A1:
+            *((unsigned short*)(&dst[2 * i])) = TO_RGB5A1(r, g, b, a);
+            break;
+         case DDS_FORMAT_RGB10A2:
+            *((unsigned int*)(&dst[4 * i])) = TO_RGB10A2(r, g, b, a);
+            break;
+         default:
+            break;
+      }
+   }
+}
+
 static void write_layer(FILE *fp, gint32 drawable_id, int w, int h, int bpp,
-                        int mipmaps)
+                        int fmtbpp, int mipmaps)
 {
    GimpDrawable *drawable;
    GimpPixelRgn rgn;
-   unsigned char *src, *dst, c;
-   int i, x, y, size, offset;
+   unsigned char *src, *dst, *fmtdst, c;
+   int i, x, y, size, fmtsize, offset;
 
    drawable = gimp_drawable_get(drawable_id);
    src = g_malloc(w * h * bpp);
@@ -422,23 +630,44 @@ static void write_layer(FILE *fp, gint32 drawable_id, int w, int h, int bpp,
       if(mipmaps > 1)
       {
          size = get_mipmapped_size(w, h, bpp, 0, mipmaps, DDS_COMPRESS_NONE);
-         dst = malloc(size);
+         dst = g_malloc(size);
          generate_mipmaps(dst, src, w, h, bpp, mipmaps);
             
          offset = 0;
+         
+         if(ddsvals.format > DDS_FORMAT_DEFAULT)
+         {
+            fmtsize = get_mipmapped_size(w, h, fmtbpp, 0, mipmaps,
+                                         DDS_COMPRESS_NONE);
+            fmtdst = g_malloc(fmtsize);
             
+            convert_pixels(fmtdst, dst, ddsvals.format, w, h, bpp, mipmaps);
+            
+            g_free(dst);
+            dst = fmtdst;
+            bpp = fmtbpp;
+         }
+
          for(i = 0; i < mipmaps; ++i)
          {
             size = get_mipmapped_size(w, h, bpp, i, 1, DDS_COMPRESS_NONE);
             fwrite(dst + offset, 1, size, fp);
             offset += size;
-            printf("wrote mipmap %d (%d)\n", i, size);
          }
-          
-         free(dst);
+         
+         g_free(dst);
       }
       else
       {
+         if(ddsvals.format > DDS_FORMAT_DEFAULT)
+         {
+            fmtdst = g_malloc(h * w * fmtbpp);
+            convert_pixels(fmtdst, src, ddsvals.format, w, h, bpp, 1);
+            g_free(src);
+            src = fmtdst;
+            bpp = fmtbpp;
+         }
+         
          fwrite(src, 1, h * w * bpp, fp);
       }
    }
@@ -446,7 +675,7 @@ static void write_layer(FILE *fp, gint32 drawable_id, int w, int h, int bpp,
    {
       size = get_mipmapped_size(w, h, bpp, 0, mipmaps, ddsvals.compression);
          
-      dst = malloc(size);
+      dst = g_malloc(size);
       dxt_compress(dst, src, ddsvals.compression, w, h, bpp, mipmaps);
          
       offset = 0;
@@ -458,7 +687,7 @@ static void write_layer(FILE *fp, gint32 drawable_id, int w, int h, int bpp,
          offset += size;
       }
          
-      free(dst);
+      g_free(dst);
    }
       
    g_free(src);
@@ -467,10 +696,10 @@ static void write_layer(FILE *fp, gint32 drawable_id, int w, int h, int bpp,
 }
 
 static void write_volume_mipmaps(FILE *fp, gint *layers, int w, int h, int d,
-                                 int bpp, int mipmaps)
+                                 int bpp, int fmtbpp, int mipmaps)
 {
    int i, size, offset;
-   unsigned char *src, *dst;
+   unsigned char *src, *dst, *fmtdst;
    GimpDrawable *drawable;
    GimpPixelRgn rgn;
    
@@ -496,6 +725,21 @@ static void write_volume_mipmaps(FILE *fp, gint *layers, int w, int h, int d,
                                       ddsvals.compression);
    
    generate_volume_mipmaps(dst, src, w, h, d, bpp, mipmaps);
+   
+   if(ddsvals.format > DDS_FORMAT_DEFAULT)
+   {
+      size = get_volume_mipmapped_size(w, h, d, fmtbpp, 0, mipmaps,
+                                       ddsvals.compression);
+      offset = get_volume_mipmapped_size(w, h, d, fmtbpp, 0, 1,
+                                         ddsvals.compression);
+      fmtdst = g_malloc(size);
+      
+      convert_volume_pixels(fmtdst, dst, ddsvals.format, w, h, d, bpp,
+                            mipmaps);
+      g_free(dst);
+      dst = fmtdst;
+   }
+   
    fwrite(dst + offset, 1, size, fp);
    
    g_free(src);
@@ -507,11 +751,11 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    GimpDrawable *drawable;
    GimpImageType drawable_type;
    GimpPixelRgn rgn;
-   int i, w, h, bpp = 0;
+   int i, w, h, bpp = 0, fmtbpp = 0, has_alpha = 0;
    int num_mipmaps;
    unsigned char hdr[DDS_HEADERSIZE];
    unsigned int flags = 0, caps = 0, caps2 = 0, size = 0;
-   unsigned int rmask, gmask, bmask, amask;
+   unsigned int rmask = 0, gmask = 0, bmask = 0, amask = 0;
    char *format;
    gint num_layers, *layers;
 
@@ -535,20 +779,104 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
 
    switch(drawable_type)
    {
-      case GIMP_RGB_IMAGE:
-         bpp = 3;
-         break;
-      case GIMP_RGBA_IMAGE:
-         bpp = 4;
-         break;
-      case GIMP_GRAY_IMAGE:
-         bpp = 1;
-         break;
-      case GIMP_GRAYA_IMAGE:
-         bpp = 2;
-         break;
+      case GIMP_RGB_IMAGE:   bpp = 3; break;
+      case GIMP_RGBA_IMAGE:  bpp = 4; break;
+      case GIMP_GRAY_IMAGE:  bpp = 1; break;
+      case GIMP_GRAYA_IMAGE: bpp = 2; break;
       default:
          break;
+   }
+   
+   if(ddsvals.format > DDS_FORMAT_DEFAULT)
+   {
+      switch(ddsvals.format)
+      {
+         case DDS_FORMAT_RGB8:
+            fmtbpp = 3;
+            rmask = 0x000000ff;
+            gmask = 0x0000ff00;
+            bmask = 0x00ff0000;
+            amask = 0x00000000;
+            break;
+         case DDS_FORMAT_RGBA8:
+            fmtbpp = 4;
+            has_alpha = 1;
+            rmask = 0x000000ff;
+            gmask = 0x0000ff00;
+            bmask = 0x00ff0000;
+            amask = 0xff000000;
+            break;
+         case DDS_FORMAT_BGR8:
+            fmtbpp = 3;
+            rmask = 0x00ff0000;
+            gmask = 0x0000ff00;
+            bmask = 0x000000ff;
+            amask = 0x00000000;
+            break;
+         case DDS_FORMAT_BGRA8:
+            fmtbpp = 4;
+            has_alpha = 1;
+            rmask = 0x00ff0000;
+            gmask = 0x0000ff00;
+            bmask = 0x000000ff;
+            amask = 0xff000000;
+            break;
+         case DDS_FORMAT_R5G6B5:
+            fmtbpp = 2;
+            rmask = 0x0000f800;
+            gmask = 0x000007e0;
+            bmask = 0x0000001f;
+            amask = 0x00000000;
+            break;
+         case DDS_FORMAT_RGBA4:
+            fmtbpp = 2;
+            has_alpha = 1;
+            rmask = 0x00000f00;
+            gmask = 0x000000f0;
+            bmask = 0x0000000f;
+            amask = 0x0000f000;
+            break;
+         case DDS_FORMAT_RGB5A1:
+            fmtbpp = 2;
+            has_alpha = 1;
+            rmask = 0x00007c00;
+            gmask = 0x000003e0;
+            bmask = 0x0000001f;
+            amask = 0x00008000;
+            break;
+         case DDS_FORMAT_RGB10A2:
+            fmtbpp = 4;
+            has_alpha = 1;
+            rmask = 0x3ff00000;
+            gmask = 0x000ffc00;
+            bmask = 0x000003ff;
+            amask = 0xc0000000;
+            break;
+         default:
+            break;
+      }
+   }
+   else if(bpp == 1)
+   {
+      fmtbpp = 1;
+      rmask = gmask = bmask = 0x000000ff;
+      amask = 0;
+   }
+   else if(bpp == 2)
+   {
+      fmtbpp = 2;
+      has_alpha = 1;
+      rmask = gmask = bmask = 0x000000ff;
+      amask = 0x0000ff00;
+   }
+   else
+   {
+      fmtbpp = 4;
+      has_alpha = (bpp == 4);
+      rmask = 0x000000ff;
+      gmask = 0x0000ff00;
+      bmask = 0x00ff0000;
+      amask = (bpp == 4) ? 0xff000000 : 0;
    }
    
    memset(hdr, 0, DDS_HEADERSIZE);
@@ -558,26 +886,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    PUT32(hdr + 12, h);
    PUT32(hdr + 16, w);
    PUT32(hdr + 76, 32);
-   PUT32(hdr + 88, bpp << 3);
-
-   if(bpp == 1)
-   {
-      rmask = gmask = bmask = 0x000000ff;
-      amask = 0;
-   }
-   else if(bpp == 2)
-   {
-      rmask = gmask = bmask = 0x000000ff;
-      amask = 0x0000ff00;
-   }
-   else
-   {
-      rmask = 0x000000ff;
-      gmask = 0x0000ff00;
-      bmask = 0x00ff0000;
-      amask = 0xff000000;
-   }
-   
+   PUT32(hdr + 88, fmtbpp << 3);
    PUT32(hdr + 92,  rmask);
    PUT32(hdr + 96,  gmask);
    PUT32(hdr + 100, bmask);
@@ -622,8 +931,8 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    {
       flags |= DDSD_PITCH;
       PUT32(hdr + 8, flags);
-      PUT32(hdr + 20, w * bpp);
-      PUT32(hdr + 80, (bpp == 4 || bpp == 2) ? DDPF_RGB | DDPF_ALPHAPIXELS : DDPF_RGB);
+      PUT32(hdr + 20, w * fmtbpp);
+      PUT32(hdr + 80, has_alpha ? DDPF_RGB | DDPF_ALPHAPIXELS : DDPF_RGB);
    }
    else
    {
@@ -651,7 +960,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    {
       for(i = 0; i < 6; ++i)
       {
-         write_layer(fp, cubemap_faces[i], w, h, bpp, num_mipmaps);
+         write_layer(fp, cubemap_faces[i], w, h, bpp, fmtbpp, num_mipmaps);
          if(interactive_dds)
             gimp_progress_update((float)(i + 1) / 6.0);
       }
@@ -660,17 +969,18 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    {
       for(i = 0; i < num_layers; ++i)
       {
-         write_layer(fp, layers[i], w, h, bpp, 1);
+         write_layer(fp, layers[i], w, h, bpp, fmtbpp, 1);
          if(interactive_dds)
             gimp_progress_update((float)i / (float)num_layers);
       }
       
       if(num_mipmaps > 1)
-         write_volume_mipmaps(fp, layers, w, h, num_layers, bpp, num_mipmaps);
+         write_volume_mipmaps(fp, layers, w, h, num_layers, bpp, fmtbpp,
+                              num_mipmaps);
    }
    else
    {
-      write_layer(fp, drawable_id, w, h, bpp, num_mipmaps);
+      write_layer(fp, drawable_id, w, h, bpp, fmtbpp, num_mipmaps);
    }
       
    if(interactive_dds)
@@ -697,6 +1007,7 @@ static void save_dialog_response(GtkWidget *widget, gint response_id,
 static void compression_selected(GtkWidget *widget, gpointer data)
 {
    ddsvals.compression = (gint)data;
+   gtk_widget_set_sensitive(format_opt, ddsvals.compression == DDS_COMPRESS_NONE);
 }
 
 static void savetype_selected(GtkWidget *widget, gpointer data)
@@ -719,6 +1030,11 @@ static void savetype_selected(GtkWidget *widget, gpointer data)
    }
 }
 
+static void format_selected(GtkWidget *widget, gpointer data)
+{
+   ddsvals.format = (gint)data;
+}
+
 static void toggle_clicked(GtkWidget *widget, gpointer data)
 {
    int *flag = (int*)data;
@@ -736,7 +1052,7 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    GtkWidget *menuitem;
    GtkWidget *check;
    GimpImageType type;
-   int w, h;
+   int i, w, h;
    
    if(is_cubemap)
       ddsvals.savetype = DDS_SAVE_CUBEMAP;
@@ -768,7 +1084,7 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    gtk_box_pack_start(GTK_BOX(GTK_DIALOG(dlg)->vbox), vbox, 1, 1, 0);
    gtk_widget_show(vbox);
    
-   table = gtk_table_new(2, 2, 0);
+   table = gtk_table_new(3, 2, 0);
    gtk_widget_show(table);
    gtk_box_pack_start(GTK_BOX(vbox), table, 1, 1, 0);
    gtk_table_set_row_spacings(GTK_TABLE(table), 8);
@@ -789,32 +1105,15 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    
    menu = gtk_menu_new();
    
-   menuitem = gtk_menu_item_new_with_label("None");
-   gtk_signal_connect(GTK_OBJECT(menuitem), "activate",
-                      GTK_SIGNAL_FUNC(compression_selected),
-                      (gpointer)DDS_COMPRESS_NONE);
-   gtk_widget_show(menuitem);
-   gtk_menu_append(GTK_MENU(menu), menuitem);
-   menuitem = gtk_menu_item_new_with_label("DXT1");
-   gtk_signal_connect(GTK_OBJECT(menuitem), "activate",
-                      GTK_SIGNAL_FUNC(compression_selected),
-                      (gpointer)DDS_COMPRESS_DXT1);
-   gtk_widget_show(menuitem);
-   gtk_menu_append(GTK_MENU(menu), menuitem);
-   if(gimp_drawable_has_alpha(drawable_id))
-      gtk_widget_set_sensitive(menuitem, 0);
-   menuitem = gtk_menu_item_new_with_label("DXT3");
-   gtk_signal_connect(GTK_OBJECT(menuitem), "activate",
-                      GTK_SIGNAL_FUNC(compression_selected),
-                      (gpointer)DDS_COMPRESS_DXT3);
-   gtk_widget_show(menuitem);
-   gtk_menu_append(GTK_MENU(menu), menuitem);
-   menuitem = gtk_menu_item_new_with_label("DXT5");
-   gtk_signal_connect(GTK_OBJECT(menuitem), "activate",
-                      GTK_SIGNAL_FUNC(compression_selected),
-                      (gpointer)DDS_COMPRESS_DXT5);
-   gtk_widget_show(menuitem);
-   gtk_menu_append(GTK_MENU(menu), menuitem);
+   for(i = 0; compression_strings[i].string; ++i)
+   {
+      menuitem = gtk_menu_item_new_with_label(compression_strings[i].string);
+      gtk_signal_connect(GTK_OBJECT(menuitem), "activate",
+                         GTK_SIGNAL_FUNC(compression_selected),
+                         (gpointer)compression_strings[i].compression);
+      gtk_widget_show(menuitem);
+      gtk_menu_append(GTK_MENU(menu), menuitem);
+   }
    
    gtk_menu_set_active(GTK_MENU(menu), ddsvals.compression);
    
@@ -822,8 +1121,8 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    
    compress_opt = opt;
    compress_menu = menu;
-   
-   label = gtk_label_new("Save:");
+
+   label = gtk_label_new("Format:");
    gtk_widget_show(label);
    gtk_table_attach(GTK_TABLE(table), label, 0, 1, 1, 2,
                     (GtkAttachOptions)(GTK_FILL),
@@ -833,6 +1132,39 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    opt = gtk_option_menu_new();
    gtk_widget_show(opt);
    gtk_table_attach(GTK_TABLE(table), opt, 1, 2, 1, 2,
+                    (GtkAttachOptions)(GTK_EXPAND | GTK_FILL),
+                    (GtkAttachOptions)(GTK_EXPAND), 0, 0);
+   
+   menu = gtk_menu_new();
+
+   for(i = 0; format_strings[i].string; ++i)
+   {
+      menuitem = gtk_menu_item_new_with_label(format_strings[i].string);
+      gtk_signal_connect(GTK_OBJECT(menuitem), "activate",
+                         GTK_SIGNAL_FUNC(format_selected),
+                         (gpointer)format_strings[i].format);
+      gtk_widget_show(menuitem);
+      gtk_menu_append(GTK_MENU(menu), menuitem);
+   }
+   
+   gtk_menu_set_active(GTK_MENU(menu), ddsvals.format);
+   
+   gtk_option_menu_set_menu(GTK_OPTION_MENU(opt), menu);
+   
+   gtk_widget_set_sensitive(opt, ddsvals.compression == DDS_COMPRESS_NONE);
+   
+   format_opt = opt;
+   
+   label = gtk_label_new("Save:");
+   gtk_widget_show(label);
+   gtk_table_attach(GTK_TABLE(table), label, 0, 1, 2, 3,
+                    (GtkAttachOptions)(GTK_FILL),
+                    (GtkAttachOptions)(0), 0, 0);
+   gtk_misc_set_alignment(GTK_MISC(label), 0, 0.5);
+   
+   opt = gtk_option_menu_new();
+   gtk_widget_show(opt);
+   gtk_table_attach(GTK_TABLE(table), opt, 1, 2, 2, 3,
                     (GtkAttachOptions)(GTK_EXPAND | GTK_FILL),
                     (GtkAttachOptions)(GTK_EXPAND), 0, 0);
    

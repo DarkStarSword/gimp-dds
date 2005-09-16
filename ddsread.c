@@ -143,9 +143,13 @@ gint32 read_dds(gchar *filename)
             d.gimp_bpp = 2;
             type = GIMP_GRAY;
          }
-         else if(hdr.pixelfmt.bmask == 0x1f) //R5G6B5
+         else if(hdr.pixelfmt.bmask == 0x1f) //R5G6B5 or RGB5A1
          {
-            d.gimp_bpp = 3;
+            if(hdr.pixelfmt.amask == 0x8000) // RGB5A1
+               d.gimp_bpp = 4;
+            else
+               d.gimp_bpp = 3;
+            
             type = GIMP_RGB;
          }
          else //L16
@@ -161,8 +165,8 @@ gint32 read_dds(gchar *filename)
       }
    }
    
-   image = gimp_image_new(hdr.width, hdr.height,
-                          d.bpp <= 2 ? GIMP_GRAY : GIMP_RGB);
+   image = gimp_image_new(hdr.width, hdr.height, type);
+   
    if(image == -1)
    {
       g_message("Can't allocate new image.\n");
@@ -175,7 +179,7 @@ gint32 read_dds(gchar *filename)
    d.tile_height = gimp_tile_height();
    
    pixels = g_new(guchar, d.tile_height * hdr.width * d.gimp_bpp);
-   buf = malloc(hdr.pitch_or_linsize);
+   buf = g_malloc(hdr.pitch_or_linsize);
    
    d.rshift = color_shift(hdr.pixelfmt.rmask);
    d.gshift = color_shift(hdr.pixelfmt.gmask);
@@ -189,7 +193,7 @@ gint32 read_dds(gchar *filename)
    d.gmask = hdr.pixelfmt.gmask >> d.gshift << (8 - d.gbits);
    d.bmask = hdr.pixelfmt.bmask >> d.bshift << (8 - d.bbits);
    d.amask = hdr.pixelfmt.amask >> d.ashift << (8 - d.abits);
-
+   
    if(!(hdr.caps.caps2 & DDSCAPS2_CUBEMAP) &&
       !(hdr.caps.caps2 & DDSCAPS2_VOLUME))
    {
@@ -286,7 +290,7 @@ gint32 read_dds(gchar *filename)
       }
    }
    
-   free(buf);
+   g_free(buf);
    g_free(pixels);
    fclose(fp);
    
@@ -436,8 +440,8 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
             type = GIMP_RGBA_IMAGE;
          else if(hdr->pixelfmt.amask == 0xff00) //L8A8
             type = GIMP_GRAYA_IMAGE;
-         else if(hdr->pixelfmt.bmask == 0x1f) //R5G6B5
-            type = GIMP_RGB_IMAGE;
+         else if(hdr->pixelfmt.bmask == 0x1f) //R5G6B5 or RGB5A1
+            type = (hdr->pixelfmt.amask == 0x8000) ? GIMP_RGBA_IMAGE : GIMP_RGB_IMAGE;
          else //L16
             type = GIMP_GRAY_IMAGE;
          break;
@@ -518,16 +522,27 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
 
             if(d->bpp >= 3)
             {
-               pixels[pos] =
-                  (pixel >> d->rshift << (8 - d->rbits) & d->rmask) * 255 / d->rmask;
-               pixels[pos + 1] =
-                  (pixel >> d->gshift << (8 - d->gbits) & d->gmask) * 255 / d->gmask;
-               pixels[pos + 2] =
-                  (pixel >> d->bshift << (8 - d->bbits) & d->bmask) * 255 / d->bmask;
-               if(hdr->pixelfmt.flags & DDPF_ALPHAPIXELS)
+               if(hdr->pixelfmt.amask == 0xc0000000) // handle RGB10A2
                {
-                  pixels[pos + 3] =
-                     (pixel >> d->ashift << (8 - d->abits) & d->amask) * 255 / d->amask;
+                  pixels[pos + 0] = (pixel >> d->rshift) >> 2;
+                  pixels[pos + 1] = (pixel >> d->gshift) >> 2;
+                  pixels[pos + 2] = (pixel >> d->bshift) >> 2;
+                  if(hdr->pixelfmt.flags & DDPF_ALPHAPIXELS)
+                     pixels[pos + 3] = (pixel >> d->ashift << (8 - d->abits) & d->amask) * 255 / d->amask;
+               }
+               else
+               {
+                  pixels[pos] =
+                     (pixel >> d->rshift << (8 - d->rbits) & d->rmask) * 255 / d->rmask;
+                  pixels[pos + 1] =
+                     (pixel >> d->gshift << (8 - d->gbits) & d->gmask) * 255 / d->gmask;
+                  pixels[pos + 2] =
+                     (pixel >> d->bshift << (8 - d->bbits) & d->bmask) * 255 / d->bmask;
+                  if(hdr->pixelfmt.flags & DDPF_ALPHAPIXELS)
+                  {
+                     pixels[pos + 3] =
+                        (pixel >> d->ashift << (8 - d->abits) & d->amask) * 255 / d->amask;
+                  }
                }
             }
             else if(d->bpp == 2)
@@ -550,7 +565,7 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
                   pixels[pos + 1] =
                      (pixel >> d->ashift << (8 - d->abits) & d->amask) * 255 / d->amask;
                }
-               else if(hdr->pixelfmt.bmask == 0x1f) //R5G6B5
+               else if(hdr->pixelfmt.bmask == 0x1f) //R5G6B5 or RGB5A1
                {
                   pixels[pos] =
                      (pixel >> d->rshift << (8 - d->rbits) & d->rmask) * 255 / d->rmask;
@@ -558,6 +573,11 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
                      (pixel >> d->gshift << (8 - d->gbits) & d->gmask) * 255 / d->gmask;
                   pixels[pos + 2] =
                      (pixel >> d->bshift << (8 - d->bbits) & d->bmask) * 255 / d->bmask;
+                  if(hdr->pixelfmt.amask == 0x8000)
+                  {
+                     pixels[pos + 3] =
+                         (pixel >> d->ashift << (8 - d->abits) & d->amask) * 255 / d->amask;
+                  }
                }
                else //L16
                   pixels[pos] = (unsigned char)(255 * ((float)(pixel & 0xffff) / 65535.0f));
@@ -579,11 +599,11 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
    {
       unsigned char *dst;
       
-      dst = malloc(width * height * 16);
+      dst = g_malloc(width * height * 16);
       if(!(hdr->flags & DDSD_LINEARSIZE))
       {
          g_message("Image marked as compressed, but DDSD_LINEARSIZE is not set.\n");
-         free(dst);
+         g_free(dst);
          return(0);
       }
       
@@ -609,7 +629,7 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
       gimp_pixel_rgn_set_rect(&pixel_region, pixels, 0, y - n,
                               drawable->width, n);
       
-      free(dst);
+      g_free(dst);
    }
    
    gimp_drawable_flush(drawable);

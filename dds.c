@@ -50,7 +50,7 @@ GimpPlugInInfo PLUG_IN_INFO =
 
 DDSSaveVals ddsvals =
 {
-	DDS_COMPRESS_NONE, 0, 0, 0
+	DDS_COMPRESS_NONE, 0, 0, DDS_SAVE_SELECTED_LAYER, DDS_FORMAT_DEFAULT
 };
 
 MAIN()
@@ -82,7 +82,8 @@ static void query(void)
 		{GIMP_PDB_INT32, "compression_format", "Compression format"},
 		{GIMP_PDB_INT32, "generate_mipmaps", "Generate mipmaps"},
       {GIMP_PDB_INT32, "swap_ra", "Swap red and alpha channels (RGBA images only)"},
-      {GIMP_PDB_INT32, "savetype", "How to save the image (0 = selected layer, 1 = cube map, 2 = volume map"}
+      {GIMP_PDB_INT32, "savetype", "How to save the image (0 = selected layer, 1 = cube map, 2 = volume map"},
+      {GIMP_PDB_INT32, "format", "Custom pixel format (0 = default, 1 = R5G6B5, 2 = RGBA4, 3 = RGB5A1, 4 = RGB10A2)"}
 	};
 	static gint nsave_args = sizeof(save_args) / sizeof(save_args[0]);
 	
@@ -214,9 +215,17 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
 					ddsvals.compression = param[5].data.d_int32;
 					ddsvals.mipmaps = param[6].data.d_int32;
                ddsvals.swapRA = param[7].data.d_int32;
+               ddsvals.savetype = param[8].data.d_int32;
+               ddsvals.format = param[9].data.d_int32;
 					if(ddsvals.compression < DDS_COMPRESS_NONE ||
-						ddsvals.compression > DDS_COMPRESS_DXT5)
+						ddsvals.compression >= DDS_COMPRESS_MAX)
 						status = GIMP_PDB_CALLING_ERROR;
+               if(ddsvals.savetype < DDS_SAVE_SELECTED_LAYER ||
+                  ddsvals.savetype >= DDS_SAVE_MAX)
+                  status = GIMP_PDB_CALLING_ERROR;
+               if(ddsvals.format < DDS_FORMAT_DEFAULT ||
+                  ddsvals.format >= DDS_FORMAT_MAX)
+                  status = GIMP_PDB_CALLING_ERROR;
 				}
 			   break;
 			case GIMP_RUN_WITH_LAST_VALS:

@@ -13,10 +13,10 @@ Features
 * Load mipmaps into separate layers
 * Load cube map faces and volume map slices into separate layers
 * Cube and volume map saving
+* Pixel conversion selection for custom formats (RGBA4, R5G6B5, RGB10A2, etc.)
     
 Planned features
 ==========================================    
-* Pixel conversion selection for custom formats (RGBA4, R5G6B5, RGB10A2, etc.)
 * Custom mipmaps
 
 Installation
