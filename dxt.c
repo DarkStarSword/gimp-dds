@@ -68,7 +68,7 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
                  int mipmaps)
 {
    GLenum internal = 0;
-   GLenum type = GL_RGB;
+   GLenum type = 0;
    int i, size;
    
    if(!(IS_POT(width) && IS_POT(height)))
@@ -78,8 +78,8 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
    {
       case 1: type = GL_LUMINANCE;       break;
       case 2: type = GL_LUMINANCE_ALPHA; break;
-      case 3: type = GL_RGB;             break;
-      case 4: type = GL_RGBA;            break;
+      case 3: type = GL_BGR;             break;
+      case 4: type = GL_BGRA;            break;
    }
    
    if(format == DDS_COMPRESS_DXT1)
@@ -252,6 +252,7 @@ int generate_mipmaps(unsigned char *dst, unsigned char *src,
 {
    int i;
    unsigned int w, h;
+   GLenum internal = 0;
    GLenum format = 0;
    unsigned int offset;
    
@@ -260,14 +261,14 @@ int generate_mipmaps(unsigned char *dst, unsigned char *src,
    
    switch(bpp)
    {
-      case 1: format = GL_LUMINANCE;       break;
-      case 2: format = GL_LUMINANCE_ALPHA; break;
-      case 3: format = GL_RGB;             break;
-      case 4: format = GL_RGBA;            break;
+      case 1: internal = format = GL_LUMINANCE;       break;
+      case 2: internal = format = GL_LUMINANCE_ALPHA; break;
+      case 3: internal = GL_RGB; format = GL_BGR;     break;
+      case 4: internal = GL_RGBA; format = GL_BGRA;   break;
    }
    
    glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP_SGIS, GL_TRUE);
-   glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0,
+   glTexImage2D(GL_TEXTURE_2D, 0, internal, width, height, 0,
                 format, GL_UNSIGNED_BYTE, src);
    
    memcpy(dst, src, width * height * bpp);
@@ -295,19 +296,20 @@ int generate_volume_mipmaps(unsigned char *dst, unsigned char *src,
 {
    int i;
    unsigned int w, h, d;
+   GLenum internal = 0;
    GLenum format = 0;
    unsigned int offset;
    
    switch(bpp)
    {
-      case 1: format = GL_LUMINANCE;       break;
-      case 2: format = GL_LUMINANCE_ALPHA; break;
-      case 3: format = GL_RGB;             break;
-      case 4: format = GL_RGBA;            break;
+      case 1: internal = format = GL_LUMINANCE;       break;
+      case 2: internal = format = GL_LUMINANCE_ALPHA; break;
+      case 3: internal = GL_RGB; format = GL_BGR;     break;
+      case 4: internal = GL_RGBA; format = GL_BGRA;   break;
    }
    
    glTexParameteri(GL_TEXTURE_3D, GL_GENERATE_MIPMAP_SGIS, GL_TRUE);
-   glTexImage3D(GL_TEXTURE_3D, 0, format, width, height, depth, 0,
+   glTexImage3D(GL_TEXTURE_3D, 0, internal, width, height, depth, 0,
                 format, GL_UNSIGNED_BYTE, src);
    
    memcpy(dst, src, width * height * bpp * depth);

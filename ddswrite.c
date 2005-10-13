@@ -97,11 +97,13 @@ static struct
    {DDS_FORMAT_RGB8, "RGB8"},
    {DDS_FORMAT_RGBA8, "RGBA8"},
    {DDS_FORMAT_BGR8, "BGR8"},
-   {DDS_FORMAT_BGRA8, "BGRA8"},
+   {DDS_FORMAT_ABGR8, "ABGR8"},
    {DDS_FORMAT_R5G6B5, "R5G6B5"},
    {DDS_FORMAT_RGBA4, "RGBA4"},
    {DDS_FORMAT_RGB5A1, "RGB5A1"},
    {DDS_FORMAT_RGB10A2, "RGB10A2"},
+   {DDS_FORMAT_L8, "L8"},
+   {DDS_FORMAT_L8A8, "L8A8"},
    {-1, 0}
 };
 
@@ -440,6 +442,19 @@ static unsigned int get_volume_mipmapped_size(int width, int height,
                   (unsigned int)((((r) << 2) & 0x3ff) << 20) | \
                   (unsigned int)((((g) << 2) & 0x3ff) << 10) | \
                   (unsigned int)((((b) << 2) & 0x3ff)      ))
+                  
+static void swap_rb(unsigned char *pixels, unsigned int n, int bpp)
+{
+   unsigned int i;
+   unsigned char t;
+
+   for(i = 0; i < n; ++i)
+   {
+      t = pixels[bpp * i + 0];
+      pixels[bpp * i + 0] = pixels[bpp * i + 2];
+      pixels[bpp * i + 2] = t;
+   }
+}
 
 static void convert_pixels(unsigned char *dst, unsigned char *src, int format,
                            int w, int h, int bpp, int mipmaps)
@@ -463,41 +478,42 @@ static void convert_pixels(unsigned char *dst, unsigned char *src, int format,
       }
       else if(bpp == 3)
       {
-         r = src[3 * i + 0];
+         b = src[3 * i + 0];
          g = src[3 * i + 1];
-         b = src[3 * i + 2];
+         r = src[3 * i + 2];
          a = 255;
       }
       else
       {
-         r = src[4 * i + 0];
+         b = src[4 * i + 0];
          g = src[4 * i + 1];
-         b = src[4 * i + 2];
+         r = src[4 * i + 2];
          a = src[4 * i + 3];
       }
       
       switch(format)
       {
          case DDS_FORMAT_RGB8:
-            dst[3 * i + 0] = r;
-            dst[3 * i + 1] = g;
-            dst[3 * i + 2] = b;
-            break;
-         case DDS_FORMAT_RGBA8:
-            dst[4 * i + 0] = r;
-            dst[4 * i + 1] = g;
-            dst[4 * i + 2] = b;
-            dst[4 * i + 3] = a;
-            break;
-         case DDS_FORMAT_BGR8:
             dst[3 * i + 0] = b;
             dst[3 * i + 1] = g;
             dst[3 * i + 2] = r;
             break;
-         case DDS_FORMAT_BGRA8:
+         case DDS_FORMAT_RGBA8:
             dst[4 * i + 0] = b;
             dst[4 * i + 1] = g;
             dst[4 * i + 2] = r;
+            dst[4 * i + 3] = a;
+            break;
+         case DDS_FORMAT_BGR8:
+            dst[4 * i + 0] = r;
+            dst[4 * i + 1] = g;
+            dst[4 * i + 2] = b;
+            dst[4 * i + 3] = 255;
+            break;
+         case DDS_FORMAT_ABGR8:
+            dst[4 * i + 0] = r;
+            dst[4 * i + 1] = g;
+            dst[4 * i + 2] = b;
             dst[4 * i + 3] = a;
             break;
          case DDS_FORMAT_R5G6B5:
@@ -511,6 +527,13 @@ static void convert_pixels(unsigned char *dst, unsigned char *src, int format,
             break;
          case DDS_FORMAT_RGB10A2:
             *((unsigned int*)(&dst[4 * i])) = TO_RGB10A2(r, g, b, a);
+            break;
+         case DDS_FORMAT_L8:
+            dst[i] = (unsigned char)((float)r * 0.3f + (float)g * 0.59f + (float)b * 0.11f);
+            break;
+         case DDS_FORMAT_L8A8:
+            dst[2 * i + 0] = (unsigned char)((float)r * 0.3f + (float)g * 0.59f + (float)b * 0.11f);
+            dst[2 * i + 1] = a;
             break;
          default:
             break;
@@ -542,41 +565,42 @@ static void convert_volume_pixels(unsigned char *dst, unsigned char *src,
       }
       else if(bpp == 3)
       {
-         r = src[3 * i + 0];
+         b = src[3 * i + 0];
          g = src[3 * i + 1];
-         b = src[3 * i + 2];
+         r = src[3 * i + 2];
          a = 255;
       }
       else
       {
-         r = src[4 * i + 0];
+         b = src[4 * i + 0];
          g = src[4 * i + 1];
-         b = src[4 * i + 2];
+         r = src[4 * i + 2];
          a = src[4 * i + 3];
       }
       
       switch(format)
       {
          case DDS_FORMAT_RGB8:
-            dst[3 * i + 0] = r;
-            dst[3 * i + 1] = g;
-            dst[3 * i + 2] = b;
-            break;
-         case DDS_FORMAT_RGBA8:
-            dst[4 * i + 0] = r;
-            dst[4 * i + 1] = g;
-            dst[4 * i + 2] = b;
-            dst[4 * i + 3] = a;
-            break;
-         case DDS_FORMAT_BGR8:
             dst[3 * i + 0] = b;
             dst[3 * i + 1] = g;
             dst[3 * i + 2] = r;
             break;
-         case DDS_FORMAT_BGRA8:
+         case DDS_FORMAT_RGBA8:
             dst[4 * i + 0] = b;
             dst[4 * i + 1] = g;
             dst[4 * i + 2] = r;
+            dst[4 * i + 3] = a;
+            break;
+         case DDS_FORMAT_BGR8:
+            dst[4 * i + 0] = r;
+            dst[4 * i + 1] = g;
+            dst[4 * i + 2] = b;
+            dst[4 * i + 3] = 255;
+            break;
+         case DDS_FORMAT_ABGR8:
+            dst[4 * i + 0] = r;
+            dst[4 * i + 1] = g;
+            dst[4 * i + 2] = b;
             dst[4 * i + 3] = a;
             break;
          case DDS_FORMAT_R5G6B5:
@@ -590,6 +614,13 @@ static void convert_volume_pixels(unsigned char *dst, unsigned char *src,
             break;
          case DDS_FORMAT_RGB10A2:
             *((unsigned int*)(&dst[4 * i])) = TO_RGB10A2(r, g, b, a);
+            break;
+         case DDS_FORMAT_L8:
+            dst[i] = (unsigned char)((float)r * 0.3f + (float)g * 0.59f + (float)b * 0.11f);
+            break;
+         case DDS_FORMAT_L8A8:
+            dst[2 * i + 0] = (unsigned char)((float)r * 0.3f + (float)g * 0.59f + (float)b * 0.11f);
+            dst[2 * i + 1] = a;
             break;
          default:
             break;
@@ -609,22 +640,24 @@ static void write_layer(FILE *fp, gint32 drawable_id, int w, int h, int bpp,
    src = g_malloc(w * h * bpp);
    gimp_pixel_rgn_init(&rgn, drawable, 0, 0, w, h, 0, 0);
    gimp_pixel_rgn_get_rect(&rgn, src, 0, 0, w, h);
-   
-   
+
+   if(bpp >= 3)
+      swap_rb(src, w * h, bpp);
+
    if(ddsvals.swapRA && bpp == 4)
    {
       for(y = 0; y < drawable->height; ++y)
       {
          for(x = 0; x < drawable->width; ++x)
          {
-            c = src[y * (drawable->width * 4) + (x * 4)];
-            src[y * (drawable->width * 4) + (x * 4)] =
+            c = src[y * (drawable->width * 4) + (x * 4) + 2];
+            src[y * (drawable->width * 4) + (x * 4) + 2] =
                src[y * (drawable->width * 4) + (x * 4) + 3];
             src[y * (drawable->width * 4) + (x * 4) + 3] = c;
          }
       }
    }
-      
+
    if(ddsvals.compression == DDS_COMPRESS_NONE)
    {
       if(mipmaps > 1)
@@ -686,7 +719,7 @@ static void write_layer(FILE *fp, gint32 drawable_id, int w, int h, int bpp,
          fwrite(dst + offset, 1, size, fp);
          offset += size;
       }
-         
+
       g_free(dst);
    }
       
@@ -721,11 +754,14 @@ static void write_volume_mipmaps(FILE *fp, gint *layers, int w, int h, int d,
       gimp_drawable_detach(drawable);
    }
    
+   if(bpp >= 3)
+      swap_rb(src, w * h * d, bpp);
+
    offset = get_volume_mipmapped_size(w, h, d, bpp, 0, 1,
                                       ddsvals.compression);
-   
+
    generate_volume_mipmaps(dst, src, w, h, d, bpp, mipmaps);
-   
+
    if(ddsvals.format > DDS_FORMAT_DEFAULT)
    {
       size = get_volume_mipmapped_size(w, h, d, fmtbpp, 0, mipmaps,
@@ -754,7 +790,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    int i, w, h, bpp = 0, fmtbpp = 0, has_alpha = 0;
    int num_mipmaps;
    unsigned char hdr[DDS_HEADERSIZE];
-   unsigned int flags = 0, caps = 0, caps2 = 0, size = 0;
+   unsigned int flags = 0, pflags = 0, caps = 0, caps2 = 0, size = 0;
    unsigned int rmask = 0, gmask = 0, bmask = 0, amask = 0;
    char *format;
    gint num_layers, *layers;
@@ -793,32 +829,32 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
       {
          case DDS_FORMAT_RGB8:
             fmtbpp = 3;
-            rmask = 0x000000ff;
+            rmask = 0x00ff0000;
             gmask = 0x0000ff00;
-            bmask = 0x00ff0000;
-            amask = 0x00000000;
+            bmask = 0x000000ff;
+            amask = 0xff000000;
             break;
          case DDS_FORMAT_RGBA8:
             fmtbpp = 4;
             has_alpha = 1;
-            rmask = 0x000000ff;
+            rmask = 0x00ff0000;
             gmask = 0x0000ff00;
-            bmask = 0x00ff0000;
+            bmask = 0x000000ff;
             amask = 0xff000000;
             break;
          case DDS_FORMAT_BGR8:
-            fmtbpp = 3;
-            rmask = 0x00ff0000;
+            fmtbpp = 4;
+            rmask = 0x000000ff;
             gmask = 0x0000ff00;
-            bmask = 0x000000ff;
+            bmask = 0x00ff0000;
             amask = 0x00000000;
             break;
-         case DDS_FORMAT_BGRA8:
+         case DDS_FORMAT_ABGR8:
             fmtbpp = 4;
             has_alpha = 1;
-            rmask = 0x00ff0000;
+            rmask = 0x000000ff;
             gmask = 0x0000ff00;
-            bmask = 0x000000ff;
+            bmask = 0x00ff0000;
             amask = 0xff000000;
             break;
          case DDS_FORMAT_R5G6B5:
@@ -852,6 +888,22 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
             bmask = 0x000003ff;
             amask = 0xc0000000;
             break;
+         case DDS_FORMAT_L8:
+            fmtbpp = 1;
+            has_alpha = 0;
+            rmask = 0x000000ff;
+            gmask = 0x00000000;
+            bmask = 0x00000000;
+            amask = 0x00000000;
+            break;
+         case DDS_FORMAT_L8A8:
+            fmtbpp = 2;
+            has_alpha = 1;
+            rmask = 0x000000ff;
+            gmask = 0x00000000;
+            bmask = 0x00000000;
+            amask = 0x0000ff00;
+            break;
          default:
             break;
       }
@@ -859,24 +911,34 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    else if(bpp == 1)
    {
       fmtbpp = 1;
-      rmask = gmask = bmask = 0x000000ff;
-      amask = 0;
+      rmask = 0x000000ff;
+      gmask = bmask = amask = 0;
    }
    else if(bpp == 2)
    {
       fmtbpp = 2;
       has_alpha = 1;
-      rmask = gmask = bmask = 0x000000ff;
+      rmask = 0x000000ff;
+      gmask = 0x00000000;
+      bmask = 0x00000000;
       amask = 0x0000ff00;
+   }
+   else if(bpp == 3)
+   {
+      fmtbpp = 3;
+      rmask = 0x00ff0000;
+      gmask = 0x0000ff00;
+      bmask = 0x000000ff;
+      amask = 0x00000000;
    }
    else
    {
       fmtbpp = 4;
-      has_alpha = (bpp == 4);
-      rmask = 0x000000ff;
+      has_alpha = 1;
+      rmask = 0x00ff0000;
       gmask = 0x0000ff00;
-      bmask = 0x00ff0000;
-      amask = (bpp == 4) ? 0xff000000 : 0;
+      bmask = 0x000000ff;
+      amask = 0xff000000;
    }
    
    memset(hdr, 0, DDS_HEADERSIZE);
@@ -930,9 +992,26 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    if(ddsvals.compression == DDS_COMPRESS_NONE)
    {
       flags |= DDSD_PITCH;
+
+      if(ddsvals.format > DDS_FORMAT_DEFAULT)
+      {
+         if(fmtbpp == 1 || ddsvals.format == DDS_FORMAT_L8A8)
+            pflags |= DDPF_LUMINANCE;
+         else
+            pflags |= DDPF_RGB;
+      }
+      else
+      {
+         if(bpp == 1)
+            pflags |= DDPF_LUMINANCE;
+         else
+            pflags |= DDPF_RGB;
+      }
+      if(has_alpha) pflags |= DDPF_ALPHAPIXELS;
+
       PUT32(hdr + 8, flags);
       PUT32(hdr + 20, w * fmtbpp);
-      PUT32(hdr + 80, has_alpha ? DDPF_RGB | DDPF_ALPHAPIXELS : DDPF_RGB);
+      PUT32(hdr + 80, pflags);
    }
    else
    {

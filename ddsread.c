@@ -203,7 +203,7 @@ gint32 read_dds(gchar *filename)
          return(-1);
       }
    }
-   
+
    if(hdr.caps.caps1 & DDSCAPS_COMPLEX)
    {
       if(hdr.caps.caps2 & DDSCAPS2_CUBEMAP)
@@ -374,14 +374,24 @@ static int validate_header(dds_header_t *hdr)
       return(0);
    }
    
-   if((hdr->pixelfmt.flags & DDPF_RGB) &&
-      (hdr->pixelfmt.bpp !=  8) &&      
-      (hdr->pixelfmt.bpp != 16) &&
-      (hdr->pixelfmt.bpp != 24) &&
-      (hdr->pixelfmt.bpp != 32))
+   if(hdr->pixelfmt.flags & DDPF_RGB)
    {
-      g_message("Invalid BPP.\n");
-      return(0);
+      if((hdr->pixelfmt.bpp != 16) &&
+         (hdr->pixelfmt.bpp != 24) &&
+         (hdr->pixelfmt.bpp != 32))
+      {
+         g_message("Invalid BPP.\n");
+         return(0);
+      }
+   }
+   else if(hdr->pixelfmt.flags & DDPF_LUMINANCE)
+   {
+      if((hdr->pixelfmt.bpp !=  8) &&
+         (hdr->pixelfmt.bpp != 16))
+      {
+         g_message("Invalid BPP.\n");
+         return(0);
+      }
    }
    
    if(!(hdr->pixelfmt.flags & DDPF_RGB) &&
