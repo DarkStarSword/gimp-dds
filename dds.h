@@ -69,6 +69,7 @@ typedef enum
 
 #define DDPF_ALPHAPIXELS           0x00000001
 #define DDPF_FOURCC                0x00000004
+#define DDPF_PALETTEINDEXED8       0x00000020
 #define DDPF_RGB                   0x00000040
 #define DDPF_LUMINANCE             0x00020000
 
