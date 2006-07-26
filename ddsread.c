@@ -410,6 +410,8 @@ static int validate_header(dds_header_t *hdr)
          g_message("Invalid BPP.\n");
          return(0);
       }
+      
+      hdr->pixelfmt.flags |= DDPF_RGB;
    }
    else if(hdr->pixelfmt.flags & DDPF_PALETTEINDEXED8)
    {
