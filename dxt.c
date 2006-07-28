@@ -166,9 +166,9 @@ float cubic_interpolate(float a, float b, float c, float d, float x)
    return(v0 * x * x2 + v1 * x2 + v2 * x + v3);
 }
 
-static void scale_image(unsigned char *dst, int dw, int dh,
-                        unsigned char *src, int sw, int sh,
-                        int bpp)
+static void scale_image_cubic(unsigned char *dst, int dw, int dh,
+                              unsigned char *src, int sw, int sh,
+                              int bpp)
 {
    int n, x, y;
    int ix, iy;
@@ -221,9 +221,38 @@ static void scale_image(unsigned char *dst, int dw, int dh,
 #undef VAL   
 }
 
+static void scale_image_nearest(unsigned char *dst, int dw, int dh,
+                                unsigned char *src, int sw, int sh,
+                                int bpp)
+{
+   int n, x, y;
+   int ix, iy;
+   float fx, fy;
+   int srowbytes = sw * bpp;
+   int drowbytes = dw * bpp;
+   
+   for(y = 0; y < dh; ++y)
+   {
+      fy = ((float)y / (float)(dh - 1 == 0 ? 1 : dh - 1)) * (float)(sh - 1);
+      iy = (int)fy;
+      
+      for(x = 0; x < dw; ++x)
+      {
+         fx = ((float)x / (float)(dw - 1 == 0 ? 1 : dw - 1)) * (float)(sw - 1);
+         ix = (int)fx;
+         
+         for(n = 0; n < bpp; ++n)
+         {
+            dst[y * drowbytes + (x * bpp) + n] =
+               src[iy * srowbytes + (ix * bpp) + n];
+         }
+      }
+   }
+}
+
 static int generate_mipmaps_npot(unsigned char *dst, unsigned char *src,
                                  unsigned int width, unsigned int height,
-                                 int bpp, int mipmaps)
+                                 int indexed, int bpp, int mipmaps)
 {
    int i;
    unsigned int w, h;
@@ -239,8 +268,37 @@ static int generate_mipmaps_npot(unsigned char *dst, unsigned char *src,
       if(w < 1) w = 1;
       if(h < 1) h = 1;
       
-      scale_image(dst + offset, w, h, src, width, height, bpp);
+      if(indexed)
+         scale_image_nearest(dst + offset, w, h, src, width, height, bpp);
+      else
+         scale_image_cubic(dst + offset, w, h, src, width, height, bpp);
       offset += (w * h * bpp);
+   }
+   
+   return(1);
+}
+
+static int generate_mipmaps_indexed(unsigned char *dst, unsigned char *src,
+                                    unsigned int width, unsigned int height,
+                                    int mipmaps)
+{
+   int i;
+   unsigned int w, h;
+   unsigned int offset;
+
+   memcpy(dst, src, width * height);
+   offset = width * height;
+   
+   for(i = 1; i < mipmaps; ++i)
+   {
+      w = width  >> i;
+      h = height >> i;
+      if(w < 1) w = 1;
+      if(h < 1) h = 1;
+      
+      scale_image_nearest(dst + offset, w, h, src, width, height, 1);
+
+      offset += (w * h);
    }
    
    return(1);
@@ -248,7 +306,7 @@ static int generate_mipmaps_npot(unsigned char *dst, unsigned char *src,
 
 int generate_mipmaps(unsigned char *dst, unsigned char *src,
                      unsigned int width, unsigned int height, int bpp,
-                     int mipmaps)
+                     int indexed, int mipmaps)
 {
    int i;
    unsigned int w, h;
@@ -256,8 +314,15 @@ int generate_mipmaps(unsigned char *dst, unsigned char *src,
    GLenum format = 0;
    unsigned int offset;
    
-   if(!(IS_POT(width) && IS_POT(height)) && !GLEW_ARB_texture_non_power_of_two)
-      return(generate_mipmaps_npot(dst, src, width, height, bpp, mipmaps));
+   if(!(IS_POT(width) && IS_POT(height)) &&
+      !GLEW_ARB_texture_non_power_of_two)
+   {
+      return(generate_mipmaps_npot(dst, src, width, height, bpp, indexed,
+                                   mipmaps));
+   }
+   
+   if(indexed)
+      return(generate_mipmaps_indexed(dst, src, width, height, mipmaps));
    
    switch(bpp)
    {

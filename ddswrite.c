@@ -689,7 +689,7 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
       {
          size = get_mipmapped_size(w, h, bpp, 0, mipmaps, DDS_COMPRESS_NONE);
          dst = g_malloc(size);
-         generate_mipmaps(dst, src, w, h, bpp, mipmaps);
+         generate_mipmaps(dst, src, w, h, bpp, palette != NULL, mipmaps);
             
          offset = 0;
          
