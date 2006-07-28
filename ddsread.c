@@ -77,6 +77,7 @@ gint32 read_dds(gchar *filename)
    dds_load_info_t d;
    gint *layers, layer_count;
    GimpImageBaseType type;
+   int i, j;
    
    fp = fopen(filename, "rb");
    if(fp == 0)
@@ -131,7 +132,7 @@ gint32 read_dds(gchar *filename)
    else
    {
       d.bpp = hdr.pixelfmt.bpp >> 3;
-      //d.gimp_bpp = (hdr.pixelfmt.flags & DDPF_ALPHAPIXELS) ? 4 : 3;
+
       if(d.bpp == 2)
       {
          if(hdr.pixelfmt.amask == 0xf000) // RGBA4
@@ -163,8 +164,8 @@ gint32 read_dds(gchar *filename)
       {
          if(hdr.pixelfmt.flags & DDPF_PALETTEINDEXED8)
          {
-            d.gimp_bpp = (hdr.pixelfmt.flags & DDPF_ALPHAPIXELS) ? 4 : 3;
-            type = GIMP_RGB;
+            type = GIMP_INDEXED;
+            d.gimp_bpp = 1;
          }
          else
          {
@@ -172,12 +173,6 @@ gint32 read_dds(gchar *filename)
             type = (d.bpp == 1) ? GIMP_GRAY : GIMP_RGB;
          }
       }
-   }
-   
-   if(hdr.pixelfmt.flags & DDPF_PALETTEINDEXED8)
-   {
-      d.palette = g_malloc(256 * 4);
-      fread(d.palette, 1, 256 * 4, fp);
    }
    
    image = gimp_image_new(hdr.width, hdr.height, type);
@@ -190,6 +185,19 @@ gint32 read_dds(gchar *filename)
    }
    
    gimp_image_set_filename(image, filename);
+   
+   if(hdr.pixelfmt.flags & DDPF_PALETTEINDEXED8)
+   {
+      d.palette = g_malloc(256 * 4);
+      fread(d.palette, 1, 256 * 4, fp);
+      for(i = j = 0; i < 768; i += 3, j += 4)
+      {
+         d.palette[i + 0] = d.palette[j + 0];
+         d.palette[i + 1] = d.palette[j + 1];
+         d.palette[i + 2] = d.palette[j + 2];
+      }
+      gimp_image_set_colormap(image, d.palette, 256);
+   }
    
    d.tile_height = gimp_tile_height();
    
@@ -474,10 +482,7 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
    {
       case 1:
          if(hdr->pixelfmt.flags & DDPF_PALETTEINDEXED8)
-         {
-            type = (hdr->pixelfmt.flags & DDPF_ALPHAPIXELS) ?
-               GIMP_RGBA_IMAGE : GIMP_RGB_IMAGE;
-         }
+            type = GIMP_INDEXED_IMAGE;
          else
             type = GIMP_GRAY_IMAGE;
          break;
@@ -632,12 +637,7 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
             {
                if(hdr->pixelfmt.flags & DDPF_PALETTEINDEXED8)
                {
-                  pixel &= 0xff;
-                  pixels[pos + 0] = d->palette[4 * pixel + 0];
-                  pixels[pos + 1] = d->palette[4 * pixel + 1];
-                  pixels[pos + 2] = d->palette[4 * pixel + 2];
-                  if(hdr->pixelfmt.flags & DDPF_ALPHAPIXELS)
-                     pixels[pos + 3] = d->palette[4 * pixel + 3];
+                  pixels[pos] = pixel;
                }
                else
                {

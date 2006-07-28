@@ -106,7 +106,7 @@ static void query(void)
 								  "Shawn Kirst",
 								  "2004",
 								  "<Save>/DDS image",
-								  "GRAY, RGB",
+								  "INDEXED, GRAY, RGB",
 								  GIMP_PLUGIN,
 								  nsave_args, 0,
 								  save_args, 0);
@@ -189,6 +189,7 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
 			   export = gimp_export_image(&imageID, &drawableID, "DDS",
                                        (GIMP_EXPORT_CAN_HANDLE_RGB |
                                         GIMP_EXPORT_CAN_HANDLE_GRAY |
+                                        GIMP_EXPORT_CAN_HANDLE_INDEXED |
                                         GIMP_EXPORT_CAN_HANDLE_ALPHA |
                                         GIMP_EXPORT_CAN_HANDLE_LAYERS));
 			   if(export == GIMP_EXPORT_CANCEL)
