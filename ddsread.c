@@ -167,6 +167,11 @@ gint32 read_dds(gchar *filename)
             type = GIMP_INDEXED;
             d.gimp_bpp = 1;
          }
+         else if(hdr.pixelfmt.rmask == 0xe0) // R3G3B2
+         {
+            type = GIMP_RGB;
+            d.gimp_bpp = 3;
+         }
          else
          {
             d.gimp_bpp = d.bpp;
@@ -402,7 +407,8 @@ static int validate_header(dds_header_t *hdr)
    
    if(hdr->pixelfmt.flags & DDPF_RGB)
    {
-      if((hdr->pixelfmt.bpp != 16) &&
+      if((hdr->pixelfmt.bpp !=  8) &&
+         (hdr->pixelfmt.bpp != 16) &&
          (hdr->pixelfmt.bpp != 24) &&
          (hdr->pixelfmt.bpp != 32))
       {
@@ -483,6 +489,8 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
       case 1:
          if(hdr->pixelfmt.flags & DDPF_PALETTEINDEXED8)
             type = GIMP_INDEXED_IMAGE;
+         else if(hdr->pixelfmt.rmask == 0xe0)
+            type = GIMP_RGB_IMAGE;
          else
             type = GIMP_GRAY_IMAGE;
          break;
@@ -526,7 +534,7 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
          case '3': format = DDS_COMPRESS_DXT3; break;
          case '5': format = DDS_COMPRESS_DXT5; break;
       }
-      
+
       if(w == 0) w = 1;
       if(h == 0) h = 1;
       size = w * h * (format == DDS_COMPRESS_DXT1 ? 8 : 16);
@@ -639,13 +647,22 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
                {
                   pixels[pos] = pixel;
                }
+               else if(hdr->pixelfmt.rmask == 0xe0) // R3G3B2
+               {
+                  pixels[pos] =
+                     (pixel >> d->rshift << (8 - d->rbits) & d->rmask) * 255 / d->rmask;
+                  pixels[pos + 1] =
+                     (pixel >> d->gshift << (8 - d->gbits) & d->gmask) * 255 / d->gmask;
+                  pixels[pos + 2] =
+                     (pixel >> d->bshift << (8 - d->bbits) & d->bmask) * 255 / d->bmask;
+               }
                else
                {
                   pixels[pos] =
                      (pixel >> d->rshift << (8 - d->rbits) & d->rmask) * 255 / d->rmask;
                }
             }
-            
+
             z += d->bpp;
          }
       }

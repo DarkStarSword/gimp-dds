@@ -102,6 +102,7 @@ static struct
    {DDS_FORMAT_RGBA4, "RGBA4"},
    {DDS_FORMAT_RGB5A1, "RGB5A1"},
    {DDS_FORMAT_RGB10A2, "RGB10A2"},
+   {DDS_FORMAT_R3G3B2, "R3G3B2"},
    {DDS_FORMAT_L8, "L8"},
    {DDS_FORMAT_L8A8, "L8A8"},
    {-1, 0}
@@ -443,6 +444,10 @@ static unsigned int get_volume_mipmapped_size(int width, int height,
                   (unsigned int)((((r) << 2) & 0x3ff) << 20) | \
                   (unsigned int)((((g) << 2) & 0x3ff) << 10) | \
                   (unsigned int)((((b) << 2) & 0x3ff)      ))
+#define TO_R3G3B2(r, g, b) \
+   (unsigned char)(((((r) >> 5) & 0x07) << 5) |\
+                   ((((g) >> 5) & 0x07) << 2) |\
+                   ((((b) >> 6) & 0x03)     ))
                   
 static void swap_rb(unsigned char *pixels, unsigned int n, int bpp)
 {
@@ -538,6 +543,9 @@ static void convert_pixels(unsigned char *dst, unsigned char *src,
          case DDS_FORMAT_RGB10A2:
             *((unsigned int*)(&dst[4 * i])) = TO_RGB10A2(r, g, b, a);
             break;
+         case DDS_FORMAT_R3G3B2:
+            dst[i] = TO_R3G3B2(r, g, b);
+            break;
          case DDS_FORMAT_L8:
             dst[i] = (unsigned char)((float)r * 0.3f + (float)g * 0.59f + (float)b * 0.11f);
             break;
@@ -632,6 +640,9 @@ static void convert_volume_pixels(unsigned char *dst, unsigned char *src,
             break;
          case DDS_FORMAT_RGB10A2:
             *((unsigned int*)(&dst[4 * i])) = TO_RGB10A2(r, g, b, a);
+            break;
+         case DDS_FORMAT_R3G3B2:
+            dst[i] = TO_R3G3B2(r, g, b);
             break;
          case DDS_FORMAT_L8:
             dst[i] = (unsigned char)((float)r * 0.3f + (float)g * 0.59f + (float)b * 0.11f);
@@ -938,6 +949,14 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
             bmask = 0x000003ff;
             amask = 0xc0000000;
             break;
+         case DDS_FORMAT_R3G3B2:
+            fmtbpp = 1;
+            has_alpha = 0;
+            rmask = 0x000000e0;
+            gmask = 0x0000001c;
+            bmask = 0x00000003;
+            amask = 0x00000000;
+            break;
          case DDS_FORMAT_L8:
             fmtbpp = 1;
             has_alpha = 0;
@@ -1053,7 +1072,8 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
 
       if(ddsvals.format > DDS_FORMAT_DEFAULT)
       {
-         if(fmtbpp == 1 || ddsvals.format == DDS_FORMAT_L8A8)
+         if((fmtbpp == 1 || ddsvals.format == DDS_FORMAT_L8A8) &&
+            (ddsvals.format != DDS_FORMAT_R3G3B2))
             pflags |= DDPF_LUMINANCE;
          else
             pflags |= DDPF_RGB;
