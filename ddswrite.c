@@ -852,6 +852,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    gint num_layers, *layers;
    guchar *cmap;
    gint colors;
+   unsigned char zero[4] = {0, 0, 0, 0};
 
    layers = gimp_image_get_layers(image_id, &num_layers);
    
@@ -982,11 +983,13 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
       if(basetype == GIMP_INDEXED)
       {
          fmtbpp = 1;
+         has_alpha = 0;
          rmask = bmask = gmask = amask = 0;
       }
       else
       {
          fmtbpp = 1;
+         has_alpha = 0;
          rmask = 0x000000ff;
          gmask = bmask = amask = 0;
       }
@@ -1090,6 +1093,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
          else
             pflags |= DDPF_RGB;
       }
+      
       if(has_alpha) pflags |= DDPF_ALPHAPIXELS;
 
       PUT32(hdr + 8, flags);
@@ -1127,8 +1131,8 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
          fwrite(&cmap[3 * i], 1, 3, fp);
          fputc(255, fp);
       }
-      for(i *= 3; i < 768; ++i)
-         fputc(0, fp);
+      for(; i < 256; ++i)
+         fwrite(zero, 1, 4, fp);
    }
 
    if(ddsvals.savetype == DDS_SAVE_CUBEMAP)

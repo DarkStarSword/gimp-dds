@@ -227,20 +227,15 @@ static void scale_image_nearest(unsigned char *dst, int dw, int dh,
 {
    int n, x, y;
    int ix, iy;
-   float fx, fy;
    int srowbytes = sw * bpp;
    int drowbytes = dw * bpp;
    
    for(y = 0; y < dh; ++y)
    {
-      fy = ((float)y / (float)(dh - 1 == 0 ? 1 : dh - 1)) * (float)(sh - 1);
-      iy = (int)fy;
-      
+      iy = (y * sh + sh / 2) / dh;
       for(x = 0; x < dw; ++x)
       {
-         fx = ((float)x / (float)(dw - 1 == 0 ? 1 : dw - 1)) * (float)(sw - 1);
-         ix = (int)fx;
-         
+         ix = (x * sw + sw / 2) / dw;
          for(n = 0; n < bpp; ++n)
          {
             dst[y * drowbytes + (x * bpp) + n] =
@@ -272,6 +267,7 @@ static int generate_mipmaps_npot(unsigned char *dst, unsigned char *src,
          scale_image_nearest(dst + offset, w, h, src, width, height, bpp);
       else
          scale_image_cubic(dst + offset, w, h, src, width, height, bpp);
+
       offset += (w * h * bpp);
    }
    
