@@ -2,7 +2,8 @@
 GIMPTOOL=gimptool-2.0
 
 CC=gcc
-CFLAGS=-O3 -Wall `pkg-config --cflags gtk+-2.0 gimp-2.0` -DGETTEXT_PACKAGE
+CFLAGS=-pipe -O3 -Wall -march=i586 -mtune=i686 \
+`pkg-config --cflags gtk+-2.0 gimp-2.0` -DGETTEXT_PACKAGE
 LD=gcc
 LDFLAGS=
 
