@@ -296,7 +296,7 @@ static int generate_mipmaps_indexed(unsigned char *dst, unsigned char *src,
 
       offset += (w * h);
    }
-   
+
    return(1);
 }
 
@@ -351,16 +351,75 @@ int generate_mipmaps(unsigned char *dst, unsigned char *src,
    return(1);
 }
 
+static void scale_indexed_volume_image_nearest(unsigned char *dst, int dw, int dh,
+                                               int dd, unsigned char *src, int sw,
+                                               int sh, int sd)
+{
+   int x, y, z;
+   int ix, iy, iz;
+
+   for(z = 0; z < dd; ++z)
+   {
+      iz = (z * sd + sd / 2) / dd;
+      for(y = 0; y < dh; ++y)
+      {
+         iy = (y * sh + sh / 2) / dh;
+         for(x = 0; x < dw; ++x)
+         {
+            ix = (x * sw + sw / 2) / dw;
+            dst[(z * (dw * dh)) + (y * dw) + x] =
+               src[(iz * (sw * sh)) + (iy * sw) + ix];
+         }
+      }
+   }
+}
+
+static int generate_volume_mipmaps_indexed(unsigned char *dst, unsigned char *src,
+                                           unsigned int width, unsigned int height,
+                                           unsigned int depth, int mipmaps)
+{
+   int i;
+   unsigned int w, h, d;
+   unsigned int offset;
+
+   memcpy(dst, src, width * height * depth);
+   offset = width * height * depth;
+
+   for(i = 1; i < mipmaps; ++i)
+   {
+      w = width >> i;
+      h = height >> i;
+      d = depth >> i;
+      if(w < 1) w = 1;
+      if(h < 1) h = 1;
+      if(d < 1) d = 1;
+      
+      scale_indexed_volume_image_nearest(dst + offset, w, h, d, src, width,
+                                         height, depth);
+
+      offset += (w * h * d);
+   }
+
+   return(1);
+}
+
 int generate_volume_mipmaps(unsigned char *dst, unsigned char *src,
                             unsigned int width, unsigned int height,
-                            unsigned int depth, int bpp, int mipmaps)
+                            unsigned int depth, int bpp, int indexed,
+                            int mipmaps)
 {
    int i;
    unsigned int w, h, d;
    GLenum internal = 0;
    GLenum format = 0;
    unsigned int offset;
-   
+
+   if(indexed)
+   {
+      return(generate_volume_mipmaps_indexed(dst, src, width, height, depth,
+                                             mipmaps));
+   }
+
    switch(bpp)
    {
       case 1: internal = format = GL_LUMINANCE;       break;
@@ -368,18 +427,18 @@ int generate_volume_mipmaps(unsigned char *dst, unsigned char *src,
       case 3: internal = GL_RGB; format = GL_BGR;     break;
       case 4: internal = GL_RGBA; format = GL_BGRA;   break;
    }
-   
+
    glTexParameteri(GL_TEXTURE_3D, GL_GENERATE_MIPMAP_SGIS, GL_TRUE);
    glTexImage3D(GL_TEXTURE_3D, 0, internal, width, height, depth, 0,
                 format, GL_UNSIGNED_BYTE, src);
-   
+
    memcpy(dst, src, width * height * bpp * depth);
    
    offset = width * height * bpp * depth;
    
    for(i = 1; i < mipmaps; ++i)
    {
-      w = width  >> i;
+      w = width >> i;
       h = height >> i;
       d = depth >> i;
       if(w < 1) w = 1;

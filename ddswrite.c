@@ -403,20 +403,20 @@ static unsigned int get_volume_mipmapped_size(int width, int height,
    if(d == 0) d = 1;
    w <<= 1;
    h <<= 1;
+   d <<= 1;
 
    while(n < num && (w != 1 || h != 1))
    {
       if(w > 1) w >>= 1;
       if(h > 1) h >>= 1;
+      if(d > 1) d >>= 1;
       if(format == DDS_COMPRESS_NONE)
          size += (w * h * d);
       else
          size += (((w + 3) >> 2) * ((h + 3) >> 2) * d);
-      d >>= 1;
-      if(d == 0) d = 1;
       ++n;
    }
-   
+
    if(format == DDS_COMPRESS_NONE)
       size *= bpp;
    else
@@ -662,20 +662,32 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
 {
    GimpDrawable *drawable;
    GimpPixelRgn rgn;
-   GimpImageType basetype;
-   unsigned char *src, *dst, *fmtdst, c;
+   GimpImageType basetype, type;
+   unsigned char *src, *dst, *fmtdst, *tmp, c;
    unsigned char *palette = NULL;
    int i, x, y, size, fmtsize, offset, colors;
-   
+
    basetype = gimp_image_base_type(image_id);
+   type = gimp_drawable_type(drawable_id);
 
    drawable = gimp_drawable_get(drawable_id);
    src = g_malloc(w * h * bpp);
    gimp_pixel_rgn_init(&rgn, drawable, 0, 0, w, h, 0, 0);
    gimp_pixel_rgn_get_rect(&rgn, src, 0, 0, w, h);
-   
+
    if(basetype == GIMP_INDEXED)
+   {
       palette = gimp_image_get_colormap(image_id, &colors);
+      
+      if(type == GIMP_INDEXEDA_IMAGE)
+      {
+         tmp = g_malloc(w * h);
+         for(i = 0; i < w * h; ++i)
+            tmp[i] = src[2 * i];
+         g_free(src);
+         src = tmp;
+      }
+   }
 
    if(bpp >= 3)
       swap_rb(src, w * h, bpp);
@@ -698,6 +710,20 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
    {
       if(mipmaps > 1)
       {
+         /* pre-convert indexed images to RGB for better quality mipmaps
+            if a pixel format conversion is requested */
+         if(ddsvals.format > DDS_FORMAT_DEFAULT && basetype == GIMP_INDEXED)
+         {
+            fmtsize = get_mipmapped_size(w, h, 3, 0, mipmaps, DDS_COMPRESS_NONE);
+            fmtdst = g_malloc(fmtsize);
+            convert_pixels(fmtdst, src, DDS_FORMAT_RGB8, w, h, bpp,
+                           palette, 1);
+            g_free(src);
+            src = fmtdst;
+            bpp = 3;
+            palette = NULL;
+         }
+
          size = get_mipmapped_size(w, h, bpp, 0, mipmaps, DDS_COMPRESS_NONE);
          dst = g_malloc(size);
          generate_mipmaps(dst, src, w, h, bpp, palette != NULL, mipmaps);
@@ -784,19 +810,18 @@ static void write_volume_mipmaps(FILE *fp, gint32 image_id, gint *layers,
                                  int mipmaps)
 {
    int i, size, offset, colors;
-   unsigned char *src, *dst, *fmtdst;
+   unsigned char *src, *dst, *tmp, *fmtdst;
    unsigned char *palette = 0;
    GimpDrawable *drawable;
    GimpPixelRgn rgn;
+   GimpImageType type;
    
+   type = gimp_image_base_type(image_id);
+
    if(ddsvals.compression != DDS_COMPRESS_NONE) return;
-   
-   size = get_volume_mipmapped_size(w, h, d, bpp, 0, mipmaps,
-                                    ddsvals.compression);
-   
+
    src = g_malloc(w * h * bpp * d);
-   dst = g_malloc(size);
-   
+
    if(gimp_image_base_type(image_id) == GIMP_INDEXED)
       palette = gimp_image_get_colormap(image_id, &colors);
    
@@ -810,13 +835,43 @@ static void write_volume_mipmaps(FILE *fp, gint32 image_id, gint *layers,
       gimp_drawable_detach(drawable);
    }
    
+   if(gimp_drawable_type(layers[i]) == GIMP_INDEXEDA_IMAGE)
+   {
+      tmp = g_malloc(w * h * d);
+      for(i = 0; i < w * h * d; ++i)
+         tmp[i] = src[2 * i];
+      g_free(src);
+      src = tmp;
+   }
+
    if(bpp >= 3)
       swap_rb(src, w * h * d, bpp);
+
+   /* pre-convert indexed images to RGB for better mipmaps if a
+      pixel format conversion is requested */
+   if(ddsvals.format > DDS_FORMAT_DEFAULT && type == GIMP_INDEXED)
+   {
+      size = get_volume_mipmapped_size(w, h, d, 3, 0, mipmaps,
+                                       DDS_COMPRESS_NONE);
+      dst = g_malloc(size);
+      convert_volume_pixels(dst, src, DDS_FORMAT_RGB8, w, h, d, bpp,
+                            palette, 1);
+      g_free(src);
+      src = dst;
+      bpp = 3;
+      palette = NULL;
+   }
+
+   size = get_volume_mipmapped_size(w, h, d, bpp, 0, mipmaps,
+                                    ddsvals.compression);
+   
+   dst = g_malloc(size);
 
    offset = get_volume_mipmapped_size(w, h, d, bpp, 0, 1,
                                       ddsvals.compression);
 
-   generate_volume_mipmaps(dst, src, w, h, d, bpp, mipmaps);
+   generate_volume_mipmaps(dst, src, w, h, d, bpp,
+                           palette != NULL, mipmaps);
 
    if(ddsvals.format > DDS_FORMAT_DEFAULT)
    {

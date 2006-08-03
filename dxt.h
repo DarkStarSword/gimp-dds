@@ -35,7 +35,8 @@ int generate_mipmaps(unsigned char *dst, unsigned char *src,
                      int indexed, int mipmaps);
 int generate_volume_mipmaps(unsigned char *dst, unsigned char *src,
                             unsigned int width, unsigned int height, 
-                            unsigned int depth, int bpp, int mipmaps);
+                            unsigned int depth, int bpp, int indexed,
+                            int mipmaps);
 
 
 #endif
