@@ -276,20 +276,6 @@ GimpPDBStatusType write_dds(gchar *filename, gint32 image_id, gint32 drawable_id
    FILE *fp;
    gchar *tmp;
    int rc = 0;
-/*
-   switch(gimp_drawable_type(drawable_id))
-   {
-      case GIMP_RGB_IMAGE:
-      case GIMP_RGBA_IMAGE:
-      case GIMP_GRAY_IMAGE:
-      case GIMP_GRAYA_IMAGE:
-         break;
-      default:
-         g_message("DDS: Cannot operate on unknown image types.\n"
-                   "Only RGB and Grayscale images accepted.");
-         return(GIMP_PDB_EXECUTION_ERROR);
-   }
-*/
    
    is_cubemap = check_cubemap(image_id);
    is_volume = check_volume(image_id);
@@ -691,6 +677,7 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
             tmp[i] = src[2 * i];
          g_free(src);
          src = tmp;
+         bpp = 1;
       }
    }
 
@@ -810,7 +797,7 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
    gimp_drawable_detach(drawable);
 }
 
-static void write_volume_mipmaps(FILE *fp, gint32 image_id, gint *layers,
+static void write_volume_mipmaps(FILE *fp, gint32 image_id, gint32 *layers,
                                  int w, int h, int d, int bpp, int fmtbpp,
                                  int mipmaps)
 {
@@ -840,13 +827,14 @@ static void write_volume_mipmaps(FILE *fp, gint32 image_id, gint *layers,
       gimp_drawable_detach(drawable);
    }
    
-   if(gimp_drawable_type(layers[i]) == GIMP_INDEXEDA_IMAGE)
+   if(gimp_drawable_type(layers[0]) == GIMP_INDEXEDA_IMAGE)
    {
       tmp = g_malloc(w * h * d);
       for(i = 0; i < w * h * d; ++i)
          tmp[i] = src[2 * i];
       g_free(src);
       src = tmp;
+      bpp = 1;
    }
 
    if(bpp >= 3)
@@ -909,7 +897,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    unsigned int flags = 0, pflags = 0, caps = 0, caps2 = 0, size = 0;
    unsigned int rmask = 0, gmask = 0, bmask = 0, amask = 0;
    char *format;
-   gint num_layers, *layers;
+   gint32 num_layers, *layers;
    guchar *cmap;
    gint colors;
    unsigned char zero[4] = {0, 0, 0, 0};
@@ -940,7 +928,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
       case GIMP_GRAY_IMAGE:     bpp = 1; break;
       case GIMP_GRAYA_IMAGE:    bpp = 2; break;
       case GIMP_INDEXED_IMAGE:  bpp = 1; break;
-      case GIMP_INDEXEDA_IMAGE: bpp = 1; break;
+      case GIMP_INDEXEDA_IMAGE: bpp = 2; break;
       default:
          break;
    }
@@ -1022,16 +1010,16 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
             fmtbpp = 1;
             has_alpha = 0;
             rmask = 0x000000ff;
-            gmask = 0x00000000;
-            bmask = 0x00000000;
+            gmask = 0x000000ff;
+            bmask = 0x000000ff;
             amask = 0x00000000;
             break;
          case DDS_FORMAT_L8A8:
             fmtbpp = 2;
             has_alpha = 1;
             rmask = 0x000000ff;
-            gmask = 0x00000000;
-            bmask = 0x00000000;
+            gmask = 0x000000ff;
+            bmask = 0x000000ff;
             amask = 0x0000ff00;
             break;
          default:
@@ -1056,12 +1044,21 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    }
    else if(bpp == 2)
    {
-      fmtbpp = 2;
-      has_alpha = 1;
-      rmask = 0x000000ff;
-      gmask = 0x00000000;
-      bmask = 0x00000000;
-      amask = 0x0000ff00;
+      if(basetype == GIMP_INDEXED)
+      {
+         fmtbpp = 1;
+         has_alpha = 0;
+         rmask = gmask = bmask = amask = 0;
+      }
+      else
+      {
+         fmtbpp = 2;
+         has_alpha = 1;
+         rmask = 0x000000ff;
+         gmask = 0x000000ff;
+         bmask = 0x000000ff;
+         amask = 0x0000ff00;
+      }
    }
    else if(bpp == 3)
    {
@@ -1150,6 +1147,8 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
             else
                pflags |= DDPF_LUMINANCE;
          }
+         else if(bpp == 2 && basetype == GIMP_INDEXED)
+            pflags |= DDPF_PALETTEINDEXED8;
          else
             pflags |= DDPF_RGB;
       }
