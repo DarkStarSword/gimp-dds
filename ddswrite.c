@@ -46,7 +46,7 @@ static unsigned int get_mipmapped_size(int width, int height, int bpp,
 
 static int runme = 0;
 
-const char *cubemap_face_names[3][6] = 
+const char *cubemap_face_names[4][6] =
 {
    {
       "positive x", "negative x",
@@ -62,6 +62,11 @@ const char *cubemap_face_names[3][6] =
       "+x", "-x",
       "+y", "-y",
       "+z", "-z"
+   },
+   {
+      "right", "left",
+      "top", "bottom",
+      "back", "front"
    }
 };
 
@@ -128,7 +133,7 @@ static int check_cubemap(gint32 image_id)
          layer_name = (char*)gimp_drawable_get_name(layers[i]);
          for(j = 0; j < 6; ++j)
          {
-            for(k = 0; k < 3; ++k)
+            for(k = 0; k < 4; ++k)
             {
                if(strstr(layer_name, cubemap_face_names[k][j]))
                {
