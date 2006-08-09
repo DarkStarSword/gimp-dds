@@ -33,7 +33,7 @@
 
 static int generate_mipmaps_software(unsigned char *dst, unsigned char *src,
                                      unsigned int width, unsigned int height,
-                                     int indexed, int bpp, int mipmaps);
+                                     int bpp, int indexed, int mipmaps);
 
 char *initialize_opengl(void)
 {
@@ -199,7 +199,7 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
       size = get_mipmapped_size(width, height, bpp, 0, mipmaps,
                                 DDS_COMPRESS_NONE);
       tmp = g_malloc(size);
-      generate_mipmaps_software(tmp, src, width, height, 0, bpp, mipmaps);
+      generate_mipmaps_software(tmp, src, width, height, bpp, 0, mipmaps);
       
       offset = 0;
       w = width;
@@ -365,7 +365,7 @@ static void scale_image_nearest(unsigned char *dst, int dw, int dh,
 
 static int generate_mipmaps_software(unsigned char *dst, unsigned char *src,
                                      unsigned int width, unsigned int height,
-                                     int indexed, int bpp, int mipmaps)
+                                     int bpp, int indexed, int mipmaps)
 {
    int i;
    unsigned int w, h;
