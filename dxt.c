@@ -24,11 +24,16 @@
 #include <math.h>
 #include <GL/glew.h>
 #include <GL/glut.h>
+#include <glib.h>
 
 #include "dds.h"
 
 #define IS_POT(x)      (!((x) & ((x) - 1)))
 #define LERP(a, b, t)  ((a) + ((b) - (a)) * (t))
+
+static int generate_mipmaps_software(unsigned char *dst, unsigned char *src,
+                                     unsigned int width, unsigned int height,
+                                     int indexed, int bpp, int mipmaps);
 
 char *initialize_opengl(void)
 {
@@ -50,17 +55,104 @@ char *initialize_opengl(void)
    if(!GLEW_S3_s3tc && !GLEW_EXT_texture_compression_s3tc)
       return("GL_S3_s3tc or GL_EXT_texture_compression_s3tc is not supported "
              "by your OpenGL implementation.\n");
-   if(!GLEW_SGIS_generate_mipmap)
+   /*if(!GLEW_SGIS_generate_mipmap)
       return("GL_SGIS_generate_mipmap is not supported by your OpenGL "
-             "implementation.\n");
+             "implementation.\n");*/
 
    glPixelStorei(GL_PACK_ALIGNMENT, 1);
    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
    glHint(GL_TEXTURE_COMPRESSION_HINT_ARB, GL_NICEST);
-   glHint(GL_GENERATE_MIPMAP_HINT_SGIS, GL_NICEST);
+   
+   if(GLEW_SGIS_generate_mipmap)
+      glHint(GL_GENERATE_MIPMAP_HINT_SGIS, GL_NICEST);
 
    return(0);
+}
+
+int get_num_mipmaps(int width, int height)
+{
+   int w = width << 1;
+   int h = height << 1;
+   int n = 0;
+   
+   while(w != 1 || h != 1)
+   {
+      if(w > 1) w >>= 1;
+      if(h > 1) h >>= 1;
+      ++n;
+   }
+   
+   return(n);
+}
+
+unsigned int get_mipmapped_size(int width, int height, int bpp,
+                                int level, int num, int format)
+{
+   int w, h, n = 0;
+   unsigned int size = 0;
+   
+   w = width >> level;
+   h = height >> level;
+   if(w == 0) w = 1;
+   if(h == 0) h = 1;
+   w <<= 1;
+   h <<= 1;
+   
+   while(n < num && (w != 1 || h != 1))
+   {
+      if(w > 1) w >>= 1;
+      if(h > 1) h >>= 1;
+      if(format == DDS_COMPRESS_NONE)
+         size += (w * h);
+      else
+         size += ((w + 3) >> 2) * ((h + 3) >> 2);
+      ++n;
+   }
+   
+   if(format == DDS_COMPRESS_NONE)
+      size *= bpp;
+   else
+      size *= (format == DDS_COMPRESS_DXT1) ? 8 : 16;
+   
+   return(size);
+}
+
+unsigned int get_volume_mipmapped_size(int width, int height,
+                                       int depth, int bpp, int level,
+                                       int num, int format)
+{
+   int w, h, d, n = 0;
+   unsigned int size = 0;
+   
+   w = width >> level;
+   h = height >> level;
+   d = depth >> level;
+   if(w == 0) w = 1;
+   if(h == 0) h = 1;
+   if(d == 0) d = 1;
+   w <<= 1;
+   h <<= 1;
+   d <<= 1;
+
+   while(n < num && (w != 1 || h != 1))
+   {
+      if(w > 1) w >>= 1;
+      if(h > 1) h >>= 1;
+      if(d > 1) d >>= 1;
+      if(format == DDS_COMPRESS_NONE)
+         size += (w * h * d);
+      else
+         size += (((w + 3) >> 2) * ((h + 3) >> 2) * d);
+      ++n;
+   }
+
+   if(format == DDS_COMPRESS_NONE)
+      size *= bpp;
+   else
+      size *= (format == DDS_COMPRESS_DXT1) ? 8 : 16;
+   
+   return(size);
 }
 
 int dxt_compress(unsigned char *dst, unsigned char *src, int format,
@@ -69,7 +161,9 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
 {
    GLenum internal = 0;
    GLenum type = 0;
-   int i, size;
+   int i, size, w, h;
+   unsigned int offset;
+   unsigned char *tmp;
    
    if(!(IS_POT(width) && IS_POT(height)))
       return(0);
@@ -92,18 +186,42 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
    else
       internal = GL_COMPRESSED_RGBA_S3TC_DXT5_EXT;
    
-   
-   glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP_SGIS,
-                   mipmaps > 1 ? GL_TRUE : GL_FALSE);
-   
-   glTexImage2D(GL_TEXTURE_2D, 0, internal, width, height, 0, 
-                type, GL_UNSIGNED_BYTE, src);
+
+   if(GLEW_SGIS_generate_mipmap)
+   {
+      glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP_SGIS,
+                      mipmaps > 1 ? GL_TRUE : GL_FALSE);
+      glTexImage2D(GL_TEXTURE_2D, 0, internal, width, height, 0, 
+                   type, GL_UNSIGNED_BYTE, src);
+   }
+   else
+   {
+      size = get_mipmapped_size(width, height, bpp, 0, mipmaps,
+                                DDS_COMPRESS_NONE);
+      tmp = g_malloc(size);
+      generate_mipmaps_software(tmp, src, width, height, 0, bpp, mipmaps);
+      
+      offset = 0;
+      w = width;
+      h = height;
+      
+      for(i = 0; i < mipmaps; ++i)
+      {
+         glTexImage2D(GL_TEXTURE_2D, i, internal, w, h, 0, type,
+                      GL_UNSIGNED_BYTE, tmp + offset);
+         offset += (w * h * bpp);
+         if(w > 1) w >>= 1;
+         if(h > 1) h >>= 1;
+      }
+      
+      g_free(tmp);
+   }
 
    glGetCompressedTexImage(GL_TEXTURE_2D, 0, dst);
    
    if(mipmaps > 1)
    {
-      unsigned int offset = 0;
+      offset = 0;
       for(i = 1; i < mipmaps; ++i)
       {
          glGetTexLevelParameteriv(GL_TEXTURE_2D, i - 1, 
@@ -245,9 +363,9 @@ static void scale_image_nearest(unsigned char *dst, int dw, int dh,
    }
 }
 
-static int generate_mipmaps_npot(unsigned char *dst, unsigned char *src,
-                                 unsigned int width, unsigned int height,
-                                 int indexed, int bpp, int mipmaps)
+static int generate_mipmaps_software(unsigned char *dst, unsigned char *src,
+                                     unsigned int width, unsigned int height,
+                                     int indexed, int bpp, int mipmaps)
 {
    int i;
    unsigned int w, h;
@@ -274,32 +392,6 @@ static int generate_mipmaps_npot(unsigned char *dst, unsigned char *src,
    return(1);
 }
 
-static int generate_mipmaps_indexed(unsigned char *dst, unsigned char *src,
-                                    unsigned int width, unsigned int height,
-                                    int mipmaps)
-{
-   int i;
-   unsigned int w, h;
-   unsigned int offset;
-
-   memcpy(dst, src, width * height);
-   offset = width * height;
-   
-   for(i = 1; i < mipmaps; ++i)
-   {
-      w = width  >> i;
-      h = height >> i;
-      if(w < 1) w = 1;
-      if(h < 1) h = 1;
-      
-      scale_image_nearest(dst + offset, w, h, src, width, height, 1);
-
-      offset += (w * h);
-   }
-
-   return(1);
-}
-
 int generate_mipmaps(unsigned char *dst, unsigned char *src,
                      unsigned int width, unsigned int height, int bpp,
                      int indexed, int mipmaps)
@@ -310,15 +402,13 @@ int generate_mipmaps(unsigned char *dst, unsigned char *src,
    GLenum format = 0;
    unsigned int offset;
    
-   if(!(IS_POT(width) && IS_POT(height)) &&
-      !GLEW_ARB_texture_non_power_of_two)
+   if(!GLEW_SGIS_generate_mipmap || indexed ||
+      (!(IS_POT(width) && IS_POT(height)) &&
+       !GLEW_ARB_texture_non_power_of_two))
    {
-      return(generate_mipmaps_npot(dst, src, width, height, bpp, indexed,
-                                   mipmaps));
+      return(generate_mipmaps_software(dst, src, width, height, bpp, indexed,
+                                       mipmaps));
    }
-   
-   if(indexed)
-      return(generate_mipmaps_indexed(dst, src, width, height, mipmaps));
    
    switch(bpp)
    {
@@ -500,39 +590,10 @@ static void scale_volume_image_nearest(unsigned char *dst, int dw, int dh, int d
    }
 }
 
-static int generate_volume_mipmaps_indexed(unsigned char *dst, unsigned char *src,
-                                           unsigned int width, unsigned int height,
-                                           unsigned int depth, int mipmaps)
-{
-   int i;
-   unsigned int w, h, d;
-   unsigned int offset;
-
-   memcpy(dst, src, width * height * depth);
-   offset = width * height * depth;
-
-   for(i = 1; i < mipmaps; ++i)
-   {
-      w = width >> i;
-      h = height >> i;
-      d = depth >> i;
-      if(w < 1) w = 1;
-      if(h < 1) h = 1;
-      if(d < 1) d = 1;
-      
-      scale_volume_image_nearest(dst + offset, w, h, d, src, width, height,
-                                 depth, 1);
-
-      offset += (w * h * d);
-   }
-
-   return(1);
-}
-
-static int generate_volume_mipmaps_npot(unsigned char *dst, unsigned char *src,
-                                        unsigned int width, unsigned int height,
-                                        unsigned int depth, int bpp, int indexed,
-                                        int mipmaps)
+static int generate_volume_mipmaps_software(unsigned char *dst, unsigned char *src,
+                                            unsigned int width, unsigned int height,
+                                            unsigned int depth, int bpp, int indexed,
+                                            int mipmaps)
 {
    int i;
    unsigned int w, h, d;
@@ -578,17 +639,12 @@ int generate_volume_mipmaps(unsigned char *dst, unsigned char *src,
    GLenum format = 0;
    unsigned int offset;
 
-   if(!(IS_POT(width) && IS_POT(height) && IS_POT(depth)) &&
-      !GLEW_ARB_texture_non_power_of_two)
+   if(!GLEW_SGIS_generate_mipmap || indexed || 
+      (!(IS_POT(width) && IS_POT(height) && IS_POT(depth)) &&
+       !GLEW_ARB_texture_non_power_of_two))
    {
-      return(generate_volume_mipmaps_npot(dst, src, width, height, depth, bpp,
-                                          indexed, mipmaps));
-   }
-   
-   if(indexed)
-   {
-      return(generate_volume_mipmaps_indexed(dst, src, width, height, depth,
-                                             mipmaps));
+      return(generate_volume_mipmaps_software(dst, src, width, height, depth, bpp,
+                                              indexed, mipmaps));
    }
 
    switch(bpp)

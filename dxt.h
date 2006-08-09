@@ -24,6 +24,15 @@
 #define __DXT_H
 
 char *initialize_opengl(void);
+
+int get_num_mipmaps(int width, int height);
+unsigned int get_mipmapped_size(int width, int height, int bpp,
+                                int level, int num, int format);
+unsigned int get_volume_mipmapped_size(int width, int height,
+                                       int depth, int bpp, int level,
+                                       int num, int format);
+
+
 int dxt_compress(unsigned char *dst, unsigned char *src, int format,
                  unsigned int width, unsigned int height, int bpp,
                  int mipmaps);

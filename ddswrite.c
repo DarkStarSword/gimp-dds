@@ -40,9 +40,6 @@ static void save_dialog_response(GtkWidget *widget, gint response_id, gpointer d
 static void compression_selected(GtkWidget *widget, gpointer data);
 static void toggle_clicked(GtkWidget *widget, gpointer data);
 static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id);
-static int get_num_mipmaps(int width, int height);
-static unsigned int get_mipmapped_size(int width, int height, int bpp,
-                                       int level, int num, int format);
 
 static int runme = 0;
 
@@ -329,91 +326,6 @@ GimpPDBStatusType write_dds(gchar *filename, gint32 image_id, gint32 drawable_id
    fclose(fp);
    
    return(rc ? GIMP_PDB_SUCCESS : GIMP_PDB_EXECUTION_ERROR);
-}
-
-static int get_num_mipmaps(int width, int height)
-{
-   int w = width << 1;
-   int h = height << 1;
-   int n = 0;
-   
-   while(w != 1 || h != 1)
-   {
-      if(w > 1) w >>= 1;
-      if(h > 1) h >>= 1;
-      ++n;
-   }
-   
-   return(n);
-}
-
-static unsigned int get_mipmapped_size(int width, int height, int bpp,
-                                       int level, int num, int format)
-{
-   int w, h, n = 0;
-   unsigned int size = 0;
-   
-   w = width >> level;
-   h = height >> level;
-   if(w == 0) w = 1;
-   if(h == 0) h = 1;
-   w <<= 1;
-   h <<= 1;
-   
-   while(n < num && (w != 1 || h != 1))
-   {
-      if(w > 1) w >>= 1;
-      if(h > 1) h >>= 1;
-      if(format == DDS_COMPRESS_NONE)
-         size += (w * h);
-      else
-         size += ((w + 3) >> 2) * ((h + 3) >> 2);
-      ++n;
-   }
-   
-   if(format == DDS_COMPRESS_NONE)
-      size *= bpp;
-   else
-      size *= (format == DDS_COMPRESS_DXT1) ? 8 : 16;
-   
-   return(size);
-}
-
-static unsigned int get_volume_mipmapped_size(int width, int height,
-                                              int depth, int bpp, int level,
-                                              int num, int format)
-{
-   int w, h, d, n = 0;
-   unsigned int size = 0;
-   
-   w = width >> level;
-   h = height >> level;
-   d = depth >> level;
-   if(w == 0) w = 1;
-   if(h == 0) h = 1;
-   if(d == 0) d = 1;
-   w <<= 1;
-   h <<= 1;
-   d <<= 1;
-
-   while(n < num && (w != 1 || h != 1))
-   {
-      if(w > 1) w >>= 1;
-      if(h > 1) h >>= 1;
-      if(d > 1) d >>= 1;
-      if(format == DDS_COMPRESS_NONE)
-         size += (w * h * d);
-      else
-         size += (((w + 3) >> 2) * ((h + 3) >> 2) * d);
-      ++n;
-   }
-
-   if(format == DDS_COMPRESS_NONE)
-      size *= bpp;
-   else
-      size *= (format == DDS_COMPRESS_DXT1) ? 8 : 16;
-   
-   return(size);
 }
 
 #define TO_R5G6B5(r, g, b) \
