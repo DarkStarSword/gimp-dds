@@ -391,7 +391,7 @@ static int validate_header(dds_header_t *hdr)
    
    if((hdr->flags & DDSD_PITCH) == (hdr->flags & DDSD_LINEARSIZE))
    {
-      g_message("Warning: DDSD_PITCH or DDSD_LINEARSIZE is not set.\n");
+      //g_message("Warning: DDSD_PITCH or DDSD_LINEARSIZE is not set.\n");
       if(hdr->pixelfmt.flags & DDPF_FOURCC)
          hdr->flags |= DDSD_LINEARSIZE;
       else
