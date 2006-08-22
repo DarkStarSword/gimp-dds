@@ -40,6 +40,7 @@
 #include "ddsplugin.h"
 #include "dds.h"
 #include "dxt.h"
+#include "endian.h"
 
 typedef struct
 {
@@ -355,28 +356,28 @@ static int read_header(dds_header_t *hdr, FILE *fp)
    hdr->magic[2] = buf[2];
    hdr->magic[3] = buf[3];
    
-   hdr->size = GET32(buf + 4);
-   hdr->flags = GET32(buf + 8);
-   hdr->height = GET32(buf + 12);
-   hdr->width = GET32(buf + 16);
-   hdr->pitch_or_linsize = GET32(buf + 20);
-   hdr->depth = GET32(buf + 24);
-   hdr->num_mipmaps = GET32(buf + 28);
+   hdr->size = GETL32(buf + 4);
+   hdr->flags = GETL32(buf + 8);
+   hdr->height = GETL32(buf + 12);
+   hdr->width = GETL32(buf + 16);
+   hdr->pitch_or_linsize = GETL32(buf + 20);
+   hdr->depth = GETL32(buf + 24);
+   hdr->num_mipmaps = GETL32(buf + 28);
    
-   hdr->pixelfmt.size = GET32(buf + 76);
-   hdr->pixelfmt.flags = GET32(buf + 80);
+   hdr->pixelfmt.size = GETL32(buf + 76);
+   hdr->pixelfmt.flags = GETL32(buf + 80);
    hdr->pixelfmt.fourcc[0] = buf[84];
    hdr->pixelfmt.fourcc[1] = buf[85];
    hdr->pixelfmt.fourcc[2] = buf[86];
    hdr->pixelfmt.fourcc[3] = buf[87];
-   hdr->pixelfmt.bpp = GET32(buf + 88);
-   hdr->pixelfmt.rmask = GET32(buf + 92);
-   hdr->pixelfmt.gmask = GET32(buf + 96);
-   hdr->pixelfmt.bmask = GET32(buf + 100);
-   hdr->pixelfmt.amask = GET32(buf + 104);
+   hdr->pixelfmt.bpp = GETL32(buf + 88);
+   hdr->pixelfmt.rmask = GETL32(buf + 92);
+   hdr->pixelfmt.gmask = GETL32(buf + 96);
+   hdr->pixelfmt.bmask = GETL32(buf + 100);
+   hdr->pixelfmt.amask = GETL32(buf + 104);
    
-   hdr->caps.caps1 = GET32(buf + 108);
-   hdr->caps.caps2 = GET32(buf + 112);
+   hdr->caps.caps1 = GETL32(buf + 108);
+   hdr->caps.caps2 = GETL32(buf + 112);
    
    return(1);
 }
@@ -447,7 +448,7 @@ static int validate_header(dds_header_t *hdr)
       !(hdr->pixelfmt.flags & DDPF_LUMINANCE))
    {
       g_message("Unknown pixel format!  Taking a guess, expect trouble!");
-      switch(GET32(hdr->pixelfmt.fourcc))
+      switch(GETL32(hdr->pixelfmt.fourcc))
       {
          case CHAR32('D', 'X', 'T', '1'):
          case CHAR32('D', 'X', 'T', '3'):
@@ -535,8 +536,8 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
    
    if(hdr->pixelfmt.flags & DDPF_FOURCC)
    {
-      unsigned int w = width >> 2;
-      unsigned int h = height >> 2;
+      unsigned int w = (width  + 3) >> 2;
+      unsigned int h = (height + 3) >> 2;
       
       switch(hdr->pixelfmt.fourcc[3])
       {
@@ -684,7 +685,7 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
    {
       unsigned char *dst;
       
-      dst = g_malloc(width * height * 16);
+      dst = g_malloc(width * height * d->gimp_bpp);
       if(!(hdr->flags & DDSD_LINEARSIZE))
       {
          g_message("Image marked as compressed, but DDSD_LINEARSIZE is not set.\n");

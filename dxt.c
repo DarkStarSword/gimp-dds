@@ -27,6 +27,7 @@
 #include <glib.h>
 
 #include "dds.h"
+#include "endian.h"
 
 #define IS_POT(x)      (!((x) & ((x) - 1)))
 #define LERP(a, b, t)  ((a) + ((b) - (a)) * (t))
@@ -49,21 +50,20 @@ char *initialize_opengl(void)
    if(err != GLEW_OK)
       return((char*)glewGetErrorString(err));
 
+#ifndef USE_SOFTWARE_COMPRESSION   
    if(!GLEW_ARB_texture_compression)
       return("GL_ARB_texture_compression is not supported by your OpenGL "
              "implementation.\n");
    if(!GLEW_S3_s3tc && !GLEW_EXT_texture_compression_s3tc)
       return("GL_S3_s3tc or GL_EXT_texture_compression_s3tc is not supported "
              "by your OpenGL implementation.\n");
-   /*if(!GLEW_SGIS_generate_mipmap)
-      return("GL_SGIS_generate_mipmap is not supported by your OpenGL "
-             "implementation.\n");*/
+   
+   glHint(GL_TEXTURE_COMPRESSION_HINT_ARB, GL_NICEST);
+#endif  
 
    glPixelStorei(GL_PACK_ALIGNMENT, 1);
    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
-   glHint(GL_TEXTURE_COMPRESSION_HINT_ARB, GL_NICEST);
-   
    if(GLEW_SGIS_generate_mipmap)
       glHint(GL_GENERATE_MIPMAP_HINT_SGIS, GL_NICEST);
 
@@ -234,14 +234,158 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
    return(1);
 }                
 
+#ifdef USE_SOFTWARE_COMPRESSION
+
+static void decode_color_block(unsigned char *dst, unsigned char *src,
+                               int w, int h, int rowbytes, int format)
+{
+   int i, x, y;
+   unsigned int indexes, idx;
+   unsigned char *d;
+   unsigned char colors[4][3];
+   unsigned short c0, c1;
+   
+   c0 = GETL16(&src[0]);
+   c1 = GETL16(&src[2]);
+
+   colors[0][0] = ((c0 >> 11) & 0x1f) << 3;
+   colors[0][1] = ((c0 >>  5) & 0x3f) << 2;
+   colors[0][2] = ((c0      ) & 0x1f) << 3;
+
+   colors[1][0] = ((c1 >> 11) & 0x1f) << 3;
+   colors[1][1] = ((c1 >>  5) & 0x3f) << 2;
+   colors[1][2] = ((c1      ) & 0x1f) << 3;
+   
+   if((c0 > c1) || (format == DDS_COMPRESS_DXT5))
+   {
+      for(i = 0; i < 3; ++i)
+      {
+         colors[2][i] = (2 * colors[0][i] + colors[1][i] + 1) / 3;
+         colors[3][i] = (2 * colors[1][i] + colors[0][i] + 1) / 3;
+      }
+   }
+   else
+   {
+      for(i = 0; i < 3; ++i)
+      {
+         colors[2][i] = (colors[0][i] + colors[1][i] + 1) >> 1;
+         colors[3][i] = 255;
+      }
+   }
+   
+   src += 4;
+   for(y = 0; y < h; ++y)
+   {
+      d = dst + rowbytes * y;
+      indexes = src[y];
+      for(x = 0; x < w; ++x)
+      {
+         idx = indexes & 0x03;
+         d[0] = colors[idx][0];
+         d[1] = colors[idx][1];
+         d[2] = colors[idx][2];
+         if(format == DDS_COMPRESS_DXT1)
+            d[3] = ((c0 <= c1) && idx == 3) ? 0 : 255;
+         indexes >>= 2;
+         d += 4;
+      }
+   }
+}
+
+static void decode_dxt3_alpha(unsigned char *dst, unsigned char *src,
+                              int w, int h, int rowbytes)
+{
+   int x, y;
+   unsigned char *d;
+   unsigned long long bits = GETL64(src);
+   
+   for(y = 0; y < h; ++y)
+   {
+      d = dst + rowbytes * y;
+      for(x = 0; x < w; ++x)
+      {
+         d[3] = (bits & 0x0f) * 17;
+         bits >>= 4;
+         d += 4;
+      }
+   }
+}
+
+static void decode_dxt5_alpha(unsigned char *dst, unsigned char *src,
+                              int w, int h, int rowbytes)
+{
+   int x, y, code;
+   unsigned char *d;
+   unsigned char a0 = src[0];
+   unsigned char a1 = src[1];
+   unsigned long long bits = GETL64(src) >> 16;
+   
+   for(y = 0; y < h; ++y)
+   {
+      d = dst + rowbytes * y;
+      for(x = 0; x < w; ++x)
+      {
+         code = ((unsigned int)bits) & 0x07;
+         if(code == 0)
+            d[3] = a0;
+         else if(code == 1)
+            d[3] = a1;
+         else if(a0 > a1)
+            d[3] = ((8 - code) * a0 + (code - 1) * a1) / 7;
+         else if(code >= 6)
+            d[3] = (code == 6) ? 0 : 255;
+         else
+            d[3] = ((6 - code) * a0 + (code - 1) * a1) / 5;
+         bits >>= 3;
+         d += 4;
+      }
+      if(w < 4) bits >>= (3 * (4 - w));
+   }
+}
+
+#endif // #ifdef USE_SOFTWARE_COMPRESSION
+
 int dxt_decompress(unsigned char *dst, unsigned char *src, int format,
                    unsigned int size, unsigned int width, unsigned int height,
                    int bpp)
 {
-   GLenum internal, type = GL_RGB;
+#ifdef USE_SOFTWARE_COMPRESSION
+
+   unsigned char *d, *s;
+   unsigned int x, y, sx, sy;
    
    if(!(IS_POT(width) && IS_POT(height)))
       return(0);
+   
+   sx = (width  < 4) ? width  : 4;
+   sy = (height < 4) ? height : 4;
+   
+   s = src;
+
+   for(y = 0; y < height; y += 4)
+   {
+      for(x = 0; x < width; x += 4)
+      {
+         d = dst + (y * width + x) * bpp;
+         if(format == DDS_COMPRESS_DXT3)
+         {
+            decode_dxt3_alpha(d, s, sx, sy, width * bpp);
+            s += 8;
+         }
+         else if(format == DDS_COMPRESS_DXT5)
+         {
+            decode_dxt5_alpha(d, s, sx, sy,  width * bpp);
+            s += 8;
+         }
+         
+         decode_color_block(d, s, sx, sy, width * bpp, format);
+         s += 8;
+      }
+   }
+   
+#else // #ifdef USE_SOFTWARE_COMPRESSION
+   
+   GLenum internal, type = GL_RGB;
 
    switch(bpp)
    {
@@ -267,6 +411,8 @@ int dxt_decompress(unsigned char *dst, unsigned char *src, int format,
    
    glCompressedTexImage2D(GL_TEXTURE_2D, 0, internal, width, height, 0, size, src);
    glGetTexImage(GL_TEXTURE_2D, 0, type, GL_UNSIGNED_BYTE, dst);
+   
+#endif // #ifdef USE_SOFTWARE_COMPRESSION
    
    return(1);
 }

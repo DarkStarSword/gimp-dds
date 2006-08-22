@@ -32,6 +32,7 @@
 #include "ddsplugin.h"
 #include "dds.h"
 #include "dxt.h"
+#include "endian.h"
 
 #define IS_POT(x)  (!((x) & ((x) - 1)))
 
@@ -993,15 +994,15 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    memset(hdr, 0, DDS_HEADERSIZE);
    
    memcpy(hdr, "DDS ", 4);
-   PUT32(hdr + 4, 124);
-   PUT32(hdr + 12, h);
-   PUT32(hdr + 16, w);
-   PUT32(hdr + 76, 32);
-   PUT32(hdr + 88, fmtbpp << 3);
-   PUT32(hdr + 92,  rmask);
-   PUT32(hdr + 96,  gmask);
-   PUT32(hdr + 100, bmask);
-   PUT32(hdr + 104, amask);
+   PUTL32(hdr + 4, 124);
+   PUTL32(hdr + 12, h);
+   PUTL32(hdr + 16, w);
+   PUTL32(hdr + 76, 32);
+   PUTL32(hdr + 88, fmtbpp << 3);
+   PUTL32(hdr + 92,  rmask);
+   PUTL32(hdr + 96,  gmask);
+   PUTL32(hdr + 100, bmask);
+   PUTL32(hdr + 104, amask);
    
    flags = DDSD_CAPS | DDSD_PIXELFORMAT | DDSD_WIDTH | DDSD_HEIGHT;
      
@@ -1028,15 +1029,15 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    }
    else if(ddsvals.savetype == DDS_SAVE_VOLUMEMAP && is_volume)
    {
-      PUT32(hdr + 24, num_layers);
+      PUTL32(hdr + 24, num_layers);
       flags |= DDSD_DEPTH;
       caps |= DDSCAPS_COMPLEX;
       caps2 |= DDSCAPS2_VOLUME;
    }
    
-   PUT32(hdr + 28, num_mipmaps);
-   PUT32(hdr + 108, caps);
-   PUT32(hdr + 112, caps2);
+   PUTL32(hdr + 28, num_mipmaps);
+   PUTL32(hdr + 108, caps);
+   PUTL32(hdr + 112, caps2);
    
    if(ddsvals.compression == DDS_COMPRESS_NONE)
    {
@@ -1067,15 +1068,15 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
       
       if(has_alpha) pflags |= DDPF_ALPHAPIXELS;
 
-      PUT32(hdr + 8, flags);
-      PUT32(hdr + 20, w * fmtbpp);
-      PUT32(hdr + 80, pflags);
+      PUTL32(hdr + 8, flags);
+      PUTL32(hdr + 20, w * fmtbpp);
+      PUTL32(hdr + 80, pflags);
    }
    else
    {
       flags |= DDSD_LINEARSIZE;
-      PUT32(hdr + 8, flags);
-      PUT32(hdr + 80, DDPF_FOURCC);
+      PUTL32(hdr + 8, flags);
+      PUTL32(hdr + 80, DDPF_FOURCC);
       switch(ddsvals.compression)
       {
          case DDS_COMPRESS_DXT1: format = "DXT1"; break;
@@ -1088,7 +1089,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
       size = ((w + 3) >> 2) * ((h + 3) >> 2);
       size *= (ddsvals.compression == DDS_COMPRESS_DXT1) ? 8 : 16;
 
-      PUT32(hdr + 20, size);
+      PUTL32(hdr + 20, size);
    }
 
    fwrite(hdr, DDS_HEADERSIZE, 1, fp);

@@ -29,6 +29,6 @@ install: all
 	$(CC) -c $(CFLAGS) $<
 	  
 dds.o: dds.c ddsplugin.h dds.h dxt.h
-ddsread.o: ddsread.c ddsplugin.h dds.h dxt.h
-ddswrite.o: ddswrite.c ddsplugin.h dds.h dxt.h
-dxt.o: dxt.c dds.h
+ddsread.o: ddsread.c ddsplugin.h dds.h dxt.h endian.h
+ddswrite.o: ddswrite.c ddsplugin.h dds.h dxt.h endian.h
+dxt.o: dxt.c dds.h endian.h
