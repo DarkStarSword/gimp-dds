@@ -20,11 +20,17 @@
 	Boston, MA 02111-1307, USA.
 */
 
+#ifdef WIN32
+#include <windows.h>
+#else
+#include <dlfcn.h>
+#endif
 #include <string.h>
 #include <math.h>
 #include <GL/glew.h>
 #include <GL/glut.h>
 #include <glib.h>
+
 
 #include "dds.h"
 #include "endian.h"
@@ -35,6 +41,22 @@
 static int generate_mipmaps_software(unsigned char *dst, unsigned char *src,
                                      unsigned int width, unsigned int height,
                                      int bpp, int indexed, int mipmaps);
+
+#ifdef USE_SOFTWARE_COMPRESSION
+#ifdef WIN32
+HANDLE hdxtn = NULL;
+#define DXTN_DLL "dxtn.dll"
+#define dlopen(handle, flags)  LoadLibrary(handle)
+#define dlsym(handle, symbol)  GetProcAddress(handle, symbol)
+#define dlclose(handle)        FreeLibrary(handle)
+#define RTLD_LAZY   0
+#define RTLD_GLOBAL 0
+#else
+void *hdxtn = NULL;
+#define DXTN_DLL "libtxc_dxtn.so"
+#endif
+static void (*compress_dxtn)(int, int, int, const unsigned char*, int, unsigned char *) = NULL;
+#endif // #ifdef USE_SOFTWARE_COMPRESSION
 
 char *initialize_opengl(void)
 {
@@ -59,7 +81,17 @@ char *initialize_opengl(void)
              "by your OpenGL implementation.\n");
    
    glHint(GL_TEXTURE_COMPRESSION_HINT_ARB, GL_NICEST);
-#endif  
+#else
+   hdxtn = dlopen(DXTN_DLL, RTLD_LAZY | RTLD_GLOBAL);
+   if(hdxtn == NULL)
+      return("Unable to load library " DXTN_DLL);
+   compress_dxtn = (void*)dlsym(hdxtn, "tx_compress_dxtn");
+   if(compress_dxtn == NULL)
+   {
+      dlclose(hdxtn);
+      return("Missing symbol `tx_compress_dxtn' in " DXTN_DLL);
+   }
+#endif   
 
    glPixelStorei(GL_PACK_ALIGNMENT, 1);
    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -161,9 +193,9 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
 {
    GLenum internal = 0;
    GLenum type = 0;
-   int i, size, w, h;
+   int i, j, size, w, h;
    unsigned int offset;
-   unsigned char *tmp;
+   unsigned char *tmp, *tmp2, *s, c;
    
    if(!(IS_POT(width) && IS_POT(height)))
       return(0);
@@ -178,15 +210,109 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
    
    if(format == DDS_COMPRESS_DXT1)
    {
-      internal = (bpp == 4) ? GL_COMPRESSED_RGBA_S3TC_DXT1_EXT :
-                              GL_COMPRESSED_RGB_S3TC_DXT1_EXT;
+      internal = (bpp == 4 || bpp == 2) ? GL_COMPRESSED_RGBA_S3TC_DXT1_EXT :
+                                          GL_COMPRESSED_RGB_S3TC_DXT1_EXT;
    }
    else if(format == DDS_COMPRESS_DXT3)
       internal = GL_COMPRESSED_RGBA_S3TC_DXT3_EXT;
    else
       internal = GL_COMPRESSED_RGBA_S3TC_DXT5_EXT;
    
+#ifdef USE_SOFTWARE_COMPRESSION   
 
+   size = get_mipmapped_size(width, height, bpp, 0, mipmaps,
+                             DDS_COMPRESS_NONE);
+   tmp = g_malloc(size);
+   generate_mipmaps_software(tmp, src, width, height, bpp, 0, mipmaps);
+
+   if(bpp == 1)
+   {
+      /* grayscale promoted to RGB */
+      
+      size = get_mipmapped_size(width, height, 3, 0, mipmaps,
+                                DDS_COMPRESS_NONE);
+      tmp2 = g_malloc(size);
+      
+      for(i = j = 0; j < size; ++i, j += 3)
+      {
+         tmp2[j + 0] = tmp[i];
+         tmp2[j + 1] = tmp[i];
+         tmp2[j + 2] = tmp[i];
+      }
+      
+      g_free(tmp);
+      tmp = tmp2;
+      bpp = 3;
+   }
+   else if(bpp == 2)
+   {
+      /* gray-alpha promoted to RGBA */
+      
+      size = get_mipmapped_size(width, height, 4, 0, mipmaps,
+                                DDS_COMPRESS_NONE);
+      tmp2 = g_malloc(size);
+      
+      for(i = j = 0; j < size; i += 2, j += 4)
+      {
+         tmp2[j + 0] = tmp[i];
+         tmp2[j + 1] = tmp[i];
+         tmp2[j + 2] = tmp[i];
+         tmp2[j + 3] = tmp[i + 1];
+      }
+      
+      g_free(tmp);
+      tmp = tmp2;
+      bpp = 4;
+   }
+   else /* bpp >= 3 */
+   {
+      /* libtxc_dxtn wants BGRA pixels */
+      for(i = 0; i < size; i += bpp)
+      {
+         c = tmp[i];
+         tmp[i] = tmp[i + 2];
+         tmp[i + 2] = c;
+      }
+   }
+   
+   /* add an opaque alpha channel if need be */
+   if(bpp == 3 && (format == DDS_COMPRESS_DXT3 || format == DDS_COMPRESS_DXT5))
+   {
+      size = get_mipmapped_size(width, height, 4, 0, mipmaps,
+                                DDS_COMPRESS_NONE);
+      tmp2 = g_malloc(size);
+      
+      for(i = j = 0; j < size; i += bpp, j += 4)
+      {
+         tmp2[j + 0] = tmp[i + 0];
+         tmp2[j + 1] = tmp[i + 1];
+         tmp2[j + 2] = tmp[i + 2];
+         tmp2[j + 3] = 255;
+      }
+      
+      g_free(tmp);
+      tmp = tmp2;
+      bpp = 4;
+   }
+   
+   offset = 0;
+   w = width;
+   h = height;
+   s = tmp;
+   
+   for(i = 0; i < mipmaps; ++i)
+   {
+      compress_dxtn(bpp, w, h, s, internal, dst + offset);
+      s += (w * h * bpp);
+      offset += get_mipmapped_size(w, h, 0, i, 1, format);
+      if(w > 1) w >>= 1;
+      if(h > 1) h >>= 1;
+   }
+   
+   g_free(tmp);
+   
+#else
+   
    if(GLEW_SGIS_generate_mipmap)
    {
       glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP_SGIS,
@@ -216,8 +342,8 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
       
       g_free(tmp);
    }
-
-   glGetCompressedTexImage(GL_TEXTURE_2D, 0, dst);
+   
+   glGetCompressedTexImageARB(GL_TEXTURE_2D, 0, dst);
    
    if(mipmaps > 1)
    {
@@ -227,9 +353,11 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
          glGetTexLevelParameteriv(GL_TEXTURE_2D, i - 1, 
                                   GL_TEXTURE_COMPRESSED_IMAGE_SIZE_ARB, &size);
          offset += size;
-         glGetCompressedTexImage(GL_TEXTURE_2D, i, dst + offset);
+         glGetCompressedTexImageARB(GL_TEXTURE_2D, i, dst + offset);
       }
    }
+   
+#endif // #ifdef USE_SOFTWARE_COMPRESSION   
    
    return(1);
 }                
@@ -276,7 +404,7 @@ static void decode_color_block(unsigned char *dst, unsigned char *src,
    src += 4;
    for(y = 0; y < h; ++y)
    {
-      d = dst + rowbytes * y;
+      d = dst + (y * rowbytes);
       indexes = src[y];
       for(x = 0; x < w; ++x)
       {
@@ -297,11 +425,12 @@ static void decode_dxt3_alpha(unsigned char *dst, unsigned char *src,
 {
    int x, y;
    unsigned char *d;
-   unsigned long long bits = GETL64(src);
+   unsigned int bits;
    
    for(y = 0; y < h; ++y)
    {
-      d = dst + rowbytes * y;
+      d = dst + (y * rowbytes);
+      bits = GETL16(&src[2 * y]);
       for(x = 0; x < w; ++x)
       {
          d[3] = (bits & 0x0f) * 17;
@@ -322,7 +451,7 @@ static void decode_dxt5_alpha(unsigned char *dst, unsigned char *src,
    
    for(y = 0; y < h; ++y)
    {
-      d = dst + rowbytes * y;
+      d = dst + (y * rowbytes);
       for(x = 0; x < w; ++x)
       {
          code = ((unsigned int)bits) & 0x07;
@@ -384,9 +513,12 @@ int dxt_decompress(unsigned char *dst, unsigned char *src, int format,
    }
    
 #else // #ifdef USE_SOFTWARE_COMPRESSION
-   
+
    GLenum internal, type = GL_RGB;
 
+   if(!(IS_POT(width) && IS_POT(height)))
+      return(0);
+   
    switch(bpp)
    {
       case 1: type = GL_LUMINANCE;       break;
@@ -409,7 +541,7 @@ int dxt_decompress(unsigned char *dst, unsigned char *src, int format,
          break;
    }
    
-   glCompressedTexImage2D(GL_TEXTURE_2D, 0, internal, width, height, 0, size, src);
+   glCompressedTexImage2DARB(GL_TEXTURE_2D, 0, internal, width, height, 0, size, src);
    glGetTexImage(GL_TEXTURE_2D, 0, type, GL_UNSIGNED_BYTE, dst);
    
 #endif // #ifdef USE_SOFTWARE_COMPRESSION
