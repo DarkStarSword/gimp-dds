@@ -304,7 +304,7 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
    {
       compress_dxtn(bpp, w, h, s, internal, dst + offset);
       s += (w * h * bpp);
-      offset += get_mipmapped_size(w, h, 0, i, 1, format);
+      offset += get_mipmapped_size(w, h, 0, 0, 1, format);
       if(w > 1) w >>= 1;
       if(h > 1) h >>= 1;
    }
