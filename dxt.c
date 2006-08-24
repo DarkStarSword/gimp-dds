@@ -431,6 +431,7 @@ static void decode_dxt3_alpha(unsigned char *dst, unsigned char *src,
    {
       d = dst + (y * rowbytes);
       bits = GETL16(&src[2 * y]);
+      bits = GETL16(&src[2 * y]);
       for(x = 0; x < w; ++x)
       {
          d[3] = (bits & 0x0f) * 17;
