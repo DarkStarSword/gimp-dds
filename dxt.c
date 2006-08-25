@@ -474,8 +474,6 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
    return(1);
 }                
 
-#ifdef USE_SOFTWARE_COMPRESSION
-
 static void decode_color_block(unsigned char *dst, unsigned char *src,
                                int w, int h, int rowbytes, int format)
 {
@@ -585,8 +583,6 @@ static void decode_dxt5_alpha(unsigned char *dst, unsigned char *src,
    }
 }
 
-#endif // #ifdef USE_SOFTWARE_COMPRESSION
-
 int dxt_decompress(unsigned char *dst, unsigned char *src, int format,
                    unsigned int size, unsigned int width, unsigned int height,
                    int bpp)
@@ -642,9 +638,40 @@ int dxt_decompress(unsigned char *dst, unsigned char *src, int format,
 #else // #ifdef USE_SOFTWARE_COMPRESSION
 
    GLenum internal, type = GL_RGB;
+   unsigned char *d, *s;
+   unsigned int x, y, sx, sy;
 
    if(!(IS_POT(width) && IS_POT(height)))
       return(0);
+   
+   if(format >= DDS_COMPRESS_ATI1) /* 3Dc */
+   {
+      sx = (width  < 4) ? width  : 4;
+      sy = (height < 4) ? height : 4;
+   
+      s = src;
+
+      for(y = 0; y < height; y += 4)
+      {
+         for(x = 0; x < width; x += 4)
+         {
+            d = dst + (y * width + x) * bpp;
+            if(format == DDS_COMPRESS_ATI1)
+            {
+               decode_dxt5_alpha(d, s, sx, sy, bpp, width * bpp);
+               s += 8;
+            }
+            else if(format == DDS_COMPRESS_ATI2)
+            {
+               decode_dxt5_alpha(d, s + 8, sx, sy, bpp, width * bpp);
+               decode_dxt5_alpha(d + 1, s, sx, sy, bpp, width * bpp);
+               s += 16;
+            }
+        
+	      }
+      }
+      return(1);
+   }
    
    switch(bpp)
    {
