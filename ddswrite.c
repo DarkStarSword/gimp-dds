@@ -87,6 +87,8 @@ static struct
    {DDS_COMPRESS_DXT1, "DXT1"},
    {DDS_COMPRESS_DXT3, "DXT3"},
    {DDS_COMPRESS_DXT5, "DXT5"},
+   {DDS_COMPRESS_ATI1, "ATI1"},
+   {DDS_COMPRESS_ATI2, "ATI2"},
    {-1, 0}
 };
 
@@ -809,7 +811,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    unsigned char hdr[DDS_HEADERSIZE];
    unsigned int flags = 0, pflags = 0, caps = 0, caps2 = 0, size = 0;
    unsigned int rmask = 0, gmask = 0, bmask = 0, amask = 0;
-   char *format;
+   char *format = "XXXX";
    gint32 num_layers, *layers;
    guchar *cmap;
    gint colors;
@@ -1081,13 +1083,18 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
       {
          case DDS_COMPRESS_DXT1: format = "DXT1"; break;
          case DDS_COMPRESS_DXT3: format = "DXT3"; break;
-         case DDS_COMPRESS_DXT5:
-         default:                format = "DXT5"; break;
+         case DDS_COMPRESS_DXT5: format = "DXT5"; break;
+         case DDS_COMPRESS_ATI1: format = "ATI1"; break;
+         case DDS_COMPRESS_ATI2: format = "ATI2"; break;
       }
       memcpy(hdr + 84, format, 4);
 
       size = ((w + 3) >> 2) * ((h + 3) >> 2);
-      size *= (ddsvals.compression == DDS_COMPRESS_DXT1) ? 8 : 16;
+      if(ddsvals.compression == DDS_COMPRESS_DXT1 ||
+         ddsvals.compression == DDS_COMPRESS_ATI1)
+         size *= 8;
+      else
+         size *= 16;
 
       PUTL32(hdr + 20, size);
    }

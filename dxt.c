@@ -145,7 +145,12 @@ unsigned int get_mipmapped_size(int width, int height, int bpp,
    if(format == DDS_COMPRESS_NONE)
       size *= bpp;
    else
-      size *= (format == DDS_COMPRESS_DXT1) ? 8 : 16;
+   {
+      if(format == DDS_COMPRESS_DXT1 || format == DDS_COMPRESS_ATI1)
+         size *= 8;
+      else
+         size *= 16;
+   }
    
    return(size);
 }
@@ -182,9 +187,105 @@ unsigned int get_volume_mipmapped_size(int width, int height,
    if(format == DDS_COMPRESS_NONE)
       size *= bpp;
    else
-      size *= (format == DDS_COMPRESS_DXT1) ? 8 : 16;
+   {
+      if(format == DDS_COMPRESS_DXT1 || format == DDS_COMPRESS_ATI1)
+         size *= 8;
+      else
+         size *= 16;
+   }
    
    return(size);
+}
+
+static void compress_3dc(unsigned char *dst, unsigned char *src,
+                         int width, int height, int bpp, int mipmaps,
+                         int format)
+{
+   int i, j, k, w, h;
+   unsigned int offset, size;
+   unsigned char *s, *dtmp, *stmp;
+   
+   w = width;
+   h = height;
+   s = src;
+   offset = 0;
+   
+   for(i = 0; i < mipmaps; ++i)
+   {
+      if(format == DDS_COMPRESS_ATI1)
+      {
+         size = get_mipmapped_size(w, h, 4, 0, 1, DDS_COMPRESS_NONE);
+         stmp = g_malloc(size);
+         memset(stmp, 0, size);
+         
+         for(j = k = 0; k < size; j += bpp, k += 4)
+            stmp[k + 3] = s[j];
+         
+         size = get_mipmapped_size(w, h, 0, 0, 1, DDS_COMPRESS_DXT5);
+         dtmp = g_malloc(size);
+
+#ifdef USE_SOFTWARE_COMPRESSION         
+         compress_dxtn(4, w, h, stmp, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT, dtmp);
+#else
+         glTexImage2D(GL_TEXTURE_2D, 0, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT, w, h, 0,
+                      GL_RGBA, GL_UNSIGNED_BYTE, stmp);
+         glGetCompressedTexImageARB(GL_TEXTURE_2D, 0, dtmp);
+#endif         
+         
+         for(j = k = 0; j < size; j += 16, k += 8)
+            memcpy(dst + offset + k, dtmp + j, 8);
+         
+         g_free(stmp);
+         g_free(dtmp);
+      }
+      else if(format == DDS_COMPRESS_ATI2)
+      {
+         size = get_mipmapped_size(w, h, 4, 0, 1, DDS_COMPRESS_NONE);
+         stmp = g_malloc(size);
+         memset(stmp, 0, size);
+         
+         for(j = k = 0; k < size; j += bpp, k += 4)
+            stmp[k + 3] = s[j + 1];
+         
+         size = get_mipmapped_size(w, h, 0, 0, 1, DDS_COMPRESS_DXT5);
+         dtmp = g_malloc(size);
+
+#ifdef USE_SOFTWARE_COMPRESSION         
+         compress_dxtn(4, w, h, stmp, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT, dtmp);
+#else
+         glTexImage2D(GL_TEXTURE_2D, 0, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT, w, h, 0,
+                      GL_RGBA, GL_UNSIGNED_BYTE, stmp);
+         glGetCompressedTexImageARB(GL_TEXTURE_2D, 0, dtmp);
+#endif
+         
+         for(j = 0; j < size; j += 16)
+            memcpy(dst + offset + j, dtmp + j, 8);
+         
+         size = get_mipmapped_size(w, h, 4, 0, 1, DDS_COMPRESS_NONE);
+         for(j = k = 0; k < size; j += bpp, k += 4)
+            stmp[k + 3] = s[j];
+         
+#ifdef USE_SOFTWARE_COMPRESSION         
+         compress_dxtn(4, w, h, stmp, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT, dtmp);
+#else
+         glTexImage2D(GL_TEXTURE_2D, 0, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT, w, h, 0,
+                      GL_RGBA, GL_UNSIGNED_BYTE, stmp);
+         glGetCompressedTexImageARB(GL_TEXTURE_2D, 0, dtmp);
+#endif         
+         
+         size = get_mipmapped_size(w, h, 0, 0, 1, DDS_COMPRESS_DXT5);
+         for(j = 0; j < size; j += 16)
+            memcpy(dst + offset + j + 8, dtmp + j, 8);
+         
+         g_free(stmp);
+         g_free(dtmp);
+      }
+
+      s += (w * h * bpp);
+      offset += get_mipmapped_size(w, h, 0, 0, 1, format);
+      if(w > 1) w >>= 1;
+      if(h > 1) h >>= 1;
+   }
 }
 
 int dxt_compress(unsigned char *dst, unsigned char *src, int format,
@@ -215,7 +316,7 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
    }
    else if(format == DDS_COMPRESS_DXT3)
       internal = GL_COMPRESSED_RGBA_S3TC_DXT3_EXT;
-   else
+   else if(format == DDS_COMPRESS_DXT5)
       internal = GL_COMPRESSED_RGBA_S3TC_DXT5_EXT;
    
 #ifdef USE_SOFTWARE_COMPRESSION   
@@ -299,19 +400,30 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
    w = width;
    h = height;
    s = tmp;
-   
-   for(i = 0; i < mipmaps; ++i)
+
+   if(format <= DDS_COMPRESS_DXT5)
    {
-      compress_dxtn(bpp, w, h, s, internal, dst + offset);
-      s += (w * h * bpp);
-      offset += get_mipmapped_size(w, h, 0, 0, 1, format);
-      if(w > 1) w >>= 1;
-      if(h > 1) h >>= 1;
+      for(i = 0; i < mipmaps; ++i)
+      {
+         compress_dxtn(bpp, w, h, s, internal, dst + offset);
+         s += (w * h * bpp);
+         offset += get_mipmapped_size(w, h, 0, 0, 1, format);
+         if(w > 1) w >>= 1;
+         if(h > 1) h >>= 1;
+      }
    }
+   else /* 3Dc */
+      compress_3dc(dst, s, w, h, bpp, mipmaps, format);
    
    g_free(tmp);
    
 #else
+   
+   if(format >= DDS_COMPRESS_ATI1)
+   {
+      compress_3dc(dst, src, width, height, bpp, mipmaps, format);
+      return(1);
+   }
    
    if(GLEW_SGIS_generate_mipmap)
    {
@@ -434,7 +546,7 @@ static void decode_dxt3_alpha(unsigned char *dst, unsigned char *src,
       bits = GETL16(&src[2 * y]);
       for(x = 0; x < w; ++x)
       {
-         d[3] = (bits & 0x0f) * 17;
+         d[0] = (bits & 0x0f) * 17;
          bits >>= 4;
          d += 4;
       }
@@ -442,7 +554,7 @@ static void decode_dxt3_alpha(unsigned char *dst, unsigned char *src,
 }
 
 static void decode_dxt5_alpha(unsigned char *dst, unsigned char *src,
-                              int w, int h, int rowbytes)
+                              int w, int h, int bpp, int rowbytes)
 {
    int x, y, code;
    unsigned char *d;
@@ -457,17 +569,17 @@ static void decode_dxt5_alpha(unsigned char *dst, unsigned char *src,
       {
          code = ((unsigned int)bits) & 0x07;
          if(code == 0)
-            d[3] = a0;
+            d[0] = a0;
          else if(code == 1)
-            d[3] = a1;
+            d[0] = a1;
          else if(a0 > a1)
-            d[3] = ((8 - code) * a0 + (code - 1) * a1) / 7;
+            d[0] = ((8 - code) * a0 + (code - 1) * a1) / 7;
          else if(code >= 6)
-            d[3] = (code == 6) ? 0 : 255;
+            d[0] = (code == 6) ? 0 : 255;
          else
-            d[3] = ((6 - code) * a0 + (code - 1) * a1) / 5;
+            d[0] = ((6 - code) * a0 + (code - 1) * a1) / 5;
          bits >>= 3;
-         d += 4;
+         d += bpp;
       }
       if(w < 4) bits >>= (3 * (4 - w));
    }
@@ -499,17 +611,31 @@ int dxt_decompress(unsigned char *dst, unsigned char *src, int format,
          d = dst + (y * width + x) * bpp;
          if(format == DDS_COMPRESS_DXT3)
          {
-            decode_dxt3_alpha(d, s, sx, sy, width * bpp);
+            decode_dxt3_alpha(d + 3, s, sx, sy, width * bpp);
             s += 8;
          }
          else if(format == DDS_COMPRESS_DXT5)
          {
-            decode_dxt5_alpha(d, s, sx, sy,  width * bpp);
+            decode_dxt5_alpha(d + 3, s, sx, sy, bpp, width * bpp);
             s += 8;
          }
-         
-         decode_color_block(d, s, sx, sy, width * bpp, format);
-         s += 8;
+         else if(format == DDS_COMPRESS_ATI1)
+         {
+            decode_dxt5_alpha(d, s, sx, sy, bpp, width * bpp);
+            s += 8;
+         }
+         else if(format == DDS_COMPRESS_ATI2)
+         {
+            decode_dxt5_alpha(d, s + 8, sx, sy, bpp, width * bpp);
+            decode_dxt5_alpha(d + 1, s, sx, sy, bpp, width * bpp);
+            s += 16;
+         }
+        
+         if(format <= DDS_COMPRESS_DXT5)
+         {
+            decode_color_block(d, s, sx, sy, width * bpp, format);
+            s += 8;
+         }
       }
    }
    

@@ -123,12 +123,28 @@ gint32 read_dds(gchar *filename)
    }
    
    if(hdr.pixelfmt.flags & DDPF_FOURCC)
-      hdr.pixelfmt.flags |= DDPF_ALPHAPIXELS;
+   {      
+      if(hdr.pixelfmt.fourcc[0] == 'D')
+         hdr.pixelfmt.flags |= DDPF_ALPHAPIXELS;
+   }
    
    if(hdr.pixelfmt.flags & DDPF_FOURCC)
    {
-      d.bpp = d.gimp_bpp = 4;
-      type = GIMP_RGB;
+      switch(GETL32(hdr.pixelfmt.fourcc))
+      {
+         case CHAR32('A', 'T', 'I', '1'):
+            d.bpp = d.gimp_bpp = 1;
+            type = GIMP_GRAY;
+            break;
+         case CHAR32('A', 'T', 'I', '2'):
+            d.bpp = d.gimp_bpp = 3;
+            type = GIMP_RGB;
+            break;
+         default: 
+            d.bpp = d.gimp_bpp = 4;
+            type = GIMP_RGB;
+            break;
+      }
    }
    else
    {
@@ -409,10 +425,12 @@ static int validate_header(dds_header_t *hdr)
    if((hdr->pixelfmt.flags & DDPF_FOURCC) &&
       memcmp(hdr->pixelfmt.fourcc, "DXT1", 4) &&
       memcmp(hdr->pixelfmt.fourcc, "DXT3", 4) &&
-      memcmp(hdr->pixelfmt.fourcc, "DXT5", 4))
+      memcmp(hdr->pixelfmt.fourcc, "DXT5", 4) &&
+      memcmp(hdr->pixelfmt.fourcc, "ATI1", 4) &&
+      memcmp(hdr->pixelfmt.fourcc, "ATI2", 4))
    {
       g_message("Invalid compression format.\n"
-                "Only DXT1, DXT3 and DXT5 formats are supported.\n");
+                "Only DXT1, DXT3, DXT5, ATI1N and ATI2N formats are supported.\n");
       return(0);
    }
    
@@ -453,6 +471,8 @@ static int validate_header(dds_header_t *hdr)
          case CHAR32('D', 'X', 'T', '1'):
          case CHAR32('D', 'X', 'T', '3'):
          case CHAR32('D', 'X', 'T', '5'):
+         case CHAR32('A', 'T', 'I', '1'):
+         case CHAR32('A', 'T', 'I', '2'):
             hdr->pixelfmt.flags |= DDPF_FOURCC;
             break;
          default:
@@ -539,16 +559,22 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
       unsigned int w = (width  + 3) >> 2;
       unsigned int h = (height + 3) >> 2;
       
-      switch(hdr->pixelfmt.fourcc[3])
+      switch(GETL32(hdr->pixelfmt.fourcc))
       {
-         case '1': format = DDS_COMPRESS_DXT1; break;
-         case '3': format = DDS_COMPRESS_DXT3; break;
-         case '5': format = DDS_COMPRESS_DXT5; break;
+         case CHAR32('D', 'X', 'T', '1'): format = DDS_COMPRESS_DXT1;  break;
+         case CHAR32('D', 'X', 'T', '3'): format = DDS_COMPRESS_DXT3;  break;
+         case CHAR32('D', 'X', 'T', '5'): format = DDS_COMPRESS_DXT5;  break;
+         case CHAR32('A', 'T', 'I', '1'): format = DDS_COMPRESS_ATI1; break;
+         case CHAR32('A', 'T', 'I', '2'): format = DDS_COMPRESS_ATI2; break;
       }
 
       if(w == 0) w = 1;
       if(h == 0) h = 1;
-      size = w * h * (format == DDS_COMPRESS_DXT1 ? 8 : 16);
+      size = w * h;
+      if(format == DDS_COMPRESS_DXT1 || format == DDS_COMPRESS_ATI1)
+         size *= 8;
+      else
+         size *= 16;
    }
    
    if((hdr->flags & DDSD_LINEARSIZE) &&
