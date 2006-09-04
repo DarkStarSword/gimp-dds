@@ -225,10 +225,11 @@ static void compress_3dc(unsigned char *dst, unsigned char *src,
          dtmp = g_malloc(size);
 
 #ifdef USE_SOFTWARE_COMPRESSION         
-         compress_dxtn(4, w, h, stmp, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT, dtmp);
+         compress_dxtn(4, w, h, stmp, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,
+                       dtmp);
 #else
-         glTexImage2D(GL_TEXTURE_2D, 0, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT, w, h, 0,
-                      GL_RGBA, GL_UNSIGNED_BYTE, stmp);
+         glTexImage2D(GL_TEXTURE_2D, 0, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,
+                      w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, stmp);
          glGetCompressedTexImageARB(GL_TEXTURE_2D, 0, dtmp);
 #endif         
          
@@ -250,11 +251,12 @@ static void compress_3dc(unsigned char *dst, unsigned char *src,
          size = get_mipmapped_size(w, h, 0, 0, 1, DDS_COMPRESS_DXT5);
          dtmp = g_malloc(size);
 
-#ifdef USE_SOFTWARE_COMPRESSION         
-         compress_dxtn(4, w, h, stmp, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT, dtmp);
+#ifdef USE_SOFTWARE_COMPRESSION
+         compress_dxtn(4, w, h, stmp, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,
+                       dtmp);
 #else
-         glTexImage2D(GL_TEXTURE_2D, 0, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT, w, h, 0,
-                      GL_RGBA, GL_UNSIGNED_BYTE, stmp);
+         glTexImage2D(GL_TEXTURE_2D, 0, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,
+                      w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, stmp);
          glGetCompressedTexImageARB(GL_TEXTURE_2D, 0, dtmp);
 #endif
          
@@ -262,16 +264,21 @@ static void compress_3dc(unsigned char *dst, unsigned char *src,
             memcpy(dst + offset + j, dtmp + j, 8);
          
          size = get_mipmapped_size(w, h, 4, 0, 1, DDS_COMPRESS_NONE);
-         for(j = k = 0; k < size; j += bpp, k += 4)
-            stmp[k + 3] = s[j];
          
 #ifdef USE_SOFTWARE_COMPRESSION         
-         compress_dxtn(4, w, h, stmp, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT, dtmp);
+         for(j = k = 0; k < size; j += bpp, k += 4)
+            stmp[k + 3] = s[j];
+
+         compress_dxtn(4, w, h, stmp, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,
+                       dtmp);
 #else
-         glTexImage2D(GL_TEXTURE_2D, 0, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT, w, h, 0,
-                      GL_RGBA, GL_UNSIGNED_BYTE, stmp);
+         for(j = k = 0; k < size; j += bpp, k += 4)
+            stmp[k + 3] = s[j + 2];
+         
+         glTexImage2D(GL_TEXTURE_2D, 0, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,
+                      w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, stmp);
          glGetCompressedTexImageARB(GL_TEXTURE_2D, 0, dtmp);
-#endif         
+#endif
          
          size = get_mipmapped_size(w, h, 0, 0, 1, DDS_COMPRESS_DXT5);
          for(j = 0; j < size; j += 16)
@@ -667,7 +674,6 @@ int dxt_decompress(unsigned char *dst, unsigned char *src, int format,
                decode_dxt5_alpha(d + 1, s, sx, sy, bpp, width * bpp);
                s += 16;
             }
-        
 	      }
       }
       return(1);
