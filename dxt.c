@@ -301,9 +301,13 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
 {
    GLenum internal = 0;
    GLenum type = 0;
-   int i, j, size, w, h;
+   int i, size, w, h;
    unsigned int offset;
-   unsigned char *tmp, *tmp2, *s, c;
+   unsigned char *tmp;
+#ifdef USE_SOFTWARE_COMPRESSION   
+   int j;
+   unsigned *tmp2, *s, c;
+#endif
    
    if(!(IS_POT(width) && IS_POT(height)))
       return(0);
@@ -479,7 +483,9 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
 #endif // #ifdef USE_SOFTWARE_COMPRESSION   
    
    return(1);
-}                
+}
+
+#ifdef USE_SOFTWARE_COMPRESSION
 
 static void decode_color_block(unsigned char *dst, unsigned char *src,
                                int w, int h, int rowbytes, int format)
@@ -557,6 +563,8 @@ static void decode_dxt3_alpha(unsigned char *dst, unsigned char *src,
       }
    }
 }
+
+#endif // #ifdef USE_SOFTWARE_COMPRESSION
 
 static void decode_dxt5_alpha(unsigned char *dst, unsigned char *src,
                               int w, int h, int bpp, int rowbytes)
