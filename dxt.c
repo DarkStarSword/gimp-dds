@@ -203,7 +203,7 @@ static void compress_3dc(unsigned char *dst, unsigned char *src,
 {
    int i, j, w, h;
    unsigned int offset, size;
-   unsigned char *s1, *s2, *dtmp, *stmp;
+   unsigned char *s1, *s2, *d1, *d2, *dtmp, *stmp;
    
 #ifdef USE_SOFTWARE_COMPRESSION
    
@@ -246,13 +246,14 @@ static void compress_3dc(unsigned char *dst, unsigned char *src,
       stmp = g_malloc(size * 2);
       memset(stmp, 0, size * 2);
       
-      for(i = j = 0; j < size; i += bpp, j += 4)
-         stmp[j + 3] = src[i + 1];
-      for(i = 0; j < size * 2; i += bpp, j += 4)
-         stmp[j + 3] = src[i];
-      
       s1 = stmp;
       s2 = stmp + size;
+      
+      for(i = j = 0; j < size; i += bpp, j += 4)
+      {
+         s1[j + 3] = src[i + 1];
+         s2[j + 3] = src[i];
+      }
       
       size = get_mipmapped_size(width, height, 0, 0, mipmaps, DDS_COMPRESS_DXT5);
       dtmp = g_malloc(size * 2);
@@ -285,6 +286,9 @@ static void compress_3dc(unsigned char *dst, unsigned char *src,
    }
    
 #else // #ifdef USE_SOFTWARE_COMPRESSION
+
+   if(GLEW_SGIS_generate_mipmap)
+      glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP_SGIS, GL_FALSE);
    
    if(format == DDS_COMPRESS_ATI1)
    {
@@ -325,17 +329,21 @@ static void compress_3dc(unsigned char *dst, unsigned char *src,
       size = get_mipmapped_size(width, height, 4, 0, mipmaps, DDS_COMPRESS_NONE);
       stmp = g_malloc(size * 2);
       memset(stmp, 0, size * 2);
-      
-      for(i = j = 0; j < size; i += bpp, j += 4)
-         stmp[j + 3] = src[i + 1];
-      for(i = 0; j < size * 2; i += bpp, j += 4)
-         stmp[j + 3] = src[i];
-      
+
       s1 = stmp;
       s2 = stmp + size;
       
+      for(i = j = 0; j < size; i += bpp, j += 4)
+      {
+         s1[j + 3] = src[i + 1];
+         s2[j + 3] = src[i];
+      }
+      
       size = get_mipmapped_size(width, height, 0, 0, mipmaps, DDS_COMPRESS_DXT5);
       dtmp = g_malloc(size * 2);
+      
+      d1 = dtmp;
+      d2 = dtmp + size;
       
       offset = 0;
       w = width;
@@ -345,10 +353,10 @@ static void compress_3dc(unsigned char *dst, unsigned char *src,
       {
          glTexImage2D(GL_TEXTURE_2D, 0, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,
                       w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, s1);
-         glGetCompressedTexImageARB(GL_TEXTURE_2D, 0, dtmp + offset);
+         glGetCompressedTexImageARB(GL_TEXTURE_2D, 0, d1 + offset);
          glTexImage2D(GL_TEXTURE_2D, 0, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,
                       w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, s2);
-         glGetCompressedTexImageARB(GL_TEXTURE_2D, 0, dtmp + offset + size);
+         glGetCompressedTexImageARB(GL_TEXTURE_2D, 0, d2 + offset);
          s1 += (w * h * 4);
          s2 += (w * h * 4);
          offset += get_mipmapped_size(w, h, 0, 0, 1, DDS_COMPRESS_DXT5);
@@ -358,8 +366,8 @@ static void compress_3dc(unsigned char *dst, unsigned char *src,
 
       for(i = 0; i < size; i += 16)
       {
-         memcpy(dst + i + 0, dtmp + i, 8);
-         memcpy(dst + i + 8, dtmp + size + i, 8);
+         memcpy(dst + i + 0, d1 + i, 8);
+         memcpy(dst + i + 8, d2 + i, 8);
       }
 
       g_free(dtmp);

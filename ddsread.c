@@ -711,14 +711,22 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
    {
       unsigned char *dst;
       
-      dst = g_malloc(width * height * d->gimp_bpp);
       if(!(hdr->flags & DDSD_LINEARSIZE))
       {
          g_message("Image marked as compressed, but DDSD_LINEARSIZE is not set.\n");
-         g_free(dst);
          return(0);
       }
+
+      dst = g_malloc(width * height * d->gimp_bpp);
+      memset(dst, 0, width * height * d->gimp_bpp);
       
+      if(d->gimp_bpp == 4)
+      {
+        for(y = 0; y < height; ++y)
+            for(x = 0; x < width; ++x)
+               dst[y * (width * 4) + x + 3] = 255;
+      }
+         
       dxt_decompress(dst, buf, format, size, width, height, d->gimp_bpp);
       
       z = 0;
