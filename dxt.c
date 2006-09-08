@@ -258,16 +258,17 @@ static void compress_3dc(unsigned char *dst, unsigned char *src,
       size = get_mipmapped_size(width, height, 0, 0, mipmaps, DDS_COMPRESS_DXT5);
       dtmp = g_malloc(size * 2);
       
+      d1 = dtmp;
+      d2 = dtmp + size;
+      
       offset = 0;
       w = width;
       h = height;
 
       for(i = 0; i < mipmaps; ++i)
       {
-         compress_dxtn(4, w, h, s1, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,
-                       dtmp + offset);
-         compress_dxtn(4, w, h, s2, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,
-                       dtmp + offset + size);
+         compress_dxtn(4, w, h, s1, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT, d1 + offset);
+         compress_dxtn(4, w, h, s2, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT, d2 + offset);
          s1 += (w * h * 4);
          s2 += (w * h * 4);
          offset += get_mipmapped_size(w, h, 0, 0, 1, DDS_COMPRESS_DXT5);
@@ -277,8 +278,8 @@ static void compress_3dc(unsigned char *dst, unsigned char *src,
 
       for(i = 0; i < size; i += 16)
       {
-         memcpy(dst + i + 0, dtmp + i, 8);
-         memcpy(dst + i + 8, dtmp + size + i, 8);
+         memcpy(dst + i + 0, d1 + i, 8);
+         memcpy(dst + i + 8, d2 + i, 8);
       }
 
       g_free(dtmp);
