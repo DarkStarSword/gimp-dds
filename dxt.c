@@ -201,98 +201,172 @@ static void compress_3dc(unsigned char *dst, unsigned char *src,
                          int width, int height, int bpp, int mipmaps,
                          int format)
 {
-   int i, j, k, w, h;
+   int i, j, w, h;
    unsigned int offset, size;
-   unsigned char *s, *dtmp, *stmp;
+   unsigned char *s1, *s2, *dtmp, *stmp;
    
-   w = width;
-   h = height;
-   s = src;
-   offset = 0;
-   
-   for(i = 0; i < mipmaps; ++i)
-   {
-      if(format == DDS_COMPRESS_ATI1)
-      {
-         size = get_mipmapped_size(w, h, 4, 0, 1, DDS_COMPRESS_NONE);
-         stmp = g_malloc(size);
-         memset(stmp, 0, size);
-         
-         for(j = k = 0; k < size; j += bpp, k += 4)
-            stmp[k + 3] = s[j];
-         
-         size = get_mipmapped_size(w, h, 0, 0, 1, DDS_COMPRESS_DXT5);
-         dtmp = g_malloc(size);
-
-#ifdef USE_SOFTWARE_COMPRESSION         
-         compress_dxtn(4, w, h, stmp, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,
-                       dtmp);
-#else
-         glTexImage2D(GL_TEXTURE_2D, 0, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,
-                      w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, stmp);
-         glGetCompressedTexImageARB(GL_TEXTURE_2D, 0, dtmp);
-#endif         
-         
-         for(j = k = 0; j < size; j += 16, k += 8)
-            memcpy(dst + offset + k, dtmp + j, 8);
-         
-         g_free(stmp);
-         g_free(dtmp);
-      }
-      else if(format == DDS_COMPRESS_ATI2)
-      {
-         size = get_mipmapped_size(w, h, 4, 0, 1, DDS_COMPRESS_NONE);
-         stmp = g_malloc(size);
-         memset(stmp, 0, size);
-         
-         for(j = k = 0; k < size; j += bpp, k += 4)
-            stmp[k + 3] = s[j + 1];
-         
-         size = get_mipmapped_size(w, h, 0, 0, 1, DDS_COMPRESS_DXT5);
-         dtmp = g_malloc(size);
-
 #ifdef USE_SOFTWARE_COMPRESSION
-         compress_dxtn(4, w, h, stmp, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,
-                       dtmp);
-#else
-         glTexImage2D(GL_TEXTURE_2D, 0, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,
-                      w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, stmp);
-         glGetCompressedTexImageARB(GL_TEXTURE_2D, 0, dtmp);
-#endif
-         
-         for(j = 0; j < size; j += 16)
-            memcpy(dst + offset + j, dtmp + j, 8);
-         
-         size = get_mipmapped_size(w, h, 4, 0, 1, DDS_COMPRESS_NONE);
-         
-#ifdef USE_SOFTWARE_COMPRESSION         
-         for(j = k = 0; k < size; j += bpp, k += 4)
-            stmp[k + 3] = s[j];
+   
+   if(format == DDS_COMPRESS_ATI1)
+   {
+      size = get_mipmapped_size(width, height, 4, 0, mipmaps, DDS_COMPRESS_NONE);
+      stmp = g_malloc(size);
+      memset(stmp, 0, size);
+      
+      for(i = j = 0; j < size; i += bpp, j += 4)
+         stmp[j + 3] = src[i];
+      
+      size = get_mipmapped_size(width, height, 0, 0, mipmaps, DDS_COMPRESS_DXT5);
+      dtmp = g_malloc(size);
+      
+      offset = 0;
+      w = width;
+      h = height;
+      s1 = stmp;
 
-         compress_dxtn(4, w, h, stmp, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,
-                       dtmp);
-#else
-         for(j = k = 0; k < size; j += bpp, k += 4)
-            stmp[k + 3] = s[j + 2];
-         
-         glTexImage2D(GL_TEXTURE_2D, 0, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,
-                      w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, stmp);
-         glGetCompressedTexImageARB(GL_TEXTURE_2D, 0, dtmp);
-#endif
-         
-         size = get_mipmapped_size(w, h, 0, 0, 1, DDS_COMPRESS_DXT5);
-         for(j = 0; j < size; j += 16)
-            memcpy(dst + offset + j + 8, dtmp + j, 8);
-         
-         g_free(stmp);
-         g_free(dtmp);
+      for(i = 0; i < mipmaps; ++i)
+      {
+         compress_dxtn(4, w, h, s1, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,
+                       dtmp + offset);
+         s1 += (w * h * 4);
+         offset += get_mipmapped_size(w, h, 0, 0, 1, DDS_COMPRESS_DXT5);
+         if(w > 1) w >>= 1;
+         if(h > 1) h >>= 1;
       }
 
-      s += (w * h * bpp);
-      offset += get_mipmapped_size(w, h, 0, 0, 1, format);
-      if(w > 1) w >>= 1;
-      if(h > 1) h >>= 1;
+      for(i = j = 0; i < size; i += 16, j += 8)
+         memcpy(dst + j, dtmp + i, 8);
+      
+      g_free(dtmp);
+      g_free(stmp);
    }
+   else if(format == DDS_COMPRESS_ATI2)
+   {
+      size = get_mipmapped_size(width, height, 4, 0, mipmaps, DDS_COMPRESS_NONE);
+      stmp = g_malloc(size * 2);
+      memset(stmp, 0, size * 2);
+      
+      for(i = j = 0; j < size; i += bpp, j += 4)
+         stmp[j + 3] = src[i + 1];
+      for(i = 0; j < size * 2; i += bpp, j += 4)
+         stmp[j + 3] = src[i];
+      
+      s1 = stmp;
+      s2 = stmp + size;
+      
+      size = get_mipmapped_size(width, height, 0, 0, mipmaps, DDS_COMPRESS_DXT5);
+      dtmp = g_malloc(size * 2);
+      
+      offset = 0;
+      w = width;
+      h = height;
+
+      for(i = 0; i < mipmaps; ++i)
+      {
+         compress_dxtn(4, w, h, s1, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,
+                       dtmp + offset);
+         compress_dxtn(4, w, h, s2, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,
+                       dtmp + offset + size);
+         s1 += (w * h * 4);
+         s2 += (w * h * 4);
+         offset += get_mipmapped_size(w, h, 0, 0, 1, DDS_COMPRESS_DXT5);
+         if(w > 1) w >>= 1;
+         if(h > 1) h >>= 1;
+      }
+
+      for(i = 0; i < size; i += 16)
+      {
+         memcpy(dst + i + 0, dtmp + i, 8);
+         memcpy(dst + i + 8, dtmp + size + i, 8);
+      }
+
+      g_free(dtmp);
+      g_free(stmp);
+   }
+   
+#else // #ifdef USE_SOFTWARE_COMPRESSION
+   
+   if(format == DDS_COMPRESS_ATI1)
+   {
+      size = get_mipmapped_size(width, height, 4, 0, mipmaps, DDS_COMPRESS_NONE);
+      stmp = g_malloc(size);
+      memset(stmp, 0, size);
+      
+      for(i = j = 0; j < size; i += bpp, j += 4)
+         stmp[j + 3] = src[i];
+                
+      size = get_mipmapped_size(width, height, 0, 0, mipmaps, DDS_COMPRESS_DXT5);
+      dtmp = g_malloc(size);
+      
+      offset = 0;
+      w = width;
+      h = height;
+      s1 = stmp;
+      
+      for(i = 0; i < mipmaps; ++i)
+      {
+         glTexImage2D(GL_TEXTURE_2D, 0, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,
+                      w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, s1);
+         glGetCompressedTexImageARB(GL_TEXTURE_2D, 0, dtmp + offset);
+         s1 += (w * h * 4);
+         offset += get_mipmapped_size(w, h, 0, 0, 1, DDS_COMPRESS_DXT5);
+         if(w > 1) w >>= 1;
+         if(h > 1) h >>= 1;
+      }
+
+      for(i = j = 0; i < size; i += 16, j += 8)
+         memcpy(dst + j, dtmp + i, 8);
+      
+      g_free(dtmp);
+      g_free(stmp);
+   }
+   else if(format == DDS_COMPRESS_ATI2)
+   {
+      size = get_mipmapped_size(width, height, 4, 0, mipmaps, DDS_COMPRESS_NONE);
+      stmp = g_malloc(size * 2);
+      memset(stmp, 0, size * 2);
+      
+      for(i = j = 0; j < size; i += bpp, j += 4)
+         stmp[j + 3] = src[i + 1];
+      for(i = 0; j < size * 2; i += bpp, j += 4)
+         stmp[j + 3] = src[i];
+      
+      s1 = stmp;
+      s2 = stmp + size;
+      
+      size = get_mipmapped_size(width, height, 0, 0, mipmaps, DDS_COMPRESS_DXT5);
+      dtmp = g_malloc(size * 2);
+      
+      offset = 0;
+      w = width;
+      h = height;
+
+      for(i = 0; i < mipmaps; ++i)
+      {
+         glTexImage2D(GL_TEXTURE_2D, 0, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,
+                      w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, s1);
+         glGetCompressedTexImageARB(GL_TEXTURE_2D, 0, dtmp + offset);
+         glTexImage2D(GL_TEXTURE_2D, 0, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,
+                      w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, s2);
+         glGetCompressedTexImageARB(GL_TEXTURE_2D, 0, dtmp + offset + size);
+         s1 += (w * h * 4);
+         s2 += (w * h * 4);
+         offset += get_mipmapped_size(w, h, 0, 0, 1, DDS_COMPRESS_DXT5);
+         if(w > 1) w >>= 1;
+         if(h > 1) h >>= 1;
+      }
+
+      for(i = 0; i < size; i += 16)
+      {
+         memcpy(dst + i + 0, dtmp + i, 8);
+         memcpy(dst + i + 8, dtmp + size + i, 8);
+      }
+
+      g_free(dtmp);
+      g_free(stmp);
+   }
+   
+#endif // #ifdef USE_SOFTWARE_COMPRESSION
 }
 
 int dxt_compress(unsigned char *dst, unsigned char *src, int format,
@@ -432,7 +506,32 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
    
    if(format >= DDS_COMPRESS_ATI1)
    {
-      compress_3dc(dst, src, width, height, bpp, mipmaps, format);
+      size = get_mipmapped_size(width, height, 4, 0, mipmaps, DDS_COMPRESS_NONE);
+      tmp = g_malloc(size);
+      
+      if(GLEW_SGIS_generate_mipmap)
+      {
+         glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP_SGIS,
+                         mipmaps > 1 ? GL_TRUE : GL_FALSE);
+         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, 
+                         type, GL_UNSIGNED_BYTE, src);
+         
+         offset = 0;
+         for(i = 0; i < mipmaps; ++i)
+         {
+            glGetTexImage(GL_TEXTURE_2D, i, GL_RGBA, GL_UNSIGNED_BYTE,
+                          tmp + offset);
+            offset += get_mipmapped_size(width, height, 4, i, 1,
+                                         DDS_COMPRESS_NONE);
+         }
+      }
+      else
+         generate_mipmaps_software(tmp, src, width, height, bpp, 0, mipmaps);
+      
+      compress_3dc(dst, tmp, width, height, 4, mipmaps, format);
+      
+      g_free(tmp);
+      
       return(1);
    }
    
