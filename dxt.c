@@ -306,7 +306,7 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
    unsigned char *tmp;
 #ifdef USE_SOFTWARE_COMPRESSION   
    int j;
-   unsigned *tmp2, *s, c;
+   unsigned char *tmp2, *s, c;
 #endif
    
    if(!(IS_POT(width) && IS_POT(height)))
@@ -652,7 +652,7 @@ int dxt_decompress(unsigned char *dst, unsigned char *src, int format,
    
 #else // #ifdef USE_SOFTWARE_COMPRESSION
 
-   GLenum internal, type = GL_RGB;
+   GLenum internal = GL_NONE, type = GL_RGB;
    unsigned char *d, *s;
    unsigned int x, y, sx, sy;
 
