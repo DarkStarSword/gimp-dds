@@ -1166,13 +1166,13 @@ static void save_dialog_response(GtkWidget *widget, gint response_id,
 
 static void compression_selected(GtkWidget *widget, gpointer data)
 {
-   ddsvals.compression = (gint)data;
+   ddsvals.compression = (gint)(long)data;
    gtk_widget_set_sensitive(format_opt, ddsvals.compression == DDS_COMPRESS_NONE);
 }
 
 static void savetype_selected(GtkWidget *widget, gpointer data)
 {
-   int n = (int)data;
+   int n = (int)(long)data;
 
    ddsvals.savetype = n;
    
@@ -1192,7 +1192,7 @@ static void savetype_selected(GtkWidget *widget, gpointer data)
 
 static void format_selected(GtkWidget *widget, gpointer data)
 {
-   ddsvals.format = (gint)data;
+   ddsvals.format = (gint)(long)data;
 }
 
 static void toggle_clicked(GtkWidget *widget, gpointer data)
@@ -1271,7 +1271,7 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
       menuitem = gtk_menu_item_new_with_label(compression_strings[i].string);
       gtk_signal_connect(GTK_OBJECT(menuitem), "activate",
                          GTK_SIGNAL_FUNC(compression_selected),
-                         (gpointer)compression_strings[i].compression);
+                         (gpointer)(long)compression_strings[i].compression);
       gtk_widget_show(menuitem);
       gtk_menu_append(GTK_MENU(menu), menuitem);
    }
@@ -1303,7 +1303,7 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
       menuitem = gtk_menu_item_new_with_label(format_strings[i].string);
       gtk_signal_connect(GTK_OBJECT(menuitem), "activate",
                          GTK_SIGNAL_FUNC(format_selected),
-                         (gpointer)format_strings[i].format);
+                         (gpointer)(long)format_strings[i].format);
       gtk_widget_show(menuitem);
       gtk_menu_append(GTK_MENU(menu), menuitem);
    }
