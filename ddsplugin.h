@@ -42,4 +42,7 @@ extern gchar *prog_name;
 extern gchar *filename;
 extern FILE *errorFile;
 
+#define LOAD_PROC "file-dds-load"
+#define SAVE_PROC "file-dds-save"
+
 #endif

@@ -68,10 +68,6 @@ static void query(void)
 		{GIMP_PDB_IMAGE, "image", "Output image"}
 	};
 	
-	static gint nload_args = sizeof(load_args) / sizeof(load_args[0]);
-	static gint nload_return_vals = sizeof(load_return_vals) /
-		sizeof(load_return_vals[0]);
-	
 	static GimpParamDef save_args[]=
 	{
 		{GIMP_PDB_INT32, "run_mode", "Interactive, non-interactive"},
@@ -85,9 +81,8 @@ static void query(void)
       {GIMP_PDB_INT32, "savetype", "How to save the image (0 = selected layer, 1 = cube map, 2 = volume map"},
       {GIMP_PDB_INT32, "format", "Custom pixel format (0 = default, 1 = R5G6B5, 2 = RGBA4, 3 = RGB5A1, 4 = RGB10A2)"}
 	};
-	static gint nsave_args = sizeof(save_args) / sizeof(save_args[0]);
 	
-	gimp_install_procedure("file_dds_load",
+	gimp_install_procedure(LOAD_PROC,
 								  "Loads files in DDS image format",
 								  "Loads files in DDS image format",
 								  "Shawn Kirst",
@@ -96,10 +91,17 @@ static void query(void)
 								  "<Load>/DDS image",
 								  0,
 								  GIMP_PLUGIN,
-								  nload_args, nload_return_vals,
+								  G_N_ELEMENTS(load_args),
+                          G_N_ELEMENTS(load_return_vals),
 								  load_args, load_return_vals);
+
+   gimp_register_file_handler_mime(LOAD_PROC, "image/dds");
+	gimp_register_magic_load_handler(LOAD_PROC,
+												"dds",
+												"",
+												"0,string,DDS");
    
-	gimp_install_procedure("file_dds_save",
+	gimp_install_procedure(SAVE_PROC,
 								  "Saves files in DDS image format",
 								  "Saves files in DDS image format",
 								  "Shawn Kirst",
@@ -108,15 +110,11 @@ static void query(void)
 								  "<Save>/DDS image",
 								  "INDEXED, GRAY, RGB",
 								  GIMP_PLUGIN,
-								  nsave_args, 0,
+								  G_N_ELEMENTS(save_args), 0,
 								  save_args, 0);
 
-	gimp_register_magic_load_handler("file_dds_load",
-												"dds",
-												"",
-												"0,string,DDS");
-   
-	gimp_register_save_handler("file_dds_save",
+   gimp_register_file_handler_mime(SAVE_PROC, "image/dds");
+	gimp_register_save_handler(SAVE_PROC,
 										"dds",
 										"");
 }
@@ -147,7 +145,7 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
       return;
    }
 	
-	if(!strcmp(name, "file_dds_load"))
+	if(!strcmp(name, LOAD_PROC))
 	{
 		switch(run_mode)
 		{
@@ -176,7 +174,7 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
 				status = GIMP_PDB_EXECUTION_ERROR;
 		}
 	}
-	else if(!strcmp(name,"file_dds_save"))
+	else if(!strcmp(name, SAVE_PROC))
 	{
 		imageID = param[1].data.d_int32;
 		drawableID = param[2].data.d_int32;
@@ -204,7 +202,7 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
 		switch(run_mode)
 		{
 			case GIMP_RUN_INTERACTIVE:
-			   gimp_get_data("file_dds_save", &ddsvals);
+			   gimp_get_data(SAVE_PROC, &ddsvals);
 			   interactive_dds = 1;
 			   break;
 			case GIMP_RUN_NONINTERACTIVE:
@@ -230,7 +228,7 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
 				}
 			   break;
 			case GIMP_RUN_WITH_LAST_VALS:
-			   gimp_get_data("file_dds_save", &ddsvals);
+			   gimp_get_data(SAVE_PROC, &ddsvals);
 			   interactive_dds = 0;
 			   break;
 			default:
@@ -241,7 +239,7 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
 		{
 			status = write_dds(param[3].data.d_string, imageID, drawableID);
 			if(status == GIMP_PDB_SUCCESS)
-				gimp_set_data("file_dds_save", &ddsvals, sizeof(ddsvals));
+				gimp_set_data(SAVE_PROC, &ddsvals, sizeof(ddsvals));
 		}
 		
 		if(export == GIMP_EXPORT_EXPORT)

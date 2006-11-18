@@ -1227,11 +1227,11 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    w = gimp_image_width(image_id);
    h = gimp_image_height(image_id);
    
-   dlg = gimp_dialog_new("Save as DDS", "dds",
-                         0, GTK_WIN_POS_MOUSE, gimp_standard_help_func, 0,
+   dlg = gimp_dialog_new("Save as DDS", "dds", NULL, GTK_WIN_POS_MOUSE,
+                         gimp_standard_help_func, SAVE_PROC,
                          GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
                          GTK_STOCK_OK, GTK_RESPONSE_OK,
-                         0);
+                         NULL);
 
    gtk_signal_connect(GTK_OBJECT(dlg), "response",
                       GTK_SIGNAL_FUNC(save_dialog_response),
