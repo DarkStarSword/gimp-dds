@@ -71,7 +71,7 @@ static GimpParamDef save_args[] =
    {GIMP_PDB_DRAWABLE, "drawable", "Drawable to save"},
    {GIMP_PDB_STRING, "filename", "The name of the file to save the image as"},
    {GIMP_PDB_STRING, "raw_filename", "The name entered"},
-   {GIMP_PDB_INT32, "compression_format", "Compression format"},
+   {GIMP_PDB_INT32, "compression_format", "Compression format (0 = None, 1 = DXT1, 2 = DXT3, 3 = DXT5, 4 = ATI1N, 5 = ATI2N)"},
    {GIMP_PDB_INT32, "generate_mipmaps", "Generate mipmaps"},
    {GIMP_PDB_INT32, "swap_ra", "Swap red and alpha channels (RGBA images only)"},
    {GIMP_PDB_INT32, "savetype", "How to save the image (0 = selected layer, 1 = cube map, 2 = volume map"},
