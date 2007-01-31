@@ -1108,7 +1108,10 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
       for(i = 0; i < colors; ++i)
       {
          fwrite(&cmap[3 * i], 1, 3, fp);
-         fputc(255, fp);
+         if(i == ddsvals.transindex)
+            fputc(0, fp);
+         else
+            fputc(255, fp);
       }
       for(; i < 256; ++i)
          fwrite(zero, 1, 4, fp);
@@ -1201,16 +1204,39 @@ static void toggle_clicked(GtkWidget *widget, gpointer data)
    (*flag) = !(*flag);
 }
 
+static void transindex_clicked(GtkWidget *widget, gpointer data)
+{
+   GtkWidget *spin = GTK_WIDGET(g_object_get_data(G_OBJECT(widget), "spin"));
+      
+   if(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget)))
+   {
+      ddsvals.transindex = 0;
+      gtk_widget_set_sensitive(spin, 1);
+      gtk_spin_button_set_value(GTK_SPIN_BUTTON(spin), 0);
+   }
+   else
+   {
+      gtk_widget_set_sensitive(spin, 0);
+      ddsvals.transindex = -1;
+   }
+}
+
+static void transindex_changed(GtkWidget *widget, gpointer data)
+{
+   ddsvals.transindex = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(widget));
+}
+
 static gint save_dialog(gint32 image_id, gint32 drawable_id)
 {
    GtkWidget *dlg;
-   GtkWidget *vbox;
+   GtkWidget *vbox, *hbox;
    GtkWidget *table;
    GtkWidget *label;
    GtkWidget *opt;
    GtkWidget *menu;
    GtkWidget *menuitem;
    GtkWidget *check;
+   GtkWidget *spin;
    GimpImageType type, basetype;
    int i, w, h;
    
@@ -1380,7 +1406,42 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
       gtk_menu_set_active(GTK_MENU(compress_menu), DDS_COMPRESS_NONE);
       gtk_widget_set_sensitive(compress_opt, 0);
    }
-
+   
+   hbox = gtk_hbox_new(0, 8);
+   gtk_box_pack_start(GTK_BOX(vbox), hbox, 1, 1, 0);
+   gtk_widget_show(hbox);
+   
+   check = gtk_check_button_new_with_label("Transparent index:");
+   gtk_box_pack_start(GTK_BOX(hbox), check, 0, 0, 0);
+   gtk_signal_connect(GTK_OBJECT(check), "clicked",
+                      GTK_SIGNAL_FUNC(transindex_clicked), 0);
+   gtk_widget_show(check);
+   
+   spin = gtk_spin_button_new(GTK_ADJUSTMENT(gtk_adjustment_new(0, 0, 255, 1, 1, 0)), 1, 0);
+   gtk_box_pack_start(GTK_BOX(hbox), spin, 1, 1, 0);
+   gtk_spin_button_set_update_policy(GTK_SPIN_BUTTON(spin),
+                                     GTK_UPDATE_IF_VALID);
+   gtk_signal_connect(GTK_OBJECT(spin), "value_changed",
+                      GTK_SIGNAL_FUNC(transindex_changed), 0);
+   gtk_widget_show(spin);
+   
+   g_object_set_data(G_OBJECT(check), "spin", spin);
+   
+   if(basetype != GIMP_INDEXED)
+   {
+      gtk_widget_set_sensitive(check, 0);
+      gtk_widget_set_sensitive(spin, 0);
+   }
+   else if(ddsvals.transindex < 0)
+   {
+      gtk_widget_set_sensitive(spin, 0);
+   }
+   else if(ddsvals.transindex >= 0)
+   {
+      gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check), 1);
+      gtk_spin_button_set_value(GTK_SPIN_BUTTON(spin), ddsvals.transindex);
+   }
+   
    gtk_widget_show(dlg);
    
    runme = 0;

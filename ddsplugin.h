@@ -30,6 +30,7 @@ typedef struct
    int swapRA;
    int savetype;
    int format;
+   int transindex;
 } DDSSaveVals;
 
 extern DDSSaveVals ddsvals;
