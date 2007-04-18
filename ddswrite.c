@@ -32,9 +32,8 @@
 #include "ddsplugin.h"
 #include "dds.h"
 #include "dxt.h"
+#include "mipmap.h"
 #include "endian.h"
-
-#define IS_POT(x)  (!((x) & ((x) - 1)))
 
 static gint save_dialog(gint32 image_id, gint32 drawable);
 static void save_dialog_response(GtkWidget *widget, gint response_id, gpointer data);
@@ -84,11 +83,11 @@ static struct
 } compression_strings[] =
 {
    {DDS_COMPRESS_NONE, "None"},
-   {DDS_COMPRESS_DXT1, "DXT1"},
-   {DDS_COMPRESS_DXT3, "DXT3"},
-   {DDS_COMPRESS_DXT5, "DXT5"},
-   {DDS_COMPRESS_ATI1, "ATI1"},
-   {DDS_COMPRESS_ATI2, "ATI2"},
+   {DDS_COMPRESS_BC1, "BC1 (DXT1)"},
+   {DDS_COMPRESS_BC2, "BC2 (DXT3)"},
+   {DDS_COMPRESS_BC3, "BC3 (DXT5)"},
+   {DDS_COMPRESS_BC4, "BC4 (ATI1)"},
+   {DDS_COMPRESS_BC5, "BC5 (ATI2)"},
    {-1, 0}
 };
 
@@ -1081,17 +1080,17 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
       PUTL32(hdr + 80, DDPF_FOURCC);
       switch(ddsvals.compression)
       {
-         case DDS_COMPRESS_DXT1: format = "DXT1"; break;
-         case DDS_COMPRESS_DXT3: format = "DXT3"; break;
-         case DDS_COMPRESS_DXT5: format = "DXT5"; break;
-         case DDS_COMPRESS_ATI1: format = "ATI1"; break;
-         case DDS_COMPRESS_ATI2: format = "ATI2"; break;
+         case DDS_COMPRESS_BC1: format = "DXT1"; break;
+         case DDS_COMPRESS_BC2: format = "DXT3"; break;
+         case DDS_COMPRESS_BC3: format = "DXT5"; break;
+         case DDS_COMPRESS_BC4: format = "ATI1"; break;
+         case DDS_COMPRESS_BC5: format = "ATI2"; break;
       }
       memcpy(hdr + 84, format, 4);
 
       size = ((w + 3) >> 2) * ((h + 3) >> 2);
-      if(ddsvals.compression == DDS_COMPRESS_DXT1 ||
-         ddsvals.compression == DDS_COMPRESS_ATI1)
+      if(ddsvals.compression == DDS_COMPRESS_BC1 ||
+         ddsvals.compression == DDS_COMPRESS_BC4)
          size *= 8;
       else
          size *= 16;

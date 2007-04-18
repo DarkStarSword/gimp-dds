@@ -20,8 +20,8 @@
 	Boston, MA 02111-1307, USA.
 */
 
-#ifndef __DXT_H
-#define __DXT_H
+#ifndef DXT_H
+#define DXT_H
 
 char *initialize_opengl(void);
 

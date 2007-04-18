@@ -561,17 +561,17 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
       
       switch(GETL32(hdr->pixelfmt.fourcc))
       {
-         case CHAR32('D', 'X', 'T', '1'): format = DDS_COMPRESS_DXT1;  break;
-         case CHAR32('D', 'X', 'T', '3'): format = DDS_COMPRESS_DXT3;  break;
-         case CHAR32('D', 'X', 'T', '5'): format = DDS_COMPRESS_DXT5;  break;
-         case CHAR32('A', 'T', 'I', '1'): format = DDS_COMPRESS_ATI1; break;
-         case CHAR32('A', 'T', 'I', '2'): format = DDS_COMPRESS_ATI2; break;
+         case CHAR32('D', 'X', 'T', '1'): format = DDS_COMPRESS_BC1; break;
+         case CHAR32('D', 'X', 'T', '3'): format = DDS_COMPRESS_BC2; break;
+         case CHAR32('D', 'X', 'T', '5'): format = DDS_COMPRESS_BC3; break;
+         case CHAR32('A', 'T', 'I', '1'): format = DDS_COMPRESS_BC4; break;
+         case CHAR32('A', 'T', 'I', '2'): format = DDS_COMPRESS_BC5; break;
       }
 
       if(w == 0) w = 1;
       if(h == 0) h = 1;
       size = w * h;
-      if(format == DDS_COMPRESS_DXT1 || format == DDS_COMPRESS_ATI1)
+      if(format == DDS_COMPRESS_BC1 || format == DDS_COMPRESS_BC4)
          size *= 8;
       else
          size *= 16;

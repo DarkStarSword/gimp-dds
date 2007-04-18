@@ -20,8 +20,8 @@
 	Boston, MA 02111-1307, USA.
 */
 
-#ifndef __ENDIAN_H
-#define __ENDIAN_H
+#ifndef ENDIAN_H
+#define ENDIAN_H
 
 #define GETL64(buf) \
    (((unsigned long long)(buf)[0]      ) | \
