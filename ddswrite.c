@@ -599,8 +599,19 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
    if(bpp >= 3)
       swap_rb(src, w * h, bpp);
 
-   if(ddsvals.compression == DDS_COMPRESS_BC3N && bpp == 4)
+   if(ddsvals.compression == DDS_COMPRESS_BC3N)
    {
+      if(bpp != 4)
+      {
+         fmtsize = w * h * 4;
+         fmtdst = g_malloc(fmtsize);
+         convert_pixels(fmtdst, src, DDS_FORMAT_RGBA8, w, h, bpp,
+                        palette, 1);
+         g_free(src);
+         src = fmtdst;
+         bpp = 4;
+      }
+      
       for(y = 0; y < drawable->height; ++y)
       {
          for(x = 0; x < drawable->width; ++x)
