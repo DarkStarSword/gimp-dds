@@ -50,7 +50,7 @@ GimpPlugInInfo PLUG_IN_INFO =
 
 DDSSaveVals ddsvals =
 {
-	DDS_COMPRESS_NONE, 0, 0, DDS_SAVE_SELECTED_LAYER, DDS_FORMAT_DEFAULT, -1
+	DDS_COMPRESS_NONE, 0, DDS_SAVE_SELECTED_LAYER, DDS_FORMAT_DEFAULT, -1
 };
 
 static GimpParamDef load_args[] =
@@ -71,9 +71,8 @@ static GimpParamDef save_args[] =
    {GIMP_PDB_DRAWABLE, "drawable", "Drawable to save"},
    {GIMP_PDB_STRING, "filename", "The name of the file to save the image as"},
    {GIMP_PDB_STRING, "raw_filename", "The name entered"},
-   {GIMP_PDB_INT32, "compression_format", "Compression format (0 = None, 1 = DXT1, 2 = DXT3, 3 = DXT5, 4 = ATI1N, 5 = ATI2N)"},
+   {GIMP_PDB_INT32, "compression_format", "Compression format (0 = None, 1 = BC1/DXT1, 2 = BC2/DXT3, 3 = BC3/DXT5, 4 = BC3n/DXT5n, 5 = BC4/ATI1N, 6 = BC5/ATI2N)"},
    {GIMP_PDB_INT32, "generate_mipmaps", "Generate mipmaps"},
-   {GIMP_PDB_INT32, "swap_ra", "Swap red and alpha channels (RGBA images only)"},
    {GIMP_PDB_INT32, "savetype", "How to save the image (0 = selected layer, 1 = cube map, 2 = volume map"},
    {GIMP_PDB_INT32, "format", "Custom pixel format (0 = default, 1 = R5G6B5, 2 = RGBA4, 3 = RGB5A1, 4 = RGB10A2)"},
    {GIMP_PDB_INT32, "transparent_index", "Index of transparent color or -1 to disable (for indexed images only)."}
@@ -214,10 +213,9 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
 			   {
 					ddsvals.compression = param[5].data.d_int32;
 					ddsvals.mipmaps = param[6].data.d_int32;
-               ddsvals.swapRA = param[7].data.d_int32;
-               ddsvals.savetype = param[8].data.d_int32;
-               ddsvals.format = param[9].data.d_int32;
-               ddsvals.transindex = param[10].data.d_int32;
+               ddsvals.savetype = param[7].data.d_int32;
+               ddsvals.format = param[8].data.d_int32;
+               ddsvals.transindex = param[9].data.d_int32;
                
 					if(ddsvals.compression < DDS_COMPRESS_NONE ||
 						ddsvals.compression >= DDS_COMPRESS_MAX)

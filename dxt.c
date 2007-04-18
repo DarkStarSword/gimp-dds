@@ -309,7 +309,8 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
    }
    else if(format == DDS_COMPRESS_BC2)
       internal = GL_COMPRESSED_RGBA_S3TC_DXT3_EXT;
-   else if(format == DDS_COMPRESS_BC3)
+   else if(format == DDS_COMPRESS_BC3 ||
+           format == DDS_COMPRESS_BC3N)
       internal = GL_COMPRESSED_RGBA_S3TC_DXT5_EXT;
    
 #ifdef USE_SOFTWARE_COMPRESSION   
@@ -370,7 +371,10 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
    }
    
    /* add an opaque alpha channel if need be */
-   if(bpp == 3 && (format == DDS_COMPRESS_BC2 || format == DDS_COMPRESS_BC3))
+   if(bpp == 3 &&
+      (format == DDS_COMPRESS_BC2 ||
+       format == DDS_COMPRESS_BC3 ||
+       format == DDS_COMPRESS_BC3N))
    {
       size = get_mipmapped_size(width, height, 4, 0, mipmaps,
                                 DDS_COMPRESS_NONE);
@@ -394,7 +398,7 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
    h = height;
    s = tmp;
 
-   if(format <= DDS_COMPRESS_BC3)
+   if(format <= DDS_COMPRESS_BC3N)
    {
       for(i = 0; i < mipmaps; ++i)
       {
@@ -514,7 +518,9 @@ static void decode_color_block(unsigned char *dst, unsigned char *src,
    colors[1][1] = ((c1 >>  5) & 0x3f) << 2;
    colors[1][2] = ((c1      ) & 0x1f) << 3;
    
-   if((c0 > c1) || (format == DDS_COMPRESS_BC3))
+   if((c0 > c1) ||
+      (format == DDS_COMPRESS_BC3 ||
+       format == DDS_COMPRESS_BC3N))
    {
       for(i = 0; i < 3; ++i)
       {
@@ -632,7 +638,7 @@ int dxt_decompress(unsigned char *dst, unsigned char *src, int format,
             decode_dxt3_alpha(d + 3, s, sx, sy, width * bpp);
             s += 8;
          }
-         else if(format == DDS_COMPRESS_BC3)
+         else if(format == DDS_COMPRESS_BC3 || format == DDS_COMPRESS_BC3N)
          {
             decode_dxt5_alpha(d + 3, s, sx, sy, bpp, width * bpp);
             s += 8;
@@ -649,7 +655,7 @@ int dxt_decompress(unsigned char *dst, unsigned char *src, int format,
             s += 16;
          }
         
-         if(format <= DDS_COMPRESS_BC3)
+         if(format <= DDS_COMPRESS_BC3N)
          {
             decode_color_block(d, s, sx, sy, width * bpp, format);
             s += 8;
@@ -712,6 +718,7 @@ int dxt_decompress(unsigned char *dst, unsigned char *src, int format,
          internal = GL_COMPRESSED_RGBA_S3TC_DXT3_EXT;
          break;
       case DDS_COMPRESS_BC3:
+      case DDS_COMPRESS_BC3N:
          internal = GL_COMPRESSED_RGBA_S3TC_DXT5_EXT;
          break;
    }

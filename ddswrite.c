@@ -83,11 +83,12 @@ static struct
 } compression_strings[] =
 {
    {DDS_COMPRESS_NONE, "None"},
-   {DDS_COMPRESS_BC1, "BC1 (DXT1)"},
-   {DDS_COMPRESS_BC2, "BC2 (DXT3)"},
-   {DDS_COMPRESS_BC3, "BC3 (DXT5)"},
-   {DDS_COMPRESS_BC4, "BC4 (ATI1)"},
-   {DDS_COMPRESS_BC5, "BC5 (ATI2)"},
+   {DDS_COMPRESS_BC1,  "BC1 (DXT1)"},
+   {DDS_COMPRESS_BC2,  "BC2 (DXT3)"},
+   {DDS_COMPRESS_BC3,  "BC3 (DXT5)"},
+   {DDS_COMPRESS_BC3N, "BC3n (DXT5n)"},
+   {DDS_COMPRESS_BC4,  "BC4 (ATI1)"},
+   {DDS_COMPRESS_BC5,  "BC5 (ATI2)"},
    {-1, 0}
 };
 
@@ -598,7 +599,7 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
    if(bpp >= 3)
       swap_rb(src, w * h, bpp);
 
-   if(ddsvals.swapRA && bpp == 4)
+   if(ddsvals.compression == DDS_COMPRESS_BC3N && bpp == 4)
    {
       for(y = 0; y < drawable->height; ++y)
       {
@@ -1080,11 +1081,12 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
       PUTL32(hdr + 80, DDPF_FOURCC);
       switch(ddsvals.compression)
       {
-         case DDS_COMPRESS_BC1: format = "DXT1"; break;
-         case DDS_COMPRESS_BC2: format = "DXT3"; break;
-         case DDS_COMPRESS_BC3: format = "DXT5"; break;
-         case DDS_COMPRESS_BC4: format = "ATI1"; break;
-         case DDS_COMPRESS_BC5: format = "ATI2"; break;
+         case DDS_COMPRESS_BC1:  format = "DXT1"; break;
+         case DDS_COMPRESS_BC2:  format = "DXT3"; break;
+         case DDS_COMPRESS_BC3:
+         case DDS_COMPRESS_BC3N: format = "DXT5"; break;
+         case DDS_COMPRESS_BC4:  format = "ATI1"; break;
+         case DDS_COMPRESS_BC5:  format = "ATI2"; break;
       }
       memcpy(hdr + 84, format, 4);
 
@@ -1391,14 +1393,6 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    gtk_widget_show(check);
    mipmap_check = check;
 
-   check = gtk_check_button_new_with_label("Swap red and alpha");
-   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check), ddsvals.swapRA);
-   gtk_box_pack_start(GTK_BOX(vbox), check, 0, 0, 0);
-   gtk_signal_connect(GTK_OBJECT(check), "clicked",
-                      GTK_SIGNAL_FUNC(toggle_clicked), &ddsvals.swapRA);
-   gtk_widget_show(check);
-   gtk_widget_set_sensitive(check, type == GIMP_RGBA_IMAGE);
-   
    if(is_volume && ddsvals.savetype == DDS_SAVE_VOLUMEMAP)
    {
       ddsvals.compression = DDS_COMPRESS_NONE;

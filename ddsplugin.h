@@ -27,7 +27,6 @@ typedef struct
 {
 	int compression;
 	int mipmaps;
-   int swapRA;
    int savetype;
    int format;
    int transindex;
