@@ -83,12 +83,12 @@ static struct
 } compression_strings[] =
 {
    {DDS_COMPRESS_NONE, "None"},
-   {DDS_COMPRESS_BC1,  "BC1 (DXT1)"},
-   {DDS_COMPRESS_BC2,  "BC2 (DXT3)"},
-   {DDS_COMPRESS_BC3,  "BC3 (DXT5)"},
-   {DDS_COMPRESS_BC3N, "BC3n (DXT5n)"},
-   {DDS_COMPRESS_BC4,  "BC4 (ATI1)"},
-   {DDS_COMPRESS_BC5,  "BC5 (ATI2)"},
+   {DDS_COMPRESS_BC1,  "BC1 / DXT1"},
+   {DDS_COMPRESS_BC2,  "BC2 / DXT3"},
+   {DDS_COMPRESS_BC3,  "BC3 / DXT5"},
+   {DDS_COMPRESS_BC3N, "BC3n / DXT5n"},
+   {DDS_COMPRESS_BC4,  "BC4 / ATI1"},
+   {DDS_COMPRESS_BC5,  "BC5 / ATI2"},
    {-1, 0}
 };
 
