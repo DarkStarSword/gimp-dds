@@ -34,7 +34,6 @@
 #include "dxt.h"
 #include "mipmap.h"
 #include "endian.h"
-#include "ycocg.h"
 
 static gint save_dialog(gint32 image_id, gint32 drawable);
 static void save_dialog_response(GtkWidget *widget, gint response_id, gpointer data);
@@ -83,15 +82,14 @@ static struct
    char *string;
 } compression_strings[] =
 {
-   {DDS_COMPRESS_NONE,       "None"},
-   {DDS_COMPRESS_BC1,        "BC1 / DXT1"},
-   {DDS_COMPRESS_BC2,        "BC2 / DXT3"},
-   {DDS_COMPRESS_BC3,        "BC3 / DXT5"},
-   {DDS_COMPRESS_BC3N,       "BC3n / DXT5n"},
-   {DDS_COMPRESS_BC4,        "BC4 / ATI1"},
-   {DDS_COMPRESS_BC5,        "BC5 / ATI2"},
-   {DDS_COMPRESS_YCOCG_DXT1, "YCoCg (DXT1)"},
-   {DDS_COMPRESS_YCOCG_DXT5, "YCoCg (DXT5)"},
+   {DDS_COMPRESS_NONE,  "None"},
+   {DDS_COMPRESS_BC1,   "BC1 / DXT1"},
+   {DDS_COMPRESS_BC2,   "BC2 / DXT3"},
+   {DDS_COMPRESS_BC3,   "BC3 / DXT5"},
+   {DDS_COMPRESS_BC3N,  "BC3n / DXT5n"},
+   {DDS_COMPRESS_BC4,   "BC4 / ATI1"},
+   {DDS_COMPRESS_BC5,   "BC5 / ATI2"},
+   {DDS_COMPRESS_YCOCG, "YCoCg (DXT5)"},
    {-1, 0}
 };
 
@@ -357,6 +355,10 @@ GimpPDBStatusType write_dds(gchar *filename, gint32 image_id, gint32 drawable_id
    (unsigned char)(((((r) >> 5) & 0x07) << 5) |\
                    ((((g) >> 5) & 0x07) << 2) |\
                    ((((b) >> 6) & 0x03)     ))
+
+#define TO_YCOCG_Y(r, g, b)  ((((r) + ((g) << 1) + (b)) + 2) >> 2)
+#define TO_YCOCG_CO(r, g, b) (((((r) << 1) - ((b) << 1)) + 2) >> 2)
+#define TO_YCOCG_CG(r, g, b) (((-(r) + ((g) << 1) - (b)) + 2) >> 2)
                   
 static void swap_rb(unsigned char *pixels, unsigned int n, int bpp)
 {
@@ -462,6 +464,12 @@ static void convert_pixels(unsigned char *dst, unsigned char *src,
             dst[2 * i + 0] = (unsigned char)((float)r * 0.3f + (float)g * 0.59f + (float)b * 0.11f);
             dst[2 * i + 1] = a;
             break;
+         case DDS_FORMAT_YCOCG:
+            dst[4 * i + 0] = TO_YCOCG_CO(r, g, b);
+            dst[4 * i + 1] = TO_YCOCG_CG(r, g, b);
+            dst[4 * i + 2] = a;
+            dst[4 * i + 3] = TO_YCOCG_Y(r, g, b);
+            break;
          default:
             break;
       }
@@ -560,6 +568,12 @@ static void convert_volume_pixels(unsigned char *dst, unsigned char *src,
             dst[2 * i + 0] = (unsigned char)((float)r * 0.3f + (float)g * 0.59f + (float)b * 0.11f);
             dst[2 * i + 1] = a;
             break;
+         case DDS_FORMAT_YCOCG:
+            dst[4 * i + 0] = TO_YCOCG_CO(r, g, b);
+            dst[4 * i + 1] = TO_YCOCG_CG(r, g, b);
+            dst[4 * i + 2] = a;
+            dst[4 * i + 3] = TO_YCOCG_Y(r, g, b);
+            break;
          default:
             break;
       }
@@ -627,6 +641,17 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
       }
    }
 
+   if(ddsvals.compression == DDS_COMPRESS_YCOCG)
+   {
+      fmtsize = w * h * 4;
+      fmtdst = g_malloc(fmtsize);
+      convert_pixels(fmtdst, src, DDS_FORMAT_YCOCG, w, h, bpp,
+                     palette, 1);
+      g_free(src);
+      src = fmtdst;
+      bpp = 4;
+   }
+   
    if(ddsvals.compression == DDS_COMPRESS_NONE)
    {
       if(mipmaps > 1)
@@ -1095,12 +1120,13 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
       PUTL32(hdr + 80, DDPF_FOURCC);
       switch(ddsvals.compression)
       {
-         case DDS_COMPRESS_BC1:  format = "DXT1"; break;
-         case DDS_COMPRESS_BC2:  format = "DXT3"; break;
+         case DDS_COMPRESS_BC1:   format = "DXT1"; break;
+         case DDS_COMPRESS_BC2:   format = "DXT3"; break;
          case DDS_COMPRESS_BC3:
-         case DDS_COMPRESS_BC3N: format = "DXT5"; break;
-         case DDS_COMPRESS_BC4:  format = "ATI1"; break;
-         case DDS_COMPRESS_BC5:  format = "ATI2"; break;
+         case DDS_COMPRESS_BC3N:
+         case DDS_COMPRESS_YCOCG: format = "DXT5"; break;
+         case DDS_COMPRESS_BC4:   format = "ATI1"; break;
+         case DDS_COMPRESS_BC5:   format = "ATI2"; break;
       }
       memcpy(hdr + 84, format, 4);
 

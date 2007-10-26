@@ -30,6 +30,6 @@ install: all
 	  
 dds.o: dds.c ddsplugin.h dds.h dxt.h
 ddsread.o: ddsread.c ddsplugin.h dds.h dxt.h endian.h
-ddswrite.o: ddswrite.c ddsplugin.h dds.h dxt.h endian.h ycocg.h
-dxt.o: dxt.c dds.h endian.h
-ycocg.o: ycocg.h
+ddswrite.o: ddswrite.c ddsplugin.h dds.h dxt.h endian.h
+dxt.o: dxt.c dds.h endian.h ycocg.h
+ycocg.o: ycocg.c ycocg.h

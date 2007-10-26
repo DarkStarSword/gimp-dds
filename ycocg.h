@@ -23,8 +23,6 @@
 #ifndef YCOCG_H
 #define YCOCG_H
 
-void compress_YCoCg_DXT1(unsigned char *dst, const unsigned char *src,
-                         int w, int h);
 void compress_YCoCg_DXT5(unsigned char *dst, const unsigned char *src,
                          int w, int h);
 

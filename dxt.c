@@ -35,6 +35,7 @@
 #include "dds.h"
 #include "endian.h"
 #include "mipmap.h"
+#include "ycocg.h"
 
 #ifdef USE_SOFTWARE_COMPRESSION
 #ifdef WIN32
@@ -286,13 +287,29 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
    int i, size, w, h;
    unsigned int offset;
    unsigned char *tmp;
-#ifdef USE_SOFTWARE_COMPRESSION   
    int j;
-   unsigned char *tmp2, *s, c;
-#endif
+   unsigned char *tmp2, *s;
    
    if(!(IS_POT(width) && IS_POT(height)))
       return(0);
+   
+   if(format == DDS_COMPRESS_YCOCG)
+   {
+      offset = 0;
+      w = width;
+      h = height;
+      s = src;
+      
+      for(i = 0; i < mipmaps; ++i)
+      {
+         compress_YCoCg_DXT5(dst + offset, s, w, h);
+         s += (w * h * bpp);
+         offset += get_mipmapped_size(w, h, 0, 0, 1, format);
+         if(w > 1) w >>= 1;
+         if(h > 1) h >>= 1;
+      }
+      return(1);
+   }
    
    switch(bpp)
    {
@@ -398,7 +415,7 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
    h = height;
    s = tmp;
 
-   if(format <= DDS_COMPRESS_BC3N)
+   if(format <= DDS_COMPRESS_BC3N || format == DDS_COMPRESS_YCOCG)
    {
       for(i = 0; i < mipmaps; ++i)
       {

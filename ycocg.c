@@ -85,7 +85,34 @@ static void scale_YCoCg(unsigned char *color, unsigned char *min_color,
 static void inset_YCoCg_bbox(unsigned char *min_color, unsigned char *max_color)
 {
    int inset[4], mini[4], maxi[4];
+
+   inset[0] = (max_color[0] - min_color[0]) - ((1 << (INSET_CSHIFT - 1)) - 1);
+   inset[1] = (max_color[1] - min_color[1]) - ((1 << (INSET_CSHIFT - 1)) - 1);
+   inset[3] = (max_color[3] - min_color[3]) - ((1 << (INSET_ASHIFT - 1)) - 1);
    
+   mini[0] = ((min_color[0] << INSET_CSHIFT) + inset[0]) >> INSET_CSHIFT;
+   mini[1] = ((min_color[1] << INSET_CSHIFT) + inset[1]) >> INSET_CSHIFT;
+   mini[3] = ((min_color[3] << INSET_ASHIFT) + inset[3]) >> INSET_ASHIFT;
+
+   maxi[0] = ((max_color[0] << INSET_CSHIFT) + inset[0]) >> INSET_CSHIFT;
+   maxi[1] = ((max_color[1] << INSET_CSHIFT) + inset[1]) >> INSET_CSHIFT;
+   maxi[3] = ((max_color[3] << INSET_ASHIFT) + inset[3]) >> INSET_ASHIFT;
+   
+   mini[0] = (mini[0] >= 0) ? mini[0] : 0;
+   mini[1] = (mini[1] >= 0) ? mini[1] : 0;
+   mini[3] = (mini[3] >= 0) ? mini[3] : 0;
+   
+   maxi[0] = (maxi[0] <= 255) ? maxi[0] : 0;
+   maxi[1] = (maxi[1] <= 255) ? maxi[1] : 0;
+   maxi[3] = (maxi[3] <= 255) ? maxi[3] : 0;
+   
+   min_color[0] = (mini[0] & 0xf8) | (mini[0] >> 5);
+   min_color[1] = (mini[1] & 0xfc) | (mini[1] >> 6);
+   min_color[3] = mini[3];
+   
+   max_color[0] = (maxi[0] & 0xf8) | (maxi[0] >> 5);
+   max_color[1] = (maxi[1] & 0xfc) | (maxi[1] >> 6);
+   max_color[3] = maxi[3];
 }
 
 static void select_YCoCg_diagonal(const unsigned char *color,
@@ -110,7 +137,11 @@ static void select_YCoCg_diagonal(const unsigned char *color,
    c0 = min_color[1];
    c1 = max_color[1];
    
-   c0 ^= c1 ^= mask &= c0 ^= c1;
+   //c0 ^= c1 ^= mask &= c0 ^= c1;
+   c0 ^= c1;
+   mask &= c0;
+   c1 ^= mask;
+   c0 ^= c1;
    
    min_color[1] = c0;
    max_color[1] = c1;
@@ -214,36 +245,6 @@ static int emit_color_indices(unsigned char *dst, const unsigned char * color,
    dst[3] = (result >> 24) & 0xff;
    
    return(4);
-}
-
-void compress_YCoCg_DXT1(unsigned char *dst, const unsigned char *src,
-                         int w, int h)
-{
-   unsigned char block[64], min_color[4], max_color[4];
-   unsigned short c0, c1;
-   int i, j;
-   
-   for(j = 0; j < h; j += 4, src += w * 4 * 4)
-   {
-      for(i = 0; i < w; i += 4)
-      {
-         extract_block(src + i * 4, w, block);
-         
-         get_min_max_YCoCg(block, min_color, max_color);
-         select_YCoCg_diagonal(block, min_color, max_color);
-         inset_YCoCg_bbox(min_color, max_color);
-         
-         c0 = RGB565(max_color);
-         c1 = RGB565(min_color);
-         
-         *dst++ = (c0     ) & 0xff;
-         *dst++ = (c0 >> 8) & 0xff;
-         *dst++ = (c1     ) & 0xff;
-         *dst++ = (c1 >> 8) & 0xff;
-         
-         dst += emit_color_indices(dst, block, min_color, max_color);
-      }
-   }
 }
 
 void compress_YCoCg_DXT5(unsigned char *dst, const unsigned char *src,
