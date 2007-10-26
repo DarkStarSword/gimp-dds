@@ -26,12 +26,14 @@
 typedef enum
 {
    DDS_COMPRESS_NONE = 0,
-   DDS_COMPRESS_BC1,   /* DXT1  */
-   DDS_COMPRESS_BC2,   /* DXT3  */
-   DDS_COMPRESS_BC3,   /* DXT5  */
-   DDS_COMPRESS_BC3N,  /* DXT5n */
-   DDS_COMPRESS_BC4,   /* ATI1  */
-   DDS_COMPRESS_BC5,   /* ATI2  */
+   DDS_COMPRESS_BC1,        /* DXT1  */
+   DDS_COMPRESS_BC2,        /* DXT3  */
+   DDS_COMPRESS_BC3,        /* DXT5  */
+   DDS_COMPRESS_BC3N,       /* DXT5n */
+   DDS_COMPRESS_BC4,        /* ATI1  */
+   DDS_COMPRESS_BC5,        /* ATI2  */
+   DDS_COMPRESS_YCOCG_DXT1, /* DXT1  */
+   DDS_COMPRESS_YCOCG_DXT5, /* DXT5  */
    DDS_COMPRESS_MAX
 } DDS_COMPRESSION_TYPE;
 

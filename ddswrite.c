@@ -34,6 +34,7 @@
 #include "dxt.h"
 #include "mipmap.h"
 #include "endian.h"
+#include "ycocg.h"
 
 static gint save_dialog(gint32 image_id, gint32 drawable);
 static void save_dialog_response(GtkWidget *widget, gint response_id, gpointer data);
@@ -82,13 +83,15 @@ static struct
    char *string;
 } compression_strings[] =
 {
-   {DDS_COMPRESS_NONE, "None"},
-   {DDS_COMPRESS_BC1,  "BC1 / DXT1"},
-   {DDS_COMPRESS_BC2,  "BC2 / DXT3"},
-   {DDS_COMPRESS_BC3,  "BC3 / DXT5"},
-   {DDS_COMPRESS_BC3N, "BC3n / DXT5n"},
-   {DDS_COMPRESS_BC4,  "BC4 / ATI1"},
-   {DDS_COMPRESS_BC5,  "BC5 / ATI2"},
+   {DDS_COMPRESS_NONE,       "None"},
+   {DDS_COMPRESS_BC1,        "BC1 / DXT1"},
+   {DDS_COMPRESS_BC2,        "BC2 / DXT3"},
+   {DDS_COMPRESS_BC3,        "BC3 / DXT5"},
+   {DDS_COMPRESS_BC3N,       "BC3n / DXT5n"},
+   {DDS_COMPRESS_BC4,        "BC4 / ATI1"},
+   {DDS_COMPRESS_BC5,        "BC5 / ATI2"},
+   {DDS_COMPRESS_YCOCG_DXT1, "YCoCg (DXT1)"},
+   {DDS_COMPRESS_YCOCG_DXT5, "YCoCg (DXT5)"},
    {-1, 0}
 };
 

@@ -9,7 +9,7 @@ LDFLAGS=-mwindows
 
 TARGET=dds.exe
 
-SRCS=dds.c ddsread.c ddswrite.c dxt.c mipmap.c
+SRCS=dds.c ddsread.c ddswrite.c dxt.c mipmap.c ycocg.c
 OBJS=$(SRCS:.c=.o)
 
 LIBS=`pkg-config --libs gtk+-2.0 gimp-2.0 gimpui-2.0` -lopengl32 -lglu32 \
@@ -31,6 +31,6 @@ install: all
 	  
 dds.o: dds.c ddsplugin.h dds.h dxt.h
 ddsread.o: ddsread.c ddsplugin.h dds.h dxt.h endian.h
-ddswrite.o: ddswrite.c ddsplugin.h dds.h dxt.h endian.h
+ddswrite.o: ddswrite.c ddsplugin.h dds.h dxt.h endian.h ycocg.h
 dxt.o: dxt.c dds.h endian.h
-
+ycocg.o: ycocg.h
