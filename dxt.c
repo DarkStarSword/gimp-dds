@@ -20,13 +20,14 @@
 	Boston, MA 02111-1307, USA.
 */
 
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
 #ifdef WIN32
 #include <windows.h>
 #else
 #include <dlfcn.h>
 #endif
-#include <string.h>
-#include <math.h>
 #include <GL/glew.h>
 #include <GL/glut.h>
 #include <glib.h>
@@ -94,6 +95,209 @@ char *initialize_opengl(void)
       glHint(GL_GENERATE_MIPMAP_HINT_SGIS, GL_NICEST);
 
    return(0);
+}
+
+static inline unsigned short rgb565(const unsigned char *c)
+{
+   return(((c[2] >> 3) << 11) | ((c[1] >> 2) << 5) | (c[0] >> 3));
+}
+
+static void extract_block(const unsigned char *src, int w,
+                          unsigned char *block)
+{
+   int i;
+   for(i = 0; i < 4; ++i)
+   {
+      memcpy(&block[i * 4 * 4], src, 4 * 4);
+      src += w * 4;
+   }
+}
+
+#define INSET_SHIFT 4
+
+static void get_min_max_colors(const unsigned char *block,
+                               unsigned char *min_color,
+                               unsigned char *max_color)
+{
+   int i;
+   unsigned char inset[3];
+   
+   min_color[0] = min_color[1] = min_color[2] = max_color[3] = 255;
+   max_color[0] = max_color[1] = max_color[2] = min_color[3] = 255;
+   
+   for(i = 0; i < 16; ++i)
+   {
+      if(block[i * 4 + 0] < min_color[0]) min_color[0] = block[i * 4 + 0];
+      if(block[i * 4 + 1] < min_color[1]) min_color[1] = block[i * 4 + 1];
+      if(block[i * 4 + 2] < min_color[2]) min_color[2] = block[i * 4 + 2];
+      if(block[i * 4 + 3] < min_color[3]) min_color[3] = block[i * 4 + 3];
+      if(block[i * 4 + 0] > max_color[0]) max_color[0] = block[i * 4 + 0];
+      if(block[i * 4 + 1] > max_color[1]) max_color[1] = block[i * 4 + 1];
+      if(block[i * 4 + 2] > max_color[2]) max_color[2] = block[i * 4 + 2];
+      if(block[i * 4 + 3] > max_color[3]) max_color[3] = block[i * 4 + 3];
+   }
+   
+   inset[0] = (max_color[0] - min_color[0]) >> INSET_SHIFT;
+   inset[1] = (max_color[1] - min_color[1]) >> INSET_SHIFT;
+   inset[2] = (max_color[2] - min_color[2]) >> INSET_SHIFT;
+   inset[3] = (max_color[3] - min_color[3]) >> INSET_SHIFT;
+   
+   min_color[0] = (min_color[0] + inset[0] <= 255) ? min_color[0] + inset[0] : 255;
+   min_color[1] = (min_color[1] + inset[1] <= 255) ? min_color[1] + inset[1] : 255;
+   min_color[2] = (min_color[2] + inset[2] <= 255) ? min_color[2] + inset[2] : 255;
+   min_color[3] = (min_color[3] + inset[3] <= 255) ? min_color[3] + inset[3] : 255;
+   
+   max_color[0] = (max_color[0] >= inset[0]) ? max_color[0] - inset[0] : 0;
+   max_color[1] = (max_color[1] >= inset[1]) ? max_color[1] - inset[1] : 0;
+   max_color[2] = (max_color[2] >= inset[2]) ? max_color[2] - inset[2] : 0;
+   max_color[3] = (max_color[3] >= inset[3]) ? max_color[3] - inset[3] : 0;
+}
+
+static void emit_color_indices(unsigned char *dst, const unsigned char *block,
+                               const unsigned char *min_color,
+                               const unsigned char *max_color)
+{
+   unsigned short c[4][3];
+   unsigned int result = 0;
+   int i, c0, c1, c2, d0, d1, d2, d3, b0, b1, b2, b3, b4, x0, x1, x2;
+   
+   c[0][0] = (max_color[2] & 0xf8) | (max_color[2] >> 5);
+   c[0][1] = (max_color[1] & 0xfc) | (max_color[1] >> 6);
+   c[0][2] = (max_color[0] & 0xf8) | (max_color[0] >> 5);
+   c[1][0] = (min_color[2] & 0xf8) | (min_color[2] >> 5);
+   c[1][1] = (min_color[1] & 0xfc) | (min_color[1] >> 6);
+   c[1][2] = (min_color[0] & 0xf8) | (min_color[0] >> 5);
+   c[2][0] = (2 * c[0][0] + 1 * c[1][0]) / 3;
+   c[2][1] = (2 * c[0][1] + 1 * c[1][1]) / 3;
+   c[2][2] = (2 * c[0][2] + 1 * c[1][2]) / 3;
+   c[3][0] = (1 * c[0][0] + 2 * c[1][0]) / 3;
+   c[3][1] = (1 * c[0][1] + 2 * c[1][1]) / 3;
+   c[3][2] = (1 * c[0][2] + 2 * c[1][2]) / 3;
+   
+   for(i = 15; i >= 0; --i)
+   {
+      c0 = block[i * 4 + 2];
+      c1 = block[i * 4 + 1];
+      c2 = block[i * 4 + 0];
+      
+      d0 = abs(c[0][0] - c0) + abs(c[0][1] - c1) + abs(c[0][2] - c2);
+      d1 = abs(c[1][0] - c0) + abs(c[1][1] - c1) + abs(c[1][2] - c2);
+      d2 = abs(c[2][0] - c0) + abs(c[2][1] - c1) + abs(c[2][2] - c2);
+      d3 = abs(c[3][0] - c0) + abs(c[3][1] - c1) + abs(c[3][2] - c2);
+      
+      b0 = d0 > d3;
+      b1 = d1 > d2;
+      b2 = d0 > d2;
+      b3 = d1 > d3;
+      b4 = d2 > d3;
+      
+      x0 = b1 & b2;
+      x1 = b0 & b3;
+      x2 = b0 & b4;
+      
+      result |= (x2 | ((x0 | x1) << 1)) << (i << 1);
+   }
+
+   dst[0] = (result      ) & 0xff;
+   dst[1] = (result >>  8) & 0xff;
+   dst[2] = (result >> 16) & 0xff;
+   dst[3] = (result >> 24) & 0xff;
+}
+
+static void emit_alpha_indices_DXT5(unsigned char *dst, const unsigned char *block,
+                                    unsigned char min_alpha, unsigned char max_alpha)
+{
+   unsigned char indices[16];
+   unsigned char mid = (max_alpha - min_alpha) / (2 * 7);
+   unsigned char a, ab1, ab2, ab3, ab4, ab5, ab6, ab7;
+   int i, b1, b2, b3, b4, b5, b6, b7, index;
+   
+   ab1 = min_alpha + mid;
+   ab2 = (6 * max_alpha + 1 * min_alpha) / 7 + mid;
+   ab3 = (5 * max_alpha + 2 * min_alpha) / 7 + mid;
+   ab4 = (4 * max_alpha + 3 * min_alpha) / 7 + mid;
+   ab5 = (3 * max_alpha + 4 * min_alpha) / 7 + mid;
+   ab6 = (2 * max_alpha + 5 * min_alpha) / 7 + mid;
+   ab7 = (1 * max_alpha + 6 * min_alpha) / 7 + mid;
+   
+   block += 3;
+   
+   for(i = 0; i < 16; ++i)
+   {
+      a = block[i * 4];
+      b1 = (a <= ab1);
+      b2 = (a <= ab2);
+      b3 = (a <= ab3);
+      b4 = (a <= ab4);
+      b5 = (a <= ab5);
+      b6 = (a <= ab6);
+      b7 = (a <= ab7);
+      index = (b1 + b2 + b3 + b4 + b5 + b6 + b7 + 1) & 7;
+      indices[i] = index ^ (2 > index);
+   }
+   
+   dst[0] = (indices[ 0] >> 0) | (indices[ 1] << 3) | (indices[ 2] << 6);
+   dst[1] = (indices[ 2] >> 2) | (indices[ 3] << 1) | (indices[ 4] << 4) | (indices[ 5] << 7);
+   dst[2] = (indices[ 5] >> 1) | (indices[ 6] << 2) | (indices[ 7] << 5);
+   dst[3] = (indices[ 8] >> 0) | (indices[ 9] << 3) | (indices[10] << 6);
+   dst[4] = (indices[10] >> 2) | (indices[11] << 1) | (indices[12] << 4) | (indices[ 5] << 7);
+   dst[5] = (indices[13] >> 1) | (indices[14] << 2) | (indices[15] << 5);
+}
+
+static void compress_DXT1(unsigned char *dst, const unsigned char *src,
+                          int w, int h)
+{
+   unsigned char block[64];
+   unsigned char min_color[4], max_color[4];
+   int x, y, c0, c1;
+   
+   for(y = 0; y < h; y += 4, src += w * 4 * 4)
+   {
+      for(x = 0; x < w; x += 4)
+      {
+         extract_block(src + x * 4, w, block);
+         get_min_max_colors(block, min_color, max_color);
+         
+         c0 = rgb565(max_color);
+         c1 = rgb565(min_color);
+         *dst++ = (c0     ) & 0xff;
+         *dst++ = (c0 >> 8) & 0xff;
+         *dst++ = (c1     ) & 0xff;
+         *dst++ = (c1 >> 8) & 0xff;
+         emit_color_indices(dst, block, min_color, max_color);
+         dst += 4;
+      }
+   }
+}
+
+static void compress_DXT5(unsigned char *dst, const unsigned char *src,
+                          int w, int h)
+{
+   unsigned char block[64];
+   unsigned char min_color[4], max_color[4];
+   int x, y, c0, c1;
+   
+   for(y = 0; y < h; y += 4, src += w * 4 * 4)
+   {
+      for(x = 0; x < w; x += 4)
+      {
+         extract_block(src + x * 4, w, block);
+         get_min_max_colors(block, min_color, max_color);
+         
+         *dst++ = max_color[3];
+         *dst++ = min_color[3];
+         emit_alpha_indices_DXT5(dst, block, min_color[3], max_color[3]);
+         dst += 6;
+         
+         c0 = rgb565(max_color);
+         c1 = rgb565(min_color);
+         *dst++ = (c0     ) & 0xff;
+         *dst++ = (c0 >> 8) & 0xff;
+         *dst++ = (c1     ) & 0xff;
+         *dst++ = (c1 >> 8) & 0xff;
+         emit_color_indices(dst, block, min_color, max_color);
+      }
+   }
 }
 
 static void compress_3dc(unsigned char *dst, unsigned char *src,
