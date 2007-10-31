@@ -8,7 +8,7 @@ LDFLAGS=
 
 TARGET=dds
 
-SRCS=dds.c ddsread.c ddswrite.c dxt.c mipmap.c ycocg.c
+SRCS=dds.c ddsread.c ddswrite.c dxt.c mipmap.c
 OBJS=$(SRCS:.c=.o)
 
 LIBS=`pkg-config --libs gtk+-2.0 gimp-2.0 gimpui-2.0` -L/usr/X11R6/lib \
@@ -31,5 +31,4 @@ install: all
 dds.o: dds.c ddsplugin.h dds.h dxt.h
 ddsread.o: ddsread.c ddsplugin.h dds.h dxt.h endian.h
 ddswrite.o: ddswrite.c ddsplugin.h dds.h dxt.h endian.h
-dxt.o: dxt.c dds.h endian.h ycocg.h
-ycocg.o: ycocg.c ycocg.h
+dxt.o: dxt.c dds.h endian.h

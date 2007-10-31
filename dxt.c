@@ -35,7 +35,6 @@
 #include "dds.h"
 #include "endian.h"
 #include "mipmap.h"
-#include "ycocg.h"
 
 #ifdef USE_SOFTWARE_COMPRESSION
 #ifdef WIN32
@@ -293,24 +292,6 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
    if(!(IS_POT(width) && IS_POT(height)))
       return(0);
    
-   if(format == DDS_COMPRESS_YCOCG)
-   {
-      offset = 0;
-      w = width;
-      h = height;
-      s = src;
-      
-      for(i = 0; i < mipmaps; ++i)
-      {
-         compress_YCoCg_DXT5(dst + offset, s, w, h);
-         s += (w * h * bpp);
-         offset += get_mipmapped_size(w, h, 0, 0, 1, format);
-         if(w > 1) w >>= 1;
-         if(h > 1) h >>= 1;
-      }
-      return(1);
-   }
-   
    switch(bpp)
    {
       case 1: type = GL_LUMINANCE;       break;
@@ -327,7 +308,8 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
    else if(format == DDS_COMPRESS_BC2)
       internal = GL_COMPRESSED_RGBA_S3TC_DXT3_EXT;
    else if(format == DDS_COMPRESS_BC3 ||
-           format == DDS_COMPRESS_BC3N)
+           format == DDS_COMPRESS_BC3N ||
+           format == DDS_COMPRESS_YCOCG)
       internal = GL_COMPRESSED_RGBA_S3TC_DXT5_EXT;
    
 #ifdef USE_SOFTWARE_COMPRESSION   
@@ -433,7 +415,7 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
    
 #else
    
-   if(format >= DDS_COMPRESS_BC4)
+   if(format == DDS_COMPRESS_BC4 || format == DDS_COMPRESS_BC5)
    {
       size = get_mipmapped_size(width, height, 4, 0, mipmaps, DDS_COMPRESS_NONE);
       tmp = g_malloc(size);

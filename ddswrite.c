@@ -356,9 +356,9 @@ GimpPDBStatusType write_dds(gchar *filename, gint32 image_id, gint32 drawable_id
                    ((((g) >> 5) & 0x07) << 2) |\
                    ((((b) >> 6) & 0x03)     ))
 
-#define TO_YCOCG_Y(r, g, b)  ((((r) + ((g) << 1) + (b)) + 2) >> 2)
-#define TO_YCOCG_CO(r, g, b) (((((r) << 1) - ((b) << 1)) + 2) >> 2)
-#define TO_YCOCG_CG(r, g, b) (((-(r) + ((g) << 1) - (b)) + 2) >> 2)
+#define TO_YCOCG_Y(r, g, b)  (((  (r) +      ((g) << 1) +  (b)      ) + 2) >> 2)
+#define TO_YCOCG_CO(r, g, b) ((( ((r) << 1)             - ((b) << 1)) + 2) >> 2)
+#define TO_YCOCG_CG(r, g, b) ((( -(r) +      ((g) << 1) -  (b)      ) + 2) >> 2)
                   
 static void swap_rb(unsigned char *pixels, unsigned int n, int bpp)
 {
@@ -465,11 +465,15 @@ static void convert_pixels(unsigned char *dst, unsigned char *src,
             dst[2 * i + 1] = a;
             break;
          case DDS_FORMAT_YCOCG:
-            dst[4 * i + 0] = TO_YCOCG_CO(r, g, b);
-            dst[4 * i + 1] = TO_YCOCG_CG(r, g, b);
-            dst[4 * i + 2] = a;
+         {
+            int co = TO_YCOCG_CO(r, g, b) + 128;
+            int cg = TO_YCOCG_CG(r, g, b) + 128;
+            dst[4 * i + 0] = a;
+            dst[4 * i + 1] = (cg < 0 ? 0 : (cg > 255 ? 255 : cg));
+            dst[4 * i + 2] = (co < 0 ? 0 : (co > 255 ? 255 : co));
             dst[4 * i + 3] = TO_YCOCG_Y(r, g, b);
             break;
+         }
          default:
             break;
       }
@@ -569,11 +573,15 @@ static void convert_volume_pixels(unsigned char *dst, unsigned char *src,
             dst[2 * i + 1] = a;
             break;
          case DDS_FORMAT_YCOCG:
-            dst[4 * i + 0] = TO_YCOCG_CO(r, g, b);
-            dst[4 * i + 1] = TO_YCOCG_CG(r, g, b);
-            dst[4 * i + 2] = a;
+         {
+            int co = TO_YCOCG_CO(r, g, b) + 128;
+            int cg = TO_YCOCG_CG(r, g, b) + 128;
+            dst[4 * i + 0] = a;
+            dst[4 * i + 1] = (cg < 0 ? 0 : (cg > 255 ? 255 : cg));
+            dst[4 * i + 2] = (co < 0 ? 0 : (co > 255 ? 255 : co));
             dst[4 * i + 3] = TO_YCOCG_Y(r, g, b);
             break;
+         }
          default:
             break;
       }
@@ -641,7 +649,7 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
       }
    }
 
-   if(ddsvals.compression == DDS_COMPRESS_YCOCG)
+   if(ddsvals.compression == DDS_COMPRESS_YCOCG) /* convert to YCoCG */
    {
       fmtsize = w * h * 4;
       fmtdst = g_malloc(fmtsize);
