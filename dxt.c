@@ -414,8 +414,8 @@ static void compress_BC4(unsigned char *dst, const unsigned char *src,
       {
          extract_block(src + x * 4, w, block);
          
-         get_min_max_channel(block, 0, &dst[1], &dst[0]);
-         emit_alpha_indices_DXT5(&dst[2], block - 3, dst[1], dst[0]);
+         get_min_max_channel(block, 2, &dst[1], &dst[0]);
+         emit_alpha_indices_DXT5(&dst[2], block - 1, dst[1], dst[0]);
          dst += 8;
       }
    }
@@ -437,8 +437,8 @@ static void compress_BC5(unsigned char *dst, const unsigned char *src,
          emit_alpha_indices_DXT5(&dst[2], block - 2, dst[1], dst[0]);
          dst += 8;
          
-         get_min_max_channel(block, 0, &dst[1], &dst[0]);
-         emit_alpha_indices_DXT5(&dst[2], block - 3, dst[1], dst[0]);
+         get_min_max_channel(block, 2, &dst[1], &dst[0]);
+         emit_alpha_indices_DXT5(&dst[2], block - 1, dst[1], dst[0]);
          dst += 8;
       }
    }
@@ -510,25 +510,15 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
       
       for(i = j = 0; j < size; i += 3, j += 4)
       {
-         tmp2[j + 0] = tmp[i + 2];
+         tmp2[j + 0] = tmp[i + 0];
          tmp2[j + 1] = tmp[i + 1];
-         tmp2[j + 2] = tmp[i + 0];
+         tmp2[j + 2] = tmp[i + 2];
          tmp2[j + 3] = 255;
       }
       
       g_free(tmp);
       tmp = tmp2;
       bpp = 4;
-   }
-   else /* bpp == 4 */
-   {
-      /* we want BGRA pixels */
-      for(i = 0; i < size; i += bpp)
-      {
-         c = tmp[i];
-         tmp[i] = tmp[i + 2];
-         tmp[i + 2] = c;
-      }
    }
    
    offset = 0;

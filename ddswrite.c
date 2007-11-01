@@ -468,9 +468,9 @@ static void convert_pixels(unsigned char *dst, unsigned char *src,
          {
             int co = TO_YCOCG_CO(r, g, b) + 128;
             int cg = TO_YCOCG_CG(r, g, b) + 128;
-            dst[4 * i + 0] = (co < 0 ? 0 : (co > 255 ? 255 : co));
+            dst[4 * i + 0] = a;
             dst[4 * i + 1] = (cg < 0 ? 0 : (cg > 255 ? 255 : cg));
-            dst[4 * i + 2] = a;
+            dst[4 * i + 2] = (co < 0 ? 0 : (co > 255 ? 255 : co));
             dst[4 * i + 3] = TO_YCOCG_Y(r, g, b);
             break;
          }
@@ -576,9 +576,9 @@ static void convert_volume_pixels(unsigned char *dst, unsigned char *src,
          {
             int co = TO_YCOCG_CO(r, g, b) + 128;
             int cg = TO_YCOCG_CG(r, g, b) + 128;
-            dst[4 * i + 0] = (co < 0 ? 0 : (co > 255 ? 255 : co));
+            dst[4 * i + 0] = a;
             dst[4 * i + 1] = (cg < 0 ? 0 : (cg > 255 ? 255 : cg));
-            dst[4 * i + 2] = a;
+            dst[4 * i + 2] = (co < 0 ? 0 : (co > 255 ? 255 : co));
             dst[4 * i + 3] = TO_YCOCG_Y(r, g, b);
             break;
          }
