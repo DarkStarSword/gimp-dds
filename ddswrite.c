@@ -89,6 +89,7 @@ static struct
    {DDS_COMPRESS_BC3N,  "BC3n / DXT5n"},
    {DDS_COMPRESS_BC4,   "BC4 / ATI1"},
    {DDS_COMPRESS_BC5,   "BC5 / ATI2"},
+   {DDS_COMPRESS_AMUL,  "Alpha Mul. (DXT5)"},
    {DDS_COMPRESS_YCOCG, "YCoCg (DXT5)"},
    {-1, 0}
 };
@@ -373,6 +374,45 @@ static void swap_rb(unsigned char *pixels, unsigned int n, int bpp)
    }
 }
 
+static void alpha_mul(unsigned char *dst, int r, int g, int b, int a)
+{
+   float ar, ag, ab, aa;
+   
+   ar = (float)r / 255.0f;
+   ag = (float)g / 255.0f;
+   ab = (float)b / 255.0f;
+   
+   if(ar > ag)
+   {
+      if(ar > ab)
+         aa = ar;
+      else
+         aa = ab;
+   }
+   else if(ag > ab)
+      aa = ag;
+   else
+      aa = ab;
+   
+   if(aa < 1e-04f)
+   {
+      dst[0] = b;
+      dst[1] = g;
+      dst[2] = r;
+      dst[3] = a;
+      return;
+   }
+   
+   ar /= aa;
+   ag /= aa;
+   ab /= aa;
+
+   dst[0] = (int)(ab * 255);
+   dst[1] = (int)(ag * 255);
+   dst[2] = (int)(ar * 255);
+   dst[3] = (int)(aa * a);
+}
+
 static void convert_pixels(unsigned char *dst, unsigned char *src,
                            int format, int w, int h, int bpp,
                            unsigned char *palette, int mipmaps)
@@ -474,6 +514,9 @@ static void convert_pixels(unsigned char *dst, unsigned char *src,
             dst[4 * i + 3] = TO_YCOCG_Y(r, g, b);
             break;
          }
+         case DDS_FORMAT_AMUL:
+            alpha_mul(&dst[4 * i], r, g, b, a);
+            break;
          default:
             break;
       }
@@ -582,6 +625,9 @@ static void convert_volume_pixels(unsigned char *dst, unsigned char *src,
             dst[4 * i + 3] = TO_YCOCG_Y(r, g, b);
             break;
          }
+         case DDS_FORMAT_AMUL:
+            alpha_mul(&dst[4 * i], r, g, b, a);
+            break;
          default:
             break;
       }
@@ -654,6 +700,17 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
       fmtsize = w * h * 4;
       fmtdst = g_malloc(fmtsize);
       convert_pixels(fmtdst, src, DDS_FORMAT_YCOCG, w, h, bpp,
+                     palette, 1);
+      g_free(src);
+      src = fmtdst;
+      bpp = 4;
+   }
+   
+   if(ddsvals.compression == DDS_COMPRESS_AMUL)
+   {
+      fmtsize = w * h * 4;
+      fmtdst = g_malloc(fmtsize);
+      convert_pixels(fmtdst, src, DDS_FORMAT_AMUL, w, h, bpp,
                      palette, 1);
       g_free(src);
       src = fmtdst;
@@ -1132,7 +1189,8 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
          case DDS_COMPRESS_BC2:   format = "DXT3"; break;
          case DDS_COMPRESS_BC3:
          case DDS_COMPRESS_BC3N:
-         case DDS_COMPRESS_YCOCG: format = "DXT5"; break;
+         case DDS_COMPRESS_YCOCG:
+         case DDS_COMPRESS_AMUL:  format = "DXT5"; break;
          case DDS_COMPRESS_BC4:   format = "ATI1"; break;
          case DDS_COMPRESS_BC5:   format = "ATI2"; break;
       }

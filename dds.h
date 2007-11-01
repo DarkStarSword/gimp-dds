@@ -32,6 +32,7 @@ typedef enum
    DDS_COMPRESS_BC3N,       /* DXT5n */
    DDS_COMPRESS_BC4,        /* ATI1  */
    DDS_COMPRESS_BC5,        /* ATI2  */
+   DDS_COMPRESS_AMUL,       /* DXT5  */
    DDS_COMPRESS_YCOCG,      /* DXT5  */
    DDS_COMPRESS_MAX
 } DDS_COMPRESSION_TYPE;
@@ -58,6 +59,7 @@ typedef enum
    DDS_FORMAT_R3G3B2,
    DDS_FORMAT_L8,
    DDS_FORMAT_L8A8,
+   DDS_FORMAT_AMUL,
    DDS_FORMAT_YCOCG,
    DDS_FORMAT_MAX
 } DDS_FORMAT_TYPE;
