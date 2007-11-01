@@ -31,7 +31,7 @@
 
 #include "ddsplugin.h"
 #include "dds.h"
-#include "dxt.h"
+#include "opengl.h"
 
 FILE *errFile;
 gchar *prog_name = "dds";

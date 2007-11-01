@@ -20,14 +20,30 @@
 	Boston, MA 02111-1307, USA.
 */
 
-#ifndef DXT_H
-#define DXT_H
+#include <stdlib.h>
+#include <string.h>
+#include <GL/glew.h>
+#include <GL/glut.h>
 
-int dxt_compress(unsigned char *dst, unsigned char *src, int format,
-                 unsigned int width, unsigned int height, int bpp,
-                 int mipmaps);
-int dxt_decompress(unsigned char *dst, unsigned char *src, int format,
-                   unsigned int size, unsigned int width, unsigned int height,
-                   int bpp);
+char *initialize_opengl(void)
+{
+   int argc = 1, err;
+   char *argv[] = { "dds" };
 
-#endif
+   glutInit(&argc, argv);
+   glutInitDisplayMode(GLUT_RGBA);
+   glutInitWindowSize(1, 1);
+   glutCreateWindow("GIMP DDS");
+
+   err = glewInit();
+   if(err != GLEW_OK)
+      return((char*)glewGetErrorString(err));
+
+   glPixelStorei(GL_PACK_ALIGNMENT, 1);
+   glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+   if(GLEW_SGIS_generate_mipmap)
+      glHint(GL_GENERATE_MIPMAP_HINT_SGIS, GL_NICEST);
+
+   return(NULL);
+}

@@ -20,14 +20,9 @@
 	Boston, MA 02111-1307, USA.
 */
 
-#ifndef DXT_H
-#define DXT_H
+#ifndef OPENGL_H
+#define OPENGL_H
 
-int dxt_compress(unsigned char *dst, unsigned char *src, int format,
-                 unsigned int width, unsigned int height, int bpp,
-                 int mipmaps);
-int dxt_decompress(unsigned char *dst, unsigned char *src, int format,
-                   unsigned int size, unsigned int width, unsigned int height,
-                   int bpp);
+char *initialize_opengl(void);
 
 #endif
