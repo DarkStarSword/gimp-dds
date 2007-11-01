@@ -31,7 +31,6 @@
 
 #include "ddsplugin.h"
 #include "dds.h"
-#include "opengl.h"
 
 FILE *errFile;
 gchar *prog_name = "dds";
@@ -128,7 +127,6 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
 	gint32 imageID;
 	gint32 drawableID;
 	GimpExportReturn export = GIMP_EXPORT_CANCEL;
-   char *error;
 	
 	run_mode = param[0].data.d_int32;
 	
@@ -138,13 +136,6 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
 	values[0].type = GIMP_PDB_STATUS;
 	values[0].data.d_status = GIMP_PDB_EXECUTION_ERROR;
    
-   error = initialize_opengl();
-   if(error)
-   {
-      g_message(error);
-      return;
-   }
-	
 	if(!strcmp(name, LOAD_PROC))
 	{
 		switch(run_mode)

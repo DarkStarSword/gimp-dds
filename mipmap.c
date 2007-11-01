@@ -22,8 +22,6 @@
 
 #include <string.h>
 #include <math.h>
-#include <GL/glew.h>
-#include <GL/glut.h>
 
 #include "dds.h"
 #include "mipmap.h"
@@ -215,9 +213,9 @@ static void scale_image_nearest(unsigned char *dst, int dw, int dh,
    }
 }
 
-int generate_mipmaps_software(unsigned char *dst, unsigned char *src,
-                              unsigned int width, unsigned int height,
-                              int bpp, int indexed, int mipmaps)
+int generate_mipmaps(unsigned char *dst, unsigned char *src,
+                     unsigned int width, unsigned int height, int bpp,
+                     int indexed, int mipmaps)
 {
    int i;
    unsigned int w, h;
@@ -237,55 +235,6 @@ int generate_mipmaps_software(unsigned char *dst, unsigned char *src,
          scale_image_nearest(dst + offset, w, h, src, width, height, bpp);
       else
          scale_image_cubic(dst + offset, w, h, src, width, height, bpp);
-
-      offset += (w * h * bpp);
-   }
-   
-   return(1);
-}
-
-int generate_mipmaps(unsigned char *dst, unsigned char *src,
-                     unsigned int width, unsigned int height, int bpp,
-                     int indexed, int mipmaps)
-{
-   int i;
-   unsigned int w, h;
-   GLenum internal = 0;
-   GLenum format = 0;
-   unsigned int offset;
-   
-   if(!GLEW_SGIS_generate_mipmap || indexed ||
-      (!(IS_POT(width) && IS_POT(height)) &&
-       !GLEW_ARB_texture_non_power_of_two))
-   {
-      return(generate_mipmaps_software(dst, src, width, height, bpp, indexed,
-                                       mipmaps));
-   }
-   
-   switch(bpp)
-   {
-      case 1: internal = format = GL_LUMINANCE;       break;
-      case 2: internal = format = GL_LUMINANCE_ALPHA; break;
-      case 3: internal = GL_RGB; format = GL_BGR;     break;
-      case 4: internal = GL_RGBA; format = GL_BGRA;   break;
-   }
-   
-   glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP_SGIS, GL_TRUE);
-   glTexImage2D(GL_TEXTURE_2D, 0, internal, width, height, 0,
-                format, GL_UNSIGNED_BYTE, src);
-   
-   memcpy(dst, src, width * height * bpp);
-   
-   offset = width * height * bpp;
-   
-   for(i = 1; i < mipmaps; ++i)
-   {
-      w = width  >> i;
-      h = height >> i;
-      if(w < 1) w = 1;
-      if(h < 1) h = 1;
-      
-      glGetTexImage(GL_TEXTURE_2D, i, format, GL_UNSIGNED_BYTE, dst + offset);
 
       offset += (w * h * bpp);
    }
@@ -442,10 +391,10 @@ static void scale_volume_image_nearest(unsigned char *dst, int dw, int dh, int d
    }
 }
 
-static int generate_volume_mipmaps_software(unsigned char *dst, unsigned char *src,
-                                            unsigned int width, unsigned int height,
-                                            unsigned int depth, int bpp, int indexed,
-                                            int mipmaps)
+int generate_volume_mipmaps(unsigned char *dst, unsigned char *src,
+                            unsigned int width, unsigned int height,
+                            unsigned int depth, int bpp, int indexed,
+                            int mipmaps)
 {
    int i;
    unsigned int w, h, d;
@@ -475,58 +424,6 @@ static int generate_volume_mipmaps_software(unsigned char *dst, unsigned char *s
       }
 
       offset += (w * h * d * bpp);
-   }
-   
-   return(1);
-}
-
-int generate_volume_mipmaps(unsigned char *dst, unsigned char *src,
-                            unsigned int width, unsigned int height,
-                            unsigned int depth, int bpp, int indexed,
-                            int mipmaps)
-{
-   int i;
-   unsigned int w, h, d;
-   GLenum internal = 0;
-   GLenum format = 0;
-   unsigned int offset;
-
-   if(!GLEW_SGIS_generate_mipmap || indexed || 
-      (!(IS_POT(width) && IS_POT(height) && IS_POT(depth)) &&
-       !GLEW_ARB_texture_non_power_of_two))
-   {
-      return(generate_volume_mipmaps_software(dst, src, width, height, depth, bpp,
-                                              indexed, mipmaps));
-   }
-
-   switch(bpp)
-   {
-      case 1: internal = format = GL_LUMINANCE;       break;
-      case 2: internal = format = GL_LUMINANCE_ALPHA; break;
-      case 3: internal = GL_RGB; format = GL_BGR;     break;
-      case 4: internal = GL_RGBA; format = GL_BGRA;   break;
-   }
-
-   glTexParameteri(GL_TEXTURE_3D, GL_GENERATE_MIPMAP_SGIS, GL_TRUE);
-   glTexImage3D(GL_TEXTURE_3D, 0, internal, width, height, depth, 0,
-                format, GL_UNSIGNED_BYTE, src);
-
-   memcpy(dst, src, width * height * bpp * depth);
-   
-   offset = width * height * bpp * depth;
-   
-   for(i = 1; i < mipmaps; ++i)
-   {
-      w = width >> i;
-      h = height >> i;
-      d = depth >> i;
-      if(w < 1) w = 1;
-      if(h < 1) h = 1;
-      if(d < 1) d = 1;
-      
-      glGetTexImage(GL_TEXTURE_3D, i, format, GL_UNSIGNED_BYTE, dst + offset);
-
-      offset += (w * h * bpp * d);
    }
    
    return(1);

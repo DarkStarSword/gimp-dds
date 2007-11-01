@@ -452,7 +452,7 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
    unsigned int offset;
    unsigned char *tmp;
    int j;
-   unsigned char *tmp2, *s, c;
+   unsigned char *tmp2, *s;
    
    if(!(IS_POT(width) && IS_POT(height)))
       return(0);
@@ -460,7 +460,7 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
    size = get_mipmapped_size(width, height, bpp, 0, mipmaps,
                              DDS_COMPRESS_NONE);
    tmp = g_malloc(size);
-   generate_mipmaps_software(tmp, src, width, height, bpp, 0, mipmaps);
+   generate_mipmaps(tmp, src, width, height, bpp, 0, mipmaps);
 
    if(bpp == 1)
    {
