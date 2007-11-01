@@ -256,10 +256,7 @@ static void emit_color_indices(unsigned char *dst, const unsigned char *block,
       result |= (x2 | ((x0 | x1) << 1)) << (i << 1);
    }
 
-   dst[0] = (result      ) & 0xff;
-   dst[1] = (result >>  8) & 0xff;
-   dst[2] = (result >> 16) & 0xff;
-   dst[3] = (result >> 24) & 0xff;
+   PUTL32(dst, result);
 }
 
 static void emit_alpha_data_DXT3(unsigned char *dst, const unsigned char *block)
@@ -332,12 +329,10 @@ static void compress_DXT1(unsigned char *dst, const unsigned char *src,
          
          c0 = rgb565(max_color);
          c1 = rgb565(min_color);
-         *dst++ = (c0     ) & 0xff;
-         *dst++ = (c0 >> 8) & 0xff;
-         *dst++ = (c1     ) & 0xff;
-         *dst++ = (c1 >> 8) & 0xff;
-         emit_color_indices(dst, block, min_color, max_color);
-         dst += 4;
+         PUTL16(&dst[0], c0);
+         PUTL16(&dst[2], c1);
+         emit_color_indices(&dst[4], block, min_color, max_color);
+         dst += 8;
       }
    }
 }
@@ -361,12 +356,10 @@ static void compress_DXT3(unsigned char *dst, const unsigned char *src,
          
          c0 = rgb565(max_color);
          c1 = rgb565(min_color);
-         *dst++ = (c0     ) & 0xff;
-         *dst++ = (c0 >> 8) & 0xff;
-         *dst++ = (c1     ) & 0xff;
-         *dst++ = (c1 >> 8) & 0xff;
-         emit_color_indices(dst, block, min_color, max_color);
-         dst += 4;
+         PUTL16(&dst[0], c0);
+         PUTL16(&dst[2], c1);
+         emit_color_indices(&dst[4], block, min_color, max_color);
+         dst += 8;
       }
    }
 }
@@ -392,12 +385,10 @@ static void compress_DXT5(unsigned char *dst, const unsigned char *src,
          
          c0 = rgb565(max_color);
          c1 = rgb565(min_color);
-         *dst++ = (c0     ) & 0xff;
-         *dst++ = (c0 >> 8) & 0xff;
-         *dst++ = (c1     ) & 0xff;
-         *dst++ = (c1 >> 8) & 0xff;
-         emit_color_indices(dst, block, min_color, max_color);
-         dst += 4;
+         PUTL16(&dst[0], c0);
+         PUTL16(&dst[2], c1);
+         emit_color_indices(&dst[4], block, min_color, max_color);
+         dst += 8;
       }
    }
 }
