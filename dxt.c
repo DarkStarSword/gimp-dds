@@ -31,15 +31,12 @@
 
 #include "dxt_tables.h"
 
+#ifndef MIN
+#define MIN(a, b)  ((a) < (b) ? (a) : (b))
+#endif
 #ifndef MAX
 #define MAX(a, b)  ((a) > (b) ? (a) : (b))
 #endif
-
-/* convert BGR8 to RGB565 */
-static inline unsigned short rgb565(const unsigned char *c)
-{
-   return(((c[2] >> 3) << 11) | ((c[1] >> 2) << 5) | (c[0] >> 3));
-}
 
 /* extract 4x4 BGRA block */
 static void extract_block(const unsigned char *src, int w,
@@ -59,7 +56,14 @@ static inline int mul8bit(int a, int b)
    return((t + (t >> 8)) >> 8);
 }
 
-static void from_16bit(unsigned char *dst, unsigned short v)
+/* pack BGR8 to RGB565 */
+static inline unsigned short pack_rgb565(const unsigned char *c)
+{
+   return(((c[2] >> 3) << 11) | ((c[1] >> 2) << 5) | (c[0] >> 3));
+}
+
+/* unpack RGB565 to BGR */
+static void unpack_rgb565(unsigned char *dst, unsigned short v)
 {
    int rv = (v & 0xf800) >> 11;
    int gv = (v & 0x07e0) >>  5;
@@ -318,8 +322,8 @@ static void optimize_colors_block(const unsigned char *block,
       }
    }
 
-   *max16 = rgb565(mxc);
-   *min16 = rgb565(mnc);
+   *max16 = pack_rgb565(mxc);
+   *min16 = pack_rgb565(mnc);
 }
 
 static int refine_block(const unsigned char *block,
@@ -406,18 +410,120 @@ static int refine_block(const unsigned char *block,
    return(oldmin != *min16 || oldmax != *max16);
 }
 
+static int color_distance(const unsigned char *c0,
+                          const unsigned char *c1)
+{
+   return(((c0[0] - c1[0]) * (c0[0] - c1[0])) +
+          ((c0[1] - c1[1]) * (c0[1] - c1[1])) +
+          ((c0[2] - c1[2]) * (c0[2] - c1[2])));
+}
+
+static int luminance(const unsigned char *c)
+{
+   return((c[2] * 54 + c[1] * 182 + c[0] * 20) >> 8);
+}
+
+static void get_min_max_colors_distance(const unsigned char *block,
+                                        unsigned short *max16,
+                                        unsigned short *min16)
+{
+   int i, j, dist, maxdist = -1;
+   unsigned short c0 = 0, c1 = 0;
+   
+   for(i = 0; i < 64 - 4; i += 4)
+   {
+      for(j = i + 4; j < 64; j += 4)
+      {
+         dist = color_distance(&block[i], &block[j]);
+         if(dist > maxdist)
+         {
+            maxdist = dist;
+            c0 = pack_rgb565(block + i);
+            c1 = pack_rgb565(block + j);
+         }
+      }
+   }
+   
+   *max16 = MAX(c0, c1);
+   *min16 = MIN(c0, c1);
+}
+
+static void get_min_max_colors_luminance(const unsigned char *block,
+                                         unsigned short *max16,
+                                         unsigned short *min16)
+{
+   int i, lum, minlum = 0x7fffffff, maxlum = -0x7fffffff;
+   unsigned char mn[3], mx[3];
+   
+   for(i = 0; i < 16; ++i)
+   {
+      lum = luminance(&block[4 * i]);
+      if(lum > maxlum)
+      {
+         maxlum = lum;
+         memcpy(mx, &block[4 * i], 3);
+      }
+      if(lum < minlum)
+      {
+         minlum = lum;
+         memcpy(mn, &block[4 * i], 3);
+      }
+   }
+   
+   *max16 = pack_rgb565(mx);
+   *min16 = pack_rgb565(mn);
+}
+
+#define INSET_SHIFT  4
+
+static void get_min_max_colors_inset_bbox(const unsigned char *block,
+                                          unsigned short *max16,
+                                          unsigned short *min16)
+{
+   int i;
+   unsigned char inset[3], mx[3], mn[3];
+   
+   mn[0] = mn[1] = mn[2] = 255;
+   mx[0] = mx[1] = mx[2] = 3;
+   
+   for(i = 0; i < 16; ++i)
+   {
+      if(block[4 * i + 0] < mn[0]) mn[0] = block[4 * i + 0];
+      if(block[4 * i + 1] < mn[1]) mn[1] = block[4 * i + 1];
+      if(block[4 * i + 2] < mn[2]) mn[2] = block[4 * i + 2];
+      if(block[4 * i + 0] > mx[0]) mx[0] = block[4 * i + 0];
+      if(block[4 * i + 1] > mx[1]) mx[1] = block[4 * i + 1];
+      if(block[4 * i + 2] > mx[2]) mx[2] = block[4 * i + 2];
+   }
+  
+   inset[0] = (mx[0] - mn[0]) >> INSET_SHIFT;
+   inset[1] = (mx[1] - mn[1]) >> INSET_SHIFT;
+   inset[2] = (mx[2] - mn[2]) >> INSET_SHIFT;
+   
+   mn[0] = (mn[0] + inset[0] <= 255) ? mn[0] + inset[0] : 255;
+   mn[1] = (mn[1] + inset[1] <= 255) ? mn[1] + inset[1] : 255;
+   mn[2] = (mn[2] + inset[2] <= 255) ? mn[2] + inset[2] : 255;
+   
+   mx[0] = (mx[0] >= inset[0]) ? mx[0] - inset[0] : 0;
+   mx[1] = (mx[1] >= inset[1]) ? mx[1] - inset[1] : 0;
+   mx[2] = (mx[2] >= inset[2]) ? mx[2] - inset[2] : 0;
+   
+   *min16 = pack_rgb565(mn);
+   *max16 = pack_rgb565(mx);
+}
+
 static void eval_colors(unsigned char *color,
                         unsigned short c0, unsigned short c1)
 {
-   from_16bit(&color[0], c0);
-   from_16bit(&color[4], c1);
+   unpack_rgb565(&color[0], c0);
+   unpack_rgb565(&color[4], c1);
    lerp_rgb(&color[ 8], &color[0], &color[4], 0x55);
    lerp_rgb(&color[12], &color[0], &color[4], 0xaa);
 }
 
 static void encode_color_block(unsigned char *dst,
                                const unsigned char *block,
-                               int quality)
+                               int type, int dither)
 {
    unsigned char dblock[64], color[16];
    unsigned short min16, max16;
@@ -434,28 +540,41 @@ static void encode_color_block(unsigned char *dst,
    
    if(mn != mx)
    {
-      if(quality)
+      if(dither)
          dither_block(dblock, block);
-
-      optimize_colors_block(quality ? dblock : block, &max16, &min16);
+      
+      switch(type)
+      {
+         case DDS_COLOR_DISTANCE:
+            get_min_max_colors_distance(dither ? dblock : block, &max16, &min16);
+            break;
+         case DDS_COLOR_LUMINANCE:
+            get_min_max_colors_luminance(dither ? dblock : block, &max16, &min16);
+            break;
+         case DDS_COLOR_INSET_BBOX:
+            get_min_max_colors_inset_bbox(dither ? dblock : block, &max16, &min16);
+            break;
+         default:
+            optimize_colors_block(dither ? dblock : block, &max16, &min16);
+            if(max16 != min16)
+            {
+               eval_colors(color, max16, min16);
+               mask = match_colors_block(block, color, dither != 0);
+            }
+            else
+               mask = 0;
+      
+            refine_block(dither ? dblock : block, &max16, &min16, mask);
+            break;
+      }
+      
       if(max16 != min16)
       {
          eval_colors(color, max16, min16);
-         mask = match_colors_block(block, color, quality != 0);
+         mask = match_colors_block(block, color, dither != 0);
       }
       else
          mask = 0;
-      
-      if(refine_block(quality ? dblock : block, &max16, &min16, mask))
-      {
-         if(max16 != min16)
-         {
-            eval_colors(color, max16, min16);
-            mask = match_colors_block(block, color, quality != 0);
-         }
-         else
-            mask = 0;
-      }
    }
    else
    {
@@ -543,7 +662,7 @@ static void encode_alpha_block_DXT5(unsigned char *dst,
 }
 
 static void compress_DXT1(unsigned char *dst, const unsigned char *src,
-                          int w, int h)
+                          int w, int h, int type, int dither)
 {
    unsigned char block[64];
    int x, y;
@@ -553,14 +672,14 @@ static void compress_DXT1(unsigned char *dst, const unsigned char *src,
       for(x = 0; x < w; x += 4)
       {
          extract_block(src + x * 4, w, block);
-         encode_color_block(dst, block, 1);
+         encode_color_block(dst, block, type, dither);
          dst += 8;
       }
    }
 }
 
 static void compress_DXT3(unsigned char *dst, const unsigned char *src,
-                          int w, int h)
+                          int w, int h, int type, int dither)
 {
    unsigned char block[64];
    int x, y;
@@ -571,14 +690,14 @@ static void compress_DXT3(unsigned char *dst, const unsigned char *src,
       {
          extract_block(src + x * 4, w, block);
          encode_alpha_block_DXT3(dst, block);
-         encode_color_block(dst + 8, block, 1);
+         encode_color_block(dst + 8, block, type, dither);
          dst += 16;
       }
    }
 }
 
 static void compress_DXT5(unsigned char *dst, const unsigned char *src,
-                          int w, int h)
+                          int w, int h, int type, int dither)
 {
    unsigned char block[64];
    int x, y;
@@ -589,7 +708,7 @@ static void compress_DXT5(unsigned char *dst, const unsigned char *src,
       {
          extract_block(src + x * 4, w, block);
          encode_alpha_block_DXT5(dst, block);
-         encode_color_block(dst + 8, block, 1);
+         encode_color_block(dst + 8, block, type, dither);
          dst += 16;
       }
    }
@@ -632,7 +751,7 @@ static void compress_BC5(unsigned char *dst, const unsigned char *src,
 
 int dxt_compress(unsigned char *dst, unsigned char *src, int format,
                  unsigned int width, unsigned int height, int bpp,
-                 int mipmaps)
+                 int mipmaps, int type, int dither)
 {
    int i, size, w, h;
    unsigned int offset;
@@ -717,13 +836,13 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
       switch(format)
       {
          case DDS_COMPRESS_BC1:
-            compress_DXT1(dst + offset, s, w, h);
+            compress_DXT1(dst + offset, s, w, h, type, dither);
             break;
          case DDS_COMPRESS_BC2:
-            compress_DXT3(dst + offset, s, w, h);
+            compress_DXT3(dst + offset, s, w, h, type, dither);
             break;
          case DDS_COMPRESS_BC3:
-            compress_DXT5(dst + offset, s, w, h);
+            compress_DXT5(dst + offset, s, w, h, type, dither);
             break;
          case DDS_COMPRESS_BC4:
             compress_BC4(dst + offset, s, w, h);
@@ -755,13 +874,8 @@ static void decode_color_block(unsigned char *dst, unsigned char *src,
    c0 = GETL16(&src[0]);
    c1 = GETL16(&src[2]);
 
-   colors[0][0] = ((c0 >> 11) & 0x1f) << 3;
-   colors[0][1] = ((c0 >>  5) & 0x3f) << 2;
-   colors[0][2] = ((c0      ) & 0x1f) << 3;
-
-   colors[1][0] = ((c1 >> 11) & 0x1f) << 3;
-   colors[1][1] = ((c1 >>  5) & 0x3f) << 2;
-   colors[1][2] = ((c1      ) & 0x1f) << 3;
+   unpack_rgb565(colors[0], c0);
+   unpack_rgb565(colors[1], c1);
    
    if((c0 > c1) || (format == DDS_COMPRESS_BC3))
    {
@@ -788,9 +902,9 @@ static void decode_color_block(unsigned char *dst, unsigned char *src,
       for(x = 0; x < w; ++x)
       {
          idx = indexes & 0x03;
-         d[0] = colors[idx][0];
+         d[0] = colors[idx][2];
          d[1] = colors[idx][1];
-         d[2] = colors[idx][2];
+         d[2] = colors[idx][0];
          if(format == DDS_COMPRESS_BC1)
             d[3] = ((c0 <= c1) && idx == 3) ? 0 : 255;
          indexes >>= 2;

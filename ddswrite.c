@@ -75,6 +75,8 @@ GtkWidget *mipmap_check;
 GtkWidget *compress_opt;
 GtkWidget *compress_menu;
 GtkWidget *format_opt;
+GtkWidget *color_type_opt;
+GtkWidget *dither_chk;
 
 static struct
 {
@@ -89,7 +91,7 @@ static struct
    {DDS_COMPRESS_BC3N,  "BC3n / DXT5n"},
    {DDS_COMPRESS_BC4,   "BC4 / ATI1"},
    {DDS_COMPRESS_BC5,   "BC5 / ATI2"},
-   {DDS_COMPRESS_AMUL,  "Alpha Mul. (DXT5)"},
+   {DDS_COMPRESS_AEXP,  "Alpha Exponent (DXT5)"},
    {DDS_COMPRESS_YCOCG, "YCoCg (DXT5)"},
    {-1, 0}
 };
@@ -112,6 +114,19 @@ static struct
    {DDS_FORMAT_R3G3B2, "R3G3B2"},
    {DDS_FORMAT_L8, "L8"},
    {DDS_FORMAT_L8A8, "L8A8"},
+   {-1, 0}
+};
+
+static struct
+{
+   int type;
+   char *string;
+} color_type_strings[] =
+{
+   {DDS_COLOR_DEFAULT,    "Default"},
+   {DDS_COLOR_DISTANCE,   "Distance"},
+   {DDS_COLOR_LUMINANCE,  "Luminance"},
+   {DDS_COLOR_INSET_BBOX, "Inset bounding box"},
    {-1, 0}
 };
 
@@ -374,7 +389,7 @@ static void swap_rb(unsigned char *pixels, unsigned int n, int bpp)
    }
 }
 
-static void alpha_mul(unsigned char *dst, int r, int g, int b, int a)
+static void alpha_exp(unsigned char *dst, int r, int g, int b, int a)
 {
    float ar, ag, ab, aa;
    
@@ -514,8 +529,8 @@ static void convert_pixels(unsigned char *dst, unsigned char *src,
             dst[4 * i + 3] = TO_YCOCG_Y(r, g, b);
             break;
          }
-         case DDS_FORMAT_AMUL:
-            alpha_mul(&dst[4 * i], r, g, b, a);
+         case DDS_FORMAT_AEXP:
+            alpha_exp(&dst[4 * i], r, g, b, a);
             break;
          default:
             break;
@@ -625,8 +640,8 @@ static void convert_volume_pixels(unsigned char *dst, unsigned char *src,
             dst[4 * i + 3] = TO_YCOCG_Y(r, g, b);
             break;
          }
-         case DDS_FORMAT_AMUL:
-            alpha_mul(&dst[4 * i], r, g, b, a);
+         case DDS_FORMAT_AEXP:
+            alpha_exp(&dst[4 * i], r, g, b, a);
             break;
          default:
             break;
@@ -711,11 +726,11 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
       compression = DDS_COMPRESS_BC3;
    }
    
-   if(compression == DDS_COMPRESS_AMUL)
+   if(compression == DDS_COMPRESS_AEXP)
    {
       fmtsize = w * h * 4;
       fmtdst = g_malloc(fmtsize);
-      convert_pixels(fmtdst, src, DDS_FORMAT_AMUL, w, h, bpp,
+      convert_pixels(fmtdst, src, DDS_FORMAT_AEXP, w, h, bpp,
                      palette, 1);
       g_free(src);
       src = fmtdst;
@@ -804,7 +819,8 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
          bpp = 3;
       }
       
-      dxt_compress(dst, src, compression, w, h, bpp, mipmaps);
+      dxt_compress(dst, src, compression, w, h, bpp, mipmaps,
+                   ddsvals.color_type, ddsvals.dither);
          
       offset = 0;
          
@@ -1197,7 +1213,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
          case DDS_COMPRESS_BC3:
          case DDS_COMPRESS_BC3N:
          case DDS_COMPRESS_YCOCG:
-         case DDS_COMPRESS_AMUL:  format = "DXT5"; break;
+         case DDS_COMPRESS_AEXP:  format = "DXT5"; break;
          case DDS_COMPRESS_BC4:   format = "ATI1"; break;
          case DDS_COMPRESS_BC5:   format = "ATI2"; break;
       }
@@ -1285,6 +1301,14 @@ static void compression_selected(GtkWidget *widget, gpointer data)
 {
    ddsvals.compression = (gint)(long)data;
    gtk_widget_set_sensitive(format_opt, ddsvals.compression == DDS_COMPRESS_NONE);
+   gtk_widget_set_sensitive(color_type_opt,
+                            ddsvals.compression != DDS_COMPRESS_NONE &&
+                            ddsvals.compression != DDS_COMPRESS_BC4 &&
+                            ddsvals.compression != DDS_COMPRESS_BC5);
+   gtk_widget_set_sensitive(dither_chk,
+                            ddsvals.compression != DDS_COMPRESS_NONE &&
+                            ddsvals.compression != DDS_COMPRESS_BC4 &&
+                            ddsvals.compression != DDS_COMPRESS_BC5);
 }
 
 static void savetype_selected(GtkWidget *widget, gpointer data)
@@ -1340,6 +1364,16 @@ static void transindex_changed(GtkWidget *widget, gpointer data)
    ddsvals.transindex = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(widget));
 }
 
+static void adv_opt_expanded(GtkWidget *widget, gpointer data)
+{
+   ddsvals.show_adv_opt = !gtk_expander_get_expanded(GTK_EXPANDER(widget));
+}
+
+static void color_type_selected(GtkWidget *widget, gpointer data)
+{
+   ddsvals.color_type = (gint)(long)data;
+}
+
 static gint save_dialog(gint32 image_id, gint32 drawable_id)
 {
    GtkWidget *dlg;
@@ -1351,6 +1385,7 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    GtkWidget *menuitem;
    GtkWidget *check;
    GtkWidget *spin;
+   GtkWidget *expander;
    GimpImageType type, basetype;
    int i, w, h;
    
@@ -1547,6 +1582,71 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
       gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check), 1);
       gtk_spin_button_set_value(GTK_SPIN_BUTTON(spin), ddsvals.transindex);
    }
+
+   expander = gtk_expander_new("Advanced Options");
+   gtk_expander_set_expanded(GTK_EXPANDER(expander), ddsvals.show_adv_opt);
+   gtk_expander_set_spacing(GTK_EXPANDER(expander), 8);
+   gtk_signal_connect(GTK_OBJECT(expander), "activate",
+                      GTK_SIGNAL_FUNC(adv_opt_expanded), 0);
+   gtk_box_pack_start(GTK_BOX(vbox), expander, 1, 1, 0);
+   gtk_widget_show(expander);
+   
+   table = gtk_table_new(2, 2, 0);
+   gtk_table_set_row_spacings(GTK_TABLE(table), 8);
+   gtk_table_set_col_spacings(GTK_TABLE(table), 8);
+   gtk_container_add(GTK_CONTAINER(expander), table);
+   gtk_widget_show(table);
+
+   label = gtk_label_new("Color selection:");
+   gtk_widget_show(label);
+   gtk_table_attach(GTK_TABLE(table), label, 0, 1, 0, 1,
+                    (GtkAttachOptions)(GTK_FILL),
+                    (GtkAttachOptions)(0), 0, 0);
+   gtk_misc_set_alignment(GTK_MISC(label), 0, 0.5);
+   
+   opt = gtk_option_menu_new();
+   gtk_widget_show(opt);
+   gtk_table_attach(GTK_TABLE(table), opt, 1, 2, 0, 1,
+                    (GtkAttachOptions)(GTK_EXPAND | GTK_FILL),
+                    (GtkAttachOptions)(GTK_EXPAND), 0, 0);
+   
+   menu = gtk_menu_new();
+   
+   for(i = 0; color_type_strings[i].string; ++i)
+   {
+      menuitem = gtk_menu_item_new_with_label(color_type_strings[i].string);
+      gtk_signal_connect(GTK_OBJECT(menuitem), "activate",
+                         GTK_SIGNAL_FUNC(color_type_selected),
+                         (gpointer)(long)color_type_strings[i].type);
+      gtk_widget_show(menuitem);
+      gtk_menu_append(GTK_MENU(menu), menuitem);
+   }
+   
+   gtk_menu_set_active(GTK_MENU(menu), ddsvals.color_type);
+   
+   gtk_option_menu_set_menu(GTK_OPTION_MENU(opt), menu);
+   
+   color_type_opt = opt;
+
+   check = gtk_check_button_new_with_label("Dither");
+   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check), ddsvals.dither);
+   gtk_table_attach(GTK_TABLE(table), check, 0, 2, 1, 2,
+                    (GtkAttachOptions)(GTK_FILL),
+                    (GtkAttachOptions)(0), 0, 0);
+   gtk_signal_connect(GTK_OBJECT(check), "clicked",
+                      GTK_SIGNAL_FUNC(toggle_clicked), &ddsvals.dither);
+   gtk_widget_show(check);
+   
+   dither_chk = check;
+
+   gtk_widget_set_sensitive(color_type_opt,
+                            ddsvals.compression != DDS_COMPRESS_NONE &&
+                            ddsvals.compression != DDS_COMPRESS_BC4 &&
+                            ddsvals.compression != DDS_COMPRESS_BC5);
+   gtk_widget_set_sensitive(dither_chk,
+                            ddsvals.compression != DDS_COMPRESS_NONE &&
+                            ddsvals.compression != DDS_COMPRESS_BC4 &&
+                            ddsvals.compression != DDS_COMPRESS_BC5);
    
    gtk_widget_show(dlg);
    

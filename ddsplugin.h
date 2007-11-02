@@ -30,6 +30,9 @@ typedef struct
    int savetype;
    int format;
    int transindex;
+   int color_type;
+   int dither;
+   int show_adv_opt;
 } DDSSaveVals;
 
 extern DDSSaveVals ddsvals;

@@ -49,7 +49,8 @@ GimpPlugInInfo PLUG_IN_INFO =
 
 DDSSaveVals ddsvals =
 {
-	DDS_COMPRESS_NONE, 0, DDS_SAVE_SELECTED_LAYER, DDS_FORMAT_DEFAULT, -1
+	DDS_COMPRESS_NONE, 0, DDS_SAVE_SELECTED_LAYER, DDS_FORMAT_DEFAULT, -1,
+   DDS_COLOR_DEFAULT, 0, 0
 };
 
 static GimpParamDef load_args[] =
@@ -74,7 +75,9 @@ static GimpParamDef save_args[] =
    {GIMP_PDB_INT32, "generate_mipmaps", "Generate mipmaps"},
    {GIMP_PDB_INT32, "savetype", "How to save the image (0 = selected layer, 1 = cube map, 2 = volume map"},
    {GIMP_PDB_INT32, "format", "Custom pixel format (0 = default, 1 = R5G6B5, 2 = RGBA4, 3 = RGB5A1, 4 = RGB10A2)"},
-   {GIMP_PDB_INT32, "transparent_index", "Index of transparent color or -1 to disable (for indexed images only)."}
+   {GIMP_PDB_INT32, "transparent_index", "Index of transparent color or -1 to disable (for indexed images only)."},
+   {GIMP_PDB_INT32, "color_type", "Color selection algorithm used in DXT compression (0 = default, 1 = distance, 2 = luminance, 3 = inset bounding box)"},
+   {GIMP_PDB_INT32, "dither", "Work on dithered color blocks when doing color selection for DXT compression"}
 };
 
 MAIN()
@@ -207,6 +210,8 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
                ddsvals.savetype = param[7].data.d_int32;
                ddsvals.format = param[8].data.d_int32;
                ddsvals.transindex = param[9].data.d_int32;
+               ddsvals.color_type = param[10].data.d_int32;
+               ddsvals.dither = param[11].data.d_int32;
                
 					if(ddsvals.compression < DDS_COMPRESS_NONE ||
 						ddsvals.compression >= DDS_COMPRESS_MAX)
@@ -216,6 +221,9 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
                   status = GIMP_PDB_CALLING_ERROR;
                if(ddsvals.format < DDS_FORMAT_DEFAULT ||
                   ddsvals.format >= DDS_FORMAT_MAX)
+                  status = GIMP_PDB_CALLING_ERROR;
+               if(ddsvals.color_type < DDS_COLOR_DEFAULT ||
+                  ddsvals.color_type >= DDS_COLOR_MAX)
                   status = GIMP_PDB_CALLING_ERROR;
 				}
 			   break;
