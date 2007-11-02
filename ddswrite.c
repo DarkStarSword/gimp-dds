@@ -643,6 +643,7 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
    unsigned char *src, *dst, *fmtdst, *tmp, c;
    unsigned char *palette = NULL;
    int i, x, y, size, fmtsize, offset, colors;
+   int compression = ddsvals.compression;
 
    basetype = gimp_image_base_type(image_id);
    type = gimp_drawable_type(drawable_id);
@@ -670,7 +671,7 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
    if(bpp >= 3)
       swap_rb(src, w * h, bpp);
 
-   if(ddsvals.compression == DDS_COMPRESS_BC3N)
+   if(compression == DDS_COMPRESS_BC3N)
    {
       if(bpp != 4)
       {
@@ -693,9 +694,11 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
             src[y * (drawable->width * 4) + (x * 4) + 3] = c;
          }
       }
+      
+      compression = DDS_COMPRESS_BC3;
    }
 
-   if(ddsvals.compression == DDS_COMPRESS_YCOCG) /* convert to YCoCG */
+   if(compression == DDS_COMPRESS_YCOCG) /* convert to YCoCG */
    {
       fmtsize = w * h * 4;
       fmtdst = g_malloc(fmtsize);
@@ -704,9 +707,11 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
       g_free(src);
       src = fmtdst;
       bpp = 4;
+      
+      compression = DDS_COMPRESS_BC3;
    }
    
-   if(ddsvals.compression == DDS_COMPRESS_AMUL)
+   if(compression == DDS_COMPRESS_AMUL)
    {
       fmtsize = w * h * 4;
       fmtdst = g_malloc(fmtsize);
@@ -715,9 +720,11 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
       g_free(src);
       src = fmtdst;
       bpp = 4;
+      
+      compression = DDS_COMPRESS_BC3;
    }
    
-   if(ddsvals.compression == DDS_COMPRESS_NONE)
+   if(compression == DDS_COMPRESS_NONE)
    {
       if(mipmaps > 1)
       {
@@ -781,7 +788,7 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
    }
    else
    {
-      size = get_mipmapped_size(w, h, bpp, 0, mipmaps, ddsvals.compression);
+      size = get_mipmapped_size(w, h, bpp, 0, mipmaps, compression);
 
       dst = g_malloc(size);
       
@@ -797,13 +804,13 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
          bpp = 3;
       }
       
-      dxt_compress(dst, src, ddsvals.compression, w, h, bpp, mipmaps);
+      dxt_compress(dst, src, compression, w, h, bpp, mipmaps);
          
       offset = 0;
          
       for(i = 0; i < mipmaps; ++i)
       {
-         size = get_mipmapped_size(w, h, bpp, i, 1, ddsvals.compression);
+         size = get_mipmapped_size(w, h, bpp, i, 1, compression);
          fwrite(dst + offset, 1, size, fp);
          offset += size;
       }

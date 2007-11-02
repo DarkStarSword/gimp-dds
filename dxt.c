@@ -74,7 +74,7 @@ static inline int color_distance(const unsigned char *c1,
 
 static inline int get_color_luminance(const unsigned char *c)
 {
-   return((c[2] * 54 + c[1] * 182 + c[0] * 19) >> 8);
+   return((c[2] * 54 + c[1] * 182 + c[0] * 20) >> 8);
 }
 
 static void get_min_max_colors_distance(const unsigned char *block,
@@ -528,9 +528,6 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
             compress_DXT3(dst + offset, s, w, h);
             break;
          case DDS_COMPRESS_BC3:
-         case DDS_COMPRESS_BC3N:
-         case DDS_COMPRESS_YCOCG:
-         case DDS_COMPRESS_AMUL:
             compress_DXT5(dst + offset, s, w, h);
             break;
          case DDS_COMPRESS_BC4:
@@ -571,9 +568,7 @@ static void decode_color_block(unsigned char *dst, unsigned char *src,
    colors[1][1] = ((c1 >>  5) & 0x3f) << 2;
    colors[1][2] = ((c1      ) & 0x1f) << 3;
    
-   if((c0 > c1) ||
-      (format == DDS_COMPRESS_BC3 ||
-       format == DDS_COMPRESS_BC3N))
+   if((c0 > c1) || (format == DDS_COMPRESS_BC3))
    {
       for(i = 0; i < 3; ++i)
       {
@@ -681,14 +676,23 @@ int dxt_decompress(unsigned char *dst, unsigned char *src, int format,
       for(x = 0; x < width; x += 4)
       {
          d = dst + (y * width + x) * bpp;
-         if(format == DDS_COMPRESS_BC2)
+         if(format == DDS_COMPRESS_BC1)
+         {
+            decode_color_block(d, s, sx, sy, width * bpp, format);
+            s += 8;
+         }
+         else if(format == DDS_COMPRESS_BC2)
          {
             decode_dxt3_alpha(d + 3, s, sx, sy, width * bpp);
             s += 8;
+            decode_color_block(d, s, sx, sy, width * bpp, format);
+            s += 8;
          }
-         else if(format == DDS_COMPRESS_BC3 || format == DDS_COMPRESS_BC3N)
+         else if(format == DDS_COMPRESS_BC3)
          {
             decode_dxt5_alpha(d + 3, s, sx, sy, bpp, width * bpp);
+            s += 8;
+            decode_color_block(d, s, sx, sy, width * bpp, format);
             s += 8;
          }
          else if(format == DDS_COMPRESS_BC4)
@@ -701,12 +705,6 @@ int dxt_decompress(unsigned char *dst, unsigned char *src, int format,
             decode_dxt5_alpha(d, s + 8, sx, sy, bpp, width * bpp);
             decode_dxt5_alpha(d + 1, s, sx, sy, bpp, width * bpp);
             s += 16;
-         }
-        
-         if(format <= DDS_COMPRESS_BC3N)
-         {
-            decode_color_block(d, s, sx, sy, width * bpp, format);
-            s += 8;
          }
       }
    }
