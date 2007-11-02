@@ -1628,7 +1628,7 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    
    color_type_opt = opt;
 
-   check = gtk_check_button_new_with_label("Dither");
+   check = gtk_check_button_new_with_label("Use dithering");
    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check), ddsvals.dither);
    gtk_table_attach(GTK_TABLE(table), check, 0, 2, 1, 2,
                     (GtkAttachOptions)(GTK_FILL),

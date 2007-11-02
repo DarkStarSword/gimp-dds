@@ -517,8 +517,19 @@ static void eval_colors(unsigned char *color,
 {
    unpack_rgb565(&color[0], c0);
    unpack_rgb565(&color[4], c1);
-   lerp_rgb(&color[ 8], &color[0], &color[4], 0x55);
-   lerp_rgb(&color[12], &color[0], &color[4], 0xaa);
+   if(c0 > c1)
+   {
+      lerp_rgb(&color[ 8], &color[0], &color[4], 0x55);
+      lerp_rgb(&color[12], &color[0], &color[4], 0xaa);
+   }
+   else
+   {
+      color[ 8] = (color[0] + color[4]) >> 1;
+      color[ 9] = (color[1] + color[5]) >> 1;
+      color[10] = (color[3] + color[8]) >> 1;
+      
+      color[12] = color[13] = color[14] = 0;
+   }
 }
 
 static void encode_color_block(unsigned char *dst,
