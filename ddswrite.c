@@ -114,6 +114,7 @@ static struct
    {DDS_FORMAT_R3G3B2, "R3G3B2"},
    {DDS_FORMAT_L8, "L8"},
    {DDS_FORMAT_L8A8, "L8A8"},
+   {DDS_FORMAT_YCOCG, "YCoCg"},
    {-1, 0}
 };
 
@@ -375,7 +376,9 @@ GimpPDBStatusType write_dds(gchar *filename, gint32 image_id, gint32 drawable_id
 #define TO_YCOCG_Y(r, g, b)  (((  (r) +      ((g) << 1) +  (b)      ) + 2) >> 2)
 #define TO_YCOCG_CO(r, g, b) ((( ((r) << 1)             - ((b) << 1)) + 2) >> 2)
 #define TO_YCOCG_CG(r, g, b) ((( -(r) +      ((g) << 1) -  (b)      ) + 2) >> 2)
-                  
+
+#define TO_LUMINANCE(r, g, b) (((r) * 54 + (g) * 182 + (b) * 20) >> 8)
+
 static void swap_rb(unsigned char *pixels, unsigned int n, int bpp)
 {
    unsigned int i;
@@ -513,10 +516,10 @@ static void convert_pixels(unsigned char *dst, unsigned char *src,
             dst[i] = TO_R3G3B2(r, g, b);
             break;
          case DDS_FORMAT_L8:
-            dst[i] = (unsigned char)((float)r * 0.3f + (float)g * 0.59f + (float)b * 0.11f);
+            dst[i] = TO_LUMINANCE(r, g, b);
             break;
          case DDS_FORMAT_L8A8:
-            dst[2 * i + 0] = (unsigned char)((float)r * 0.3f + (float)g * 0.59f + (float)b * 0.11f);
+            dst[2 * i + 0] = TO_LUMINANCE(r, g, b);
             dst[2 * i + 1] = a;
             break;
          case DDS_FORMAT_YCOCG:
@@ -624,10 +627,10 @@ static void convert_volume_pixels(unsigned char *dst, unsigned char *src,
             dst[i] = TO_R3G3B2(r, g, b);
             break;
          case DDS_FORMAT_L8:
-            dst[i] = (unsigned char)((float)r * 0.3f + (float)g * 0.59f + (float)b * 0.11f);
+            dst[i] = TO_LUMINANCE(r, g, b);
             break;
          case DDS_FORMAT_L8A8:
-            dst[2 * i + 0] = (unsigned char)((float)r * 0.3f + (float)g * 0.59f + (float)b * 0.11f);
+            dst[2 * i + 0] = TO_LUMINANCE(r, g, b);
             dst[2 * i + 1] = a;
             break;
          case DDS_FORMAT_YCOCG:
@@ -1063,6 +1066,14 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
             gmask = 0x000000ff;
             bmask = 0x000000ff;
             amask = 0x0000ff00;
+            break;
+         case DDS_FORMAT_YCOCG:
+            fmtbpp = 4;
+            has_alpha = 1;
+            rmask = 0x00ff0000;
+            gmask = 0x0000ff00;
+            bmask = 0x000000ff;
+            amask = 0xff000000;
             break;
          default:
             break;
