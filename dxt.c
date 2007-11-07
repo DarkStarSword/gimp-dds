@@ -570,7 +570,7 @@ static void encode_color_block(unsigned char *dst,
    mn = mx = GETL32(block);
    for(i = 0; i < 16; ++i)
    {
-      block_has_alpha += (block[4 * i + 3] < 128);
+      block_has_alpha += (block[4 * i + 3] < 255);
       v = GETL32(&block[4 * i]);
       if(v > mx) mx = v;
       if(v < mn) mn = v;
@@ -628,14 +628,16 @@ static void encode_color_block(unsigned char *dst,
    if(dxt1_alpha && block_has_alpha)
    {
       if(max16 > min16)
-         max16 ^= min16 ^= max16 ^= min16;
+      {
+         max16 ^= min16; min16 ^= max16; max16 ^= min16;
+      }
       eval_colors(color, max16, min16);
       mask = match_colors_block_DXT1alpha(block, color);
    }
    
    if(max16 < min16 && !(dxt1_alpha && block_has_alpha))
    {
-      max16 ^= min16 ^= max16 ^= min16;
+      max16 ^= min16; min16 ^= max16; max16 ^= min16;
       mask ^= 0x55555555;
    }
       
