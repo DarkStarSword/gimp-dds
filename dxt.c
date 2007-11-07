@@ -294,7 +294,7 @@ static void optimize_colors_block(const unsigned char *block,
    {
       b = block[4 * i + 0] - mu[0];
       g = block[4 * i + 1] - mu[1];
-      r = block[4 * i + 2] - mu[3];
+      r = block[4 * i + 2] - mu[2];
       
       cov[0] += r * r;
       cov[1] += r * g;
@@ -510,7 +510,7 @@ static void get_min_max_colors_inset_bbox(const unsigned char *block,
    unsigned char inset[3], mx[3], mn[3];
    
    mn[0] = mn[1] = mn[2] = 255;
-   mx[0] = mx[1] = mx[2] = 3;
+   mx[0] = mx[1] = mx[2] = 0;
    
    for(i = 0; i < 16; ++i)
    {
@@ -683,7 +683,7 @@ static void encode_color_block(unsigned char *dst,
    mn = mx = GETL32(block);
    for(i = 0; i < 16; ++i)
    {
-      block_has_alpha += (block[4 * i + 3] < 255);
+      block_has_alpha = block_has_alpha || (block[4 * i + 3] < 255);
       v = GETL32(&block[4 * i]);
       if(v > mx) mx = v;
       if(v < mn) mn = v;
@@ -1115,11 +1115,8 @@ static void decode_color_block(unsigned char *dst, unsigned char *src,
    
    if((c0 > c1) || (format == DDS_COMPRESS_BC3))
    {
-      for(i = 0; i < 3; ++i)
-      {
-         colors[2][i] = (2 * colors[0][i] + colors[1][i] + 1) / 3;
-         colors[3][i] = (2 * colors[1][i] + colors[0][i] + 1) / 3;
-      }
+      lerp_rgb(colors[2], colors[0], colors[1], 0x55);
+      lerp_rgb(colors[3], colors[0], colors[1], 0xaa);
    }
    else
    {
