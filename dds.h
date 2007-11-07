@@ -34,6 +34,7 @@ typedef enum
    DDS_COMPRESS_BC5,        /* ATI2  */
    DDS_COMPRESS_AEXP,       /* DXT5  */
    DDS_COMPRESS_YCOCG,      /* DXT5  */
+   DDS_COMPRESS_YCOCGS,     /* DXT5  */
    DDS_COMPRESS_MAX
 } DDS_COMPRESSION_TYPE;
 

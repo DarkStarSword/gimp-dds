@@ -538,6 +538,119 @@ static void get_min_max_colors_inset_bbox(const unsigned char *block,
    *max16 = pack_rgb565(mx);
 }
 
+static void get_min_max_YCoCg(const unsigned char *block,
+                              unsigned char *mincolor, unsigned char *maxcolor)
+{
+   int i;
+   
+   mincolor[2] = mincolor[1] = 255;
+   maxcolor[2] = maxcolor[1] = 0;
+   
+   for(i = 0; i < 16; ++i)
+   {
+      if(block[4 * i + 2] < mincolor[2]) mincolor[2] = block[4 * i + 2];
+      if(block[4 * i + 1] < mincolor[1]) mincolor[1] = block[4 * i + 1];
+      if(block[4 * i + 2] > maxcolor[2]) maxcolor[2] = block[4 * i + 2];
+      if(block[4 * i + 1] > maxcolor[1]) maxcolor[1] = block[4 * i + 1];
+   }
+}
+
+static void scale_YCoCg(unsigned char *block,
+                        unsigned char *mincolor, unsigned char *maxcolor)
+{
+   const int s0 = 128 / 2 - 1;
+   const int s1 = 128 / 4 - 1;
+   int m0, m1, m2, m3;
+   int mask0, mask1, scale;
+   int i;
+   
+   m0 = abs(mincolor[2] - 128);
+   m1 = abs(mincolor[1] - 128);
+   m2 = abs(maxcolor[2] - 128);
+   m3 = abs(maxcolor[1] - 128);
+   
+   if(m1 > m0) m0 = m1;
+   if(m3 > m2) m2 = m3;
+   if(m2 > m0) m0 = m2;
+   
+   mask0 = -(m0 <= s0);
+   mask1 = -(m0 <= s1);
+   scale = 1 + (1 & mask0) + (2 & mask1);
+   
+   mincolor[2] = (mincolor[2] - 128) * scale + 128;
+   mincolor[1] = (mincolor[1] - 128) * scale + 128;
+   mincolor[0] = (scale - 1) << 3;
+   
+   maxcolor[2] = (maxcolor[2] - 128) * scale + 128;
+   maxcolor[1] = (maxcolor[1] - 128) * scale + 128;
+   maxcolor[0] = (scale - 1) << 3;
+   
+   for(i = 0; i < 16; ++i)
+   {
+      block[i * 4 + 2] = (block[i * 4 + 2] - 128) * scale + 128;
+      block[i * 4 + 1] = (block[i * 4 + 1] - 128) * scale + 128;
+   }
+}
+
+static void inset_bbox_YCoCg(unsigned char *mincolor, unsigned char *maxcolor)
+{
+   int inset[4], mini[4], maxi[4];
+   
+   inset[2] = (maxcolor[2] - mincolor[2]) - ((1 << (INSET_SHIFT - 1)) - 1);
+   inset[1] = (maxcolor[1] - mincolor[1]) - ((1 << (INSET_SHIFT - 1)) - 1);
+   
+   mini[2] = ((mincolor[2] << INSET_SHIFT) + inset[2]) >> INSET_SHIFT;
+   mini[1] = ((mincolor[1] << INSET_SHIFT) + inset[1]) >> INSET_SHIFT;
+   
+   maxi[2] = ((maxcolor[2] << INSET_SHIFT) - inset[2]) >> INSET_SHIFT;
+   maxi[1] = ((maxcolor[1] << INSET_SHIFT) - inset[1]) >> INSET_SHIFT;
+   
+   mini[2] = (mini[2] >= 0) ? mini[2] : 0;
+   mini[1] = (mini[1] >= 0) ? mini[1] : 0;
+   
+   maxi[2] = (maxi[2] <= 255) ? maxi[2] : 255;
+   maxi[1] = (maxi[1] <= 255) ? maxi[1] : 255;
+   
+   mincolor[2] = (mini[2] & 0xf8) | (mini[2] >> 5);
+   mincolor[1] = (mini[1] & 0xfc) | (mini[1] >> 6);
+   
+   maxcolor[2] = (maxi[2] & 0xf8) | (maxi[2] >> 5);
+   maxcolor[1] = (maxi[1] & 0xfc) | (maxi[1] >> 6);
+}
+
+static void select_diagonal_YCoCg(const unsigned char *block,
+                                  unsigned char *mincolor,
+                                  unsigned char *maxcolor)
+{
+   unsigned char mid0, mid1, side, mask, b0, b1, c0, c1;
+   int i;
+   
+   mid0 = ((int)mincolor[2] + maxcolor[2] + 1) >> 1;
+   mid1 = ((int)mincolor[1] + maxcolor[1] + 1) >> 1;
+
+   side = 0;
+   for(i = 0; i < 16; ++i)
+   {
+      b0 = block[i * 4 + 2] >= mid0;
+      b1 = block[i * 4 + 1] >= mid1;
+      side += (b0 ^ b1);
+   }
+   
+   mask = -(side > 8);
+   mask &= -(mincolor[2] != maxcolor[2]);
+   
+   c0 = mincolor[1];
+   c1 = maxcolor[1];
+   
+   c0 ^= c1;
+   mask &= c0;
+   c1 ^= mask;
+   c0 ^= c1;
+   
+   mincolor[1] = c0;
+   maxcolor[1] = c1;
+}
+
 static void eval_colors(unsigned char *color,
                         unsigned short c0, unsigned short c1)
 {
@@ -797,6 +910,71 @@ static void compress_BC5(unsigned char *dst, const unsigned char *src,
    }
 }
 
+static void compress_YCoCg(unsigned char *dst, const unsigned char *src,
+                           int w, int h)
+{
+   unsigned char block[64], colors[4][3];
+   unsigned char *maxcolor, *mincolor;
+   unsigned int mask;
+   int c0, c1, d0, d1, d2, d3;
+   int b0, b1, b2, b3, b4;
+   int x0, x1, x2;
+   int x, y, i;
+   
+   for(y = 0; y < h; y += 4, src += w * 4 * 4)
+   {
+      for(x = 0; x < w; x += 4)
+      {
+         extract_block(src + x * 4, w, block);
+         
+         encode_alpha_block_DXT5(dst, block);
+         
+         maxcolor = &colors[0][0];
+         mincolor = &colors[1][0];
+         
+         get_min_max_YCoCg(block, mincolor, maxcolor);
+         scale_YCoCg(block, mincolor, maxcolor);
+         inset_bbox_YCoCg(mincolor, maxcolor);
+         select_diagonal_YCoCg(block, mincolor, maxcolor);
+         
+         lerp_rgb(&colors[2][0], maxcolor, mincolor, 0x55);
+         lerp_rgb(&colors[3][0], maxcolor, mincolor, 0xaa);
+         
+         mask = 0;
+         
+         for(i = 15; i >= 0; --i)
+         {
+            c0 = block[4 * i + 2];
+            c1 = block[4 * i + 1];
+            
+            d0 = abs(colors[0][2] - c0) + abs(colors[0][1] - c1);
+            d1 = abs(colors[1][2] - c0) + abs(colors[1][1] - c1);
+            d2 = abs(colors[2][2] - c0) + abs(colors[2][1] - c1);
+            d3 = abs(colors[3][2] - c0) + abs(colors[3][1] - c1);
+            
+            b0 = d0 > d3;
+            b1 = d1 > d2;
+            b2 = d0 > d2;
+            b3 = d1 > d3;
+            b4 = d2 > d3;
+            
+            x0 = b1 & b2;
+            x1 = b0 & b3;
+            x2 = b0 & b4;
+
+            mask <<= 2;
+            mask |= (x1 | ((x0 | x1) << 1));
+         }
+         
+         PUTL16(&dst[ 8], pack_rgb565(maxcolor));
+         PUTL16(&dst[10], pack_rgb565(mincolor));
+         PUTL32(&dst[12], mask);
+         
+         dst += 16;
+      }
+   }
+}
+
 int dxt_compress(unsigned char *dst, unsigned char *src, int format,
                  unsigned int width, unsigned int height, int bpp,
                  int mipmaps, int type, int dither)
@@ -901,6 +1079,12 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
             break;
          case DDS_COMPRESS_BC5:
             compress_BC5(dst + offset, s, w, h);
+            break;
+         case DDS_COMPRESS_YCOCGS:
+            compress_YCoCg(dst + offset, s, w, h);
+            break;
+         default:
+            compress_DXT5(dst + offset, s, w, h, type, dither);
             break;
       }
       s += (w * h * bpp);

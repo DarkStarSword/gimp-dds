@@ -84,15 +84,16 @@ static struct
    char *string;
 } compression_strings[] =
 {
-   {DDS_COMPRESS_NONE,  "None"},
-   {DDS_COMPRESS_BC1,   "BC1 / DXT1"},
-   {DDS_COMPRESS_BC2,   "BC2 / DXT3"},
-   {DDS_COMPRESS_BC3,   "BC3 / DXT5"},
-   {DDS_COMPRESS_BC3N,  "BC3n / DXT5n"},
-   {DDS_COMPRESS_BC4,   "BC4 / ATI1"},
-   {DDS_COMPRESS_BC5,   "BC5 / ATI2"},
-   {DDS_COMPRESS_AEXP,  "Alpha Exponent (DXT5)"},
-   {DDS_COMPRESS_YCOCG, "YCoCg (DXT5)"},
+   {DDS_COMPRESS_NONE,   "None"},
+   {DDS_COMPRESS_BC1,    "BC1 / DXT1"},
+   {DDS_COMPRESS_BC2,    "BC2 / DXT3"},
+   {DDS_COMPRESS_BC3,    "BC3 / DXT5"},
+   {DDS_COMPRESS_BC3N,   "BC3n / DXT5n"},
+   {DDS_COMPRESS_BC4,    "BC4 / ATI1"},
+   {DDS_COMPRESS_BC5,    "BC5 / ATI2"},
+   {DDS_COMPRESS_AEXP,   "Alpha Exponent (DXT5)"},
+   {DDS_COMPRESS_YCOCG,  "YCoCg (DXT5)"},
+   {DDS_COMPRESS_YCOCGS, "YCoCg scaled (DXT5)"},
    {-1, 0}
 };
 
@@ -716,7 +717,8 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
       compression = DDS_COMPRESS_BC3;
    }
 
-   if(compression == DDS_COMPRESS_YCOCG) /* convert to YCoCG */
+   if(compression == DDS_COMPRESS_YCOCG ||
+      compression == DDS_COMPRESS_YCOCGS) /* convert to YCoCG */
    {
       fmtsize = w * h * 4;
       fmtdst = g_malloc(fmtsize);
@@ -726,7 +728,8 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
       src = fmtdst;
       bpp = 4;
       
-      compression = DDS_COMPRESS_BC3;
+      if(compression == DDS_COMPRESS_YCOCG)
+         compression = DDS_COMPRESS_BC3;
    }
    
    if(compression == DDS_COMPRESS_AEXP)
@@ -1219,14 +1222,15 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
       PUTL32(hdr + 80, DDPF_FOURCC);
       switch(ddsvals.compression)
       {
-         case DDS_COMPRESS_BC1:   format = "DXT1"; break;
-         case DDS_COMPRESS_BC2:   format = "DXT3"; break;
+         case DDS_COMPRESS_BC1:    format = "DXT1"; break;
+         case DDS_COMPRESS_BC2:    format = "DXT3"; break;
          case DDS_COMPRESS_BC3:
          case DDS_COMPRESS_BC3N:
          case DDS_COMPRESS_YCOCG:
-         case DDS_COMPRESS_AEXP:  format = "DXT5"; break;
-         case DDS_COMPRESS_BC4:   format = "ATI1"; break;
-         case DDS_COMPRESS_BC5:   format = "ATI2"; break;
+         case DDS_COMPRESS_YCOCGS:
+         case DDS_COMPRESS_AEXP:   format = "DXT5"; break;
+         case DDS_COMPRESS_BC4:    format = "ATI1"; break;
+         case DDS_COMPRESS_BC5:    format = "ATI2"; break;
       }
       memcpy(hdr + 84, format, 4);
 
@@ -1315,11 +1319,13 @@ static void compression_selected(GtkWidget *widget, gpointer data)
    gtk_widget_set_sensitive(color_type_opt,
                             ddsvals.compression != DDS_COMPRESS_NONE &&
                             ddsvals.compression != DDS_COMPRESS_BC4 &&
-                            ddsvals.compression != DDS_COMPRESS_BC5);
+                            ddsvals.compression != DDS_COMPRESS_BC5 &&
+                            ddsvals.compression != DDS_COMPRESS_YCOCGS);
    gtk_widget_set_sensitive(dither_chk,
                             ddsvals.compression != DDS_COMPRESS_NONE &&
                             ddsvals.compression != DDS_COMPRESS_BC4 &&
-                            ddsvals.compression != DDS_COMPRESS_BC5);
+                            ddsvals.compression != DDS_COMPRESS_BC5 &&
+                            ddsvals.compression != DDS_COMPRESS_YCOCGS);
 }
 
 static void savetype_selected(GtkWidget *widget, gpointer data)
@@ -1653,11 +1659,13 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    gtk_widget_set_sensitive(color_type_opt,
                             ddsvals.compression != DDS_COMPRESS_NONE &&
                             ddsvals.compression != DDS_COMPRESS_BC4 &&
-                            ddsvals.compression != DDS_COMPRESS_BC5);
+                            ddsvals.compression != DDS_COMPRESS_BC5 &&
+                            ddsvals.compression != DDS_COMPRESS_YCOCGS);
    gtk_widget_set_sensitive(dither_chk,
                             ddsvals.compression != DDS_COMPRESS_NONE &&
                             ddsvals.compression != DDS_COMPRESS_BC4 &&
-                            ddsvals.compression != DDS_COMPRESS_BC5);
+                            ddsvals.compression != DDS_COMPRESS_BC5 &&
+                            ddsvals.compression != DDS_COMPRESS_YCOCGS);
    
    gtk_widget_show(dlg);
    
