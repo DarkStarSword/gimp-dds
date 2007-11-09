@@ -137,13 +137,13 @@ static void dither_block(unsigned char *dst, const unsigned char *block)
 }
 
 static unsigned int match_colors_block(const unsigned char *block,
-                                       const unsigned char *color,
+                                       unsigned char color[4][3],
                                        int dither)
 {
    unsigned int mask = 0;
-   int dirb = color[0] - color[4];
-   int dirg = color[1] - color[5];
-   int dirr = color[2] - color[6];
+   int dirb = color[0][0] - color[1][0];
+   int dirg = color[0][1] - color[1][1];
+   int dirr = color[0][2] - color[1][2];
    int dots[16], stops[4];
    int c0pt, halfpt, c3pt, dot;
    int i;
@@ -152,7 +152,7 @@ static unsigned int match_colors_block(const unsigned char *block,
       dots[i] = block[4 * i] * dirb + block[4 * i + 1] * dirg + block[4 * i + 2] * dirr;
    
    for(i = 0; i < 4; ++i)
-      stops[i] = color[4 * i] * dirb + color[4 * i + 1] * dirg + color[4 * i + 2] * dirr;
+      stops[i] = color[i][0] * dirb + color[i][1] * dirg + color[i][2] * dirr;
    
    c0pt = (stops[1] + stops[3]) >> 1;
    halfpt = (stops[3] + stops[2]) >> 1;
@@ -233,7 +233,7 @@ static unsigned int match_colors_block(const unsigned char *block,
 }
 
 static unsigned int match_colors_block_DXT1alpha(const unsigned char *block,
-                                                 const unsigned char *color)
+                                                 unsigned char color[4][3])
 {
    int i, d0, d1, d2, idx;
    unsigned int mask = 0;
@@ -241,9 +241,9 @@ static unsigned int match_colors_block_DXT1alpha(const unsigned char *block,
    for(i = 15; i >= 0; --i)
    {
       mask <<= 2;
-      d0 = color_distance(&block[4 * i], &color[0]);
-      d1 = color_distance(&block[4 * i], &color[4]);
-      d2 = color_distance(&block[4 * i], &color[8]);
+      d0 = color_distance(&block[4 * i], color[0]);
+      d1 = color_distance(&block[4 * i], color[1]);
+      d2 = color_distance(&block[4 * i], color[2]);
       if(block[4 * i + 3] < 128)
          idx = 3;
       else if(d0 < d1 && d0 < d2)
@@ -651,23 +651,23 @@ static void select_diagonal_YCoCg(const unsigned char *block,
    maxcolor[1] = c1;
 }
 
-static void eval_colors(unsigned char *color,
+static void eval_colors(unsigned char color[4][3],
                         unsigned short c0, unsigned short c1)
 {
-   unpack_rgb565(&color[0], c0);
-   unpack_rgb565(&color[4], c1);
+   unpack_rgb565(color[0], c0);
+   unpack_rgb565(color[1], c1);
    if(c0 > c1)
    {
-      lerp_rgb(&color[ 8], &color[0], &color[4], 0x55);
-      lerp_rgb(&color[12], &color[0], &color[4], 0xaa);
+      lerp_rgb(color[2], color[0], color[1], 0x55);
+      lerp_rgb(color[3], color[0], color[1], 0xaa);
    }
    else
    {
-      color[ 8] = (color[0] + color[4]) >> 1;
-      color[ 9] = (color[1] + color[5]) >> 1;
-      color[10] = (color[3] + color[8]) >> 1;
+      color[2][0] = (color[0][0] + color[1][0]) >> 1;
+      color[2][1] = (color[0][1] + color[1][1]) >> 1;
+      color[2][2] = (color[0][2] + color[1][2]) >> 1;
       
-      color[12] = color[13] = color[14] = 0;
+      color[3][0] = color[3][1] = color[3][2] = 0;
    }
 }
 
@@ -675,7 +675,7 @@ static void encode_color_block(unsigned char *dst,
                                const unsigned char *block,
                                int type, int dither, int dxt1_alpha)
 {
-   unsigned char dblock[64], color[16];
+   unsigned char dblock[64], color[4][3];
    unsigned short min16, max16;
    unsigned int v, mn, mx, mask;
    int i, block_has_alpha = 0;

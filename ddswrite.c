@@ -35,6 +35,13 @@
 #include "mipmap.h"
 #include "endian.h"
 
+#ifndef MAX
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#endif
+#ifndef MIN
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+#endif
+
 static gint save_dialog(gint32 image_id, gint32 drawable);
 static void save_dialog_response(GtkWidget *widget, gint response_id, gpointer data);
 static void compression_selected(GtkWidget *widget, gpointer data);
@@ -400,18 +407,8 @@ static void alpha_exp(unsigned char *dst, int r, int g, int b, int a)
    ar = (float)r / 255.0f;
    ag = (float)g / 255.0f;
    ab = (float)b / 255.0f;
-   
-   if(ar > ag)
-   {
-      if(ar > ab)
-         aa = ar;
-      else
-         aa = ab;
-   }
-   else if(ag > ab)
-      aa = ag;
-   else
-      aa = ab;
+
+   aa = MAX(ar, MAX(ag, ab));
    
    if(aa < 1e-04f)
    {
