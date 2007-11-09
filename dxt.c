@@ -20,6 +20,12 @@
 	Boston, MA 02111-1307, USA.
 */
 
+/*
+ * Parts of this code have been generously released in the public domain
+ * by 'Ryg'.  The original code can be found (at the time of writing)
+ * here:  https://mollyrocket.com/forums/viewtopic.php?t=392
+ */ 
+
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
