@@ -191,8 +191,17 @@ gint32 read_dds(gchar *filename)
          }
          else
          {
-            d.gimp_bpp = d.bpp;
-            type = (d.bpp == 1) ? GIMP_GRAY : GIMP_RGB;
+            /* test alpha only image */
+            if(d.bpp == 1 && (hdr.pixelfmt.flags & DDPF_ALPHAPIXELS))
+            {
+               d.gimp_bpp = 2;
+               type = GIMP_GRAY;
+            }
+            else
+            {
+               d.gimp_bpp = d.bpp;
+               type = (d.bpp == 1) ? GIMP_GRAY : GIMP_RGB;
+            }
          }
       }
    }
@@ -522,6 +531,8 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
             type = GIMP_INDEXED_IMAGE;
          else if(hdr->pixelfmt.rmask == 0xe0)
             type = GIMP_RGB_IMAGE;
+         else if(hdr->pixelfmt.flags & DDPF_ALPHAPIXELS)
+            type = GIMP_GRAYA_IMAGE;
          else
             type = GIMP_GRAY_IMAGE;
          break;
@@ -692,6 +703,12 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
                      (pixel >> d->gshift << (8 - d->gbits) & d->gmask) * 255 / d->gmask;
                   pixels[pos + 2] =
                      (pixel >> d->bshift << (8 - d->bbits) & d->bmask) * 255 / d->bmask;
+               }
+               else if(hdr->pixelfmt.flags & DDPF_ALPHAPIXELS)
+               {
+                  pixels[pos + 0] = 255;
+                  pixels[pos + 1] =
+                     (pixel >> d->ashift << (8 - d->abits) & d->amask) * 255 / d->amask;
                }
                else
                {

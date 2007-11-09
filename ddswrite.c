@@ -120,6 +120,7 @@ static struct
    {DDS_FORMAT_RGB5A1, "RGB5A1"},
    {DDS_FORMAT_RGB10A2, "RGB10A2"},
    {DDS_FORMAT_R3G3B2, "R3G3B2"},
+   {DDS_FORMAT_A8, "A8"},
    {DDS_FORMAT_L8, "L8"},
    {DDS_FORMAT_L8A8, "L8A8"},
    {DDS_FORMAT_YCOCG, "YCoCg"},
@@ -513,6 +514,9 @@ static void convert_pixels(unsigned char *dst, unsigned char *src,
          case DDS_FORMAT_R3G3B2:
             dst[i] = TO_R3G3B2(r, g, b);
             break;
+         case DDS_FORMAT_A8:
+            dst[i] = a;
+            break;
          case DDS_FORMAT_L8:
             dst[i] = TO_LUMINANCE(r, g, b);
             break;
@@ -623,6 +627,9 @@ static void convert_volume_pixels(unsigned char *dst, unsigned char *src,
             break;
          case DDS_FORMAT_R3G3B2:
             dst[i] = TO_R3G3B2(r, g, b);
+            break;
+         case DDS_FORMAT_A8:
+            dst[i] = a;
             break;
          case DDS_FORMAT_L8:
             dst[i] = TO_LUMINANCE(r, g, b);
@@ -1050,6 +1057,14 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
             gmask = 0x0000001c;
             bmask = 0x00000003;
             amask = 0x00000000;
+            break;
+         case DDS_FORMAT_A8:
+            fmtbpp = 1;
+            has_alpha = 1;
+            rmask = 0x00000000;
+            gmask = 0x00000000;
+            bmask = 0x00000000;
+            amask = 0x000000ff;
             break;
          case DDS_FORMAT_L8:
             fmtbpp = 1;
