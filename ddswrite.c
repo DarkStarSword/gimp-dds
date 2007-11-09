@@ -500,16 +500,16 @@ static void convert_pixels(unsigned char *dst, unsigned char *src,
             dst[4 * i + 3] = a;
             break;
          case DDS_FORMAT_R5G6B5:
-            *((unsigned short*)(&dst[2 * i])) = TO_R5G6B5(r, g, b);
+            PUTL16(&dst[2 * i], TO_R5G6B5(r, g, b));
             break;   
          case DDS_FORMAT_RGBA4:
-            *((unsigned short*)(&dst[2 * i])) = TO_RGBA4(r, g, b, a);
+            PUTL16(&dst[2 * i], TO_RGBA4(r, g, b, a));
             break;
          case DDS_FORMAT_RGB5A1:
-            *((unsigned short*)(&dst[2 * i])) = TO_RGB5A1(r, g, b, a);
+            PUTL16(&dst[2 * i], TO_RGB5A1(r, g, b, a));
             break;
          case DDS_FORMAT_RGB10A2:
-            *((unsigned int*)(&dst[4 * i])) = TO_RGB10A2(r, g, b, a);
+            PUTL32(&dst[4 * i], TO_RGB10A2(r, g, b, a));
             break;
          case DDS_FORMAT_R3G3B2:
             dst[i] = TO_R3G3B2(r, g, b);
@@ -614,16 +614,16 @@ static void convert_volume_pixels(unsigned char *dst, unsigned char *src,
             dst[4 * i + 3] = a;
             break;
          case DDS_FORMAT_R5G6B5:
-            *((unsigned short*)(&dst[2 * i])) = TO_R5G6B5(r, g, b);
+            PUTL16(&dst[2 * i], TO_R5G6B5(r, g, b));
             break;   
          case DDS_FORMAT_RGBA4:
-            *((unsigned short*)(&dst[2 * i])) = TO_RGBA4(r, g, b, a);
+            PUTL16(&dst[2 * i], TO_RGBA4(r, g, b, a));
             break;
          case DDS_FORMAT_RGB5A1:
-            *((unsigned short*)(&dst[2 * i])) = TO_RGB5A1(r, g, b, a);
+            PUTL16(&dst[2 * i], TO_RGB5A1(r, g, b, a));
             break;
          case DDS_FORMAT_RGB10A2:
-            *((unsigned int*)(&dst[4 * i])) = TO_RGB10A2(r, g, b, a);
+            PUTL32(&dst[4 * i], TO_RGB10A2(r, g, b, a));
             break;
          case DDS_FORMAT_R3G3B2:
             dst[i] = TO_R3G3B2(r, g, b);
