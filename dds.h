@@ -87,6 +87,7 @@ typedef enum
 #define DDSD_DEPTH                 0x00800000
 
 #define DDPF_ALPHAPIXELS           0x00000001
+#define DDPF_ALPHA                 0x00000002
 #define DDPF_FOURCC                0x00000004
 #define DDPF_PALETTEINDEXED8       0x00000020
 #define DDPF_RGB                   0x00000040

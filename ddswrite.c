@@ -1200,11 +1200,16 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
 
       if(ddsvals.format > DDS_FORMAT_DEFAULT)
       {
-         if((fmtbpp == 1 || ddsvals.format == DDS_FORMAT_L8A8) &&
-            (ddsvals.format != DDS_FORMAT_R3G3B2))
-            pflags |= DDPF_LUMINANCE;
+         if(ddsvals.format == DDS_FORMAT_A8)
+            pflags |= DDPF_ALPHA;
          else
-            pflags |= DDPF_RGB;
+         {
+            if((fmtbpp == 1 || ddsvals.format == DDS_FORMAT_L8A8) &&
+               (ddsvals.format != DDS_FORMAT_R3G3B2))
+               pflags |= DDPF_LUMINANCE;
+            else
+               pflags |= DDPF_RGB;
+         }
       }
       else
       {

@@ -192,7 +192,7 @@ gint32 read_dds(gchar *filename)
          else
          {
             /* test alpha only image */
-            if(d.bpp == 1 && (hdr.pixelfmt.flags & DDPF_ALPHAPIXELS))
+            if(d.bpp == 1 && (hdr.pixelfmt.flags & DDPF_ALPHA))
             {
                d.gimp_bpp = 2;
                type = GIMP_GRAY;
@@ -471,6 +471,7 @@ static int validate_header(dds_header_t *hdr)
    }
    
    if(!(hdr->pixelfmt.flags & DDPF_RGB) &&
+      !(hdr->pixelfmt.flags & DDPF_ALPHA) &&
       !(hdr->pixelfmt.flags & DDPF_FOURCC) &&
       !(hdr->pixelfmt.flags & DDPF_LUMINANCE))
    {
@@ -488,7 +489,10 @@ static int validate_header(dds_header_t *hdr)
             switch(hdr->pixelfmt.bpp)
             {
                case 8:
-                  hdr->pixelfmt.flags |= DDPF_LUMINANCE;
+                  if(hdr->pixelfmt.flags & DDPF_ALPHAPIXELS)
+                     hdr->pixelfmt.flags |= DDPF_ALPHA;
+                  else
+                     hdr->pixelfmt.flags |= DDPF_LUMINANCE;
                   break;
                case 16:
                case 24:
@@ -531,7 +535,7 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
             type = GIMP_INDEXED_IMAGE;
          else if(hdr->pixelfmt.rmask == 0xe0)
             type = GIMP_RGB_IMAGE;
-         else if(hdr->pixelfmt.flags & DDPF_ALPHAPIXELS)
+         else if(hdr->pixelfmt.flags & DDPF_ALPHA)
             type = GIMP_GRAYA_IMAGE;
          else
             type = GIMP_GRAY_IMAGE;
@@ -595,7 +599,7 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
       return(0);
    }
    
-   if(hdr->pixelfmt.flags & DDPF_RGB)
+   if(hdr->pixelfmt.flags & DDPF_RGB || hdr->pixelfmt.flags & DDPF_ALPHA)
    {
       z = 0;
       for(y = 0, n = 0; y < height; ++y, ++n)
@@ -693,7 +697,7 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
             {
                if(hdr->pixelfmt.flags & DDPF_PALETTEINDEXED8)
                {
-                  pixels[pos] = pixel;
+                  pixels[pos] = pixel & 0xff;
                }
                else if(hdr->pixelfmt.rmask == 0xe0) // R3G3B2
                {
@@ -704,16 +708,14 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
                   pixels[pos + 2] =
                      (pixel >> d->bshift << (8 - d->bbits) & d->bmask) * 255 / d->bmask;
                }
-               else if(hdr->pixelfmt.flags & DDPF_ALPHAPIXELS)
+               else if(hdr->pixelfmt.flags & DDPF_ALPHA)
                {
                   pixels[pos + 0] = 255;
-                  pixels[pos + 1] =
-                     (pixel >> d->ashift << (8 - d->abits) & d->amask) * 255 / d->amask;
+                  pixels[pos + 1] = pixel & 0xff;
                }
-               else
+               else // LUMINANCE
                {
-                  pixels[pos] =
-                     (pixel >> d->rshift << (8 - d->rbits) & d->rmask) * 255 / d->rmask;
+                  pixels[pos] = pixel & 0xff;
                }
             }
 
