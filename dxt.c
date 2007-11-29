@@ -71,13 +71,13 @@ static inline unsigned short pack_rgb565(const unsigned char *c)
 /* unpack RGB565 to BGR */
 static void unpack_rgb565(unsigned char *dst, unsigned short v)
 {
-   int rv = (v & 0xf800) >> 11;
-   int gv = (v & 0x07e0) >>  5;
-   int bv = (v & 0x001f) >>  0;
+   int r = (v >> 11) & 0x1f;
+   int g = (v >>  5) & 0x3f;
+   int b = (v      ) & 0x1f;
    
-   dst[0] = expand5[bv];
-   dst[1] = expand6[gv];
-   dst[2] = expand5[rv];
+   dst[0] = (b << 3) | (b >> 2);
+   dst[1] = (g << 2) | (g >> 4);
+   dst[2] = (r << 3) | (r >> 2);
 }
 
 static void lerp_rgb(unsigned char *dst, unsigned char *a, unsigned char *b, int f)

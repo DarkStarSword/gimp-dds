@@ -51,27 +51,11 @@ int main(void)
            "#ifndef DXT_TABLES_H\n"
            "#define DXT_TABLES_H\n\n");
    
-   fprintf(fp,
-           "static const unsigned char expand5[32] =\n"
-           "{");
    for(i = 0; i < 32; ++i)
-   {
-      if(i % 8 == 0) fprintf(fp, "\n   ");
       expand5[i] = (i << 3) | (i >> 2);
-      fprintf(fp, "0x%02x, ", expand5[i]);
-   }
-   fprintf(fp, "\n};\n\n");
 
-   fprintf(fp,
-           "static const unsigned char expand6[64] =\n"
-           "{");
    for(i = 0; i < 64; ++i)
-   {
-      if(i % 8 == 0) fprintf(fp, "\n   ");
       expand6[i] = (i << 2) | (i >> 4);
-      fprintf(fp, "0x%02x, ", expand6[i]);
-   }
-   fprintf(fp, "\n};\n\n");
    
    for(i = 0; i < 256 + 16; ++i)
    {

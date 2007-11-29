@@ -1060,7 +1060,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
             break;
          case DDS_FORMAT_A8:
             fmtbpp = 1;
-            has_alpha = 1;
+            has_alpha = 0;
             rmask = 0x00000000;
             gmask = 0x00000000;
             bmask = 0x00000000;
