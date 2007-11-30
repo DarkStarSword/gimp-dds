@@ -65,8 +65,11 @@ static int load_face(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
                      guchar *pixels, unsigned char *buf);
 static unsigned char color_bits(unsigned int mask);
 static unsigned char color_shift(unsigned int mask);
+static int load_dialog(void);
 
-gint32 read_dds(gchar *filename)
+static int runme = 0;
+
+GimpPDBStatusType read_dds(gchar *filename, gint32 *imageID)
 {
    gint32 image = 0;
    unsigned char *buf;
@@ -80,11 +83,17 @@ gint32 read_dds(gchar *filename)
    GimpImageBaseType type;
    int i, j;
    
+   if(interactive_dds && dds_read_vals.show_dialog)
+   {
+      if(!load_dialog())
+         return(GIMP_PDB_CANCEL);
+   }
+   
    fp = fopen(filename, "rb");
    if(fp == 0)
    {
       g_message("Error opening file.\n");
-      return(-1);
+      return(GIMP_PDB_EXECUTION_ERROR);
    }
    
    if(interactive_dds)
@@ -101,7 +110,8 @@ gint32 read_dds(gchar *filename)
    if(!validate_header(&hdr))
    {
       fclose(fp);
-      return(-1);
+      g_message("Invalid DDS header!\n");
+      return(GIMP_PDB_EXECUTION_ERROR);
    }
    
    /* a lot of DDS images out there don't have this for some reason -_- */
@@ -212,7 +222,7 @@ gint32 read_dds(gchar *filename)
    {
       g_message("Can't allocate new image.\n");
       fclose(fp);
-      return(-1);
+      return(GIMP_PDB_EXECUTION_ERROR);
    }
    
    gimp_image_set_filename(image, filename);
@@ -255,7 +265,7 @@ gint32 read_dds(gchar *filename)
       {
          fclose(fp);
          gimp_image_delete(image);
-         return(-1);
+         return(GIMP_PDB_EXECUTION_ERROR);
       }
    }
 
@@ -268,42 +278,42 @@ gint32 read_dds(gchar *filename)
          {
             fclose(fp);
             gimp_image_delete(image);
-            return(-1);
+            return(GIMP_PDB_EXECUTION_ERROR);
          }
          if((hdr.caps.caps2 & DDSCAPS2_CUBEMAP_NEGATIVEX) &&
             !load_face(fp, &hdr, &d, image, "(negative x)", &l, pixels, buf))
          {
             fclose(fp);
             gimp_image_delete(image);
-            return(-1);
+            return(GIMP_PDB_EXECUTION_ERROR);
          }
          if((hdr.caps.caps2 & DDSCAPS2_CUBEMAP_POSITIVEY) &&
             !load_face(fp, &hdr, &d, image, "(positive y)", &l, pixels, buf))
          {
             fclose(fp);
             gimp_image_delete(image);
-            return(-1);
+            return(GIMP_PDB_EXECUTION_ERROR);
          }
          if((hdr.caps.caps2 & DDSCAPS2_CUBEMAP_NEGATIVEY) &&
             !load_face(fp, &hdr, &d, image, "(negative y)", &l, pixels, buf))
          {
             fclose(fp);
             gimp_image_delete(image);
-            return(-1);
+            return(GIMP_PDB_EXECUTION_ERROR);
          }
          if((hdr.caps.caps2 & DDSCAPS2_CUBEMAP_POSITIVEZ) &&
             !load_face(fp, &hdr, &d, image, "(positive z)", &l, pixels, buf))
          {
             fclose(fp);
             gimp_image_delete(image);
-            return(-1);
+            return(GIMP_PDB_EXECUTION_ERROR);
          }
          if((hdr.caps.caps2 & DDSCAPS2_CUBEMAP_NEGATIVEZ) &&
             !load_face(fp, &hdr, &d, image, "(negative z)", &l, pixels, buf))
          {
             fclose(fp);
             gimp_image_delete(image);
-            return(-1);
+            return(GIMP_PDB_EXECUTION_ERROR);
          }
       }
       else if((hdr.caps.caps2 & DDSCAPS2_VOLUME) &&
@@ -319,13 +329,14 @@ gint32 read_dds(gchar *filename)
                g_free(plane);
                fclose(fp);
                gimp_image_delete(image);
-               return(-1);
+               return(GIMP_PDB_EXECUTION_ERROR);
             }
             g_free(plane);
          }
 
          if((hdr.flags & DDSD_MIPMAPCOUNT) &&
-            (hdr.caps.caps1 & DDSCAPS_MIPMAP))
+            (hdr.caps.caps1 & DDSCAPS_MIPMAP) &&
+            (dds_read_vals.mipmaps != 0))
          {
             for(level = 1; level < hdr.num_mipmaps; ++level)
             {
@@ -339,18 +350,21 @@ gint32 read_dds(gchar *filename)
                      g_free(plane);
                      fclose(fp);
                      gimp_image_delete(image);
-                     return(-1);
+                     return(GIMP_PDB_EXECUTION_ERROR);
                   }
                   g_free(plane);
                }
             }
          }
       }
-      else if(!load_mipmaps(fp, &hdr, &d, image, "", &l, pixels, buf))
+      else if(dds_read_vals.mipmaps)
       {
-         fclose(fp);
-         gimp_image_delete(image);
-         return(-1);
+         if(!load_mipmaps(fp, &hdr, &d, image, "", &l, pixels, buf))
+         {
+            fclose(fp);
+            gimp_image_delete(image);
+            return(GIMP_PDB_EXECUTION_ERROR);
+         }
       }
    }
 
@@ -363,8 +377,10 @@ gint32 read_dds(gchar *filename)
 
    layers = gimp_image_get_layers(image, &layer_count);
    gimp_image_set_active_layer(image, layers[0]);
+   
+   *imageID = image;
                
-   return(image);
+   return(GIMP_PDB_SUCCESS);
 }
 
 static int read_header(dds_header_t *hdr, FILE *fp)
@@ -823,4 +839,70 @@ static unsigned char color_shift(unsigned int mask)
    if(!mask) return(0);
    while(!((mask >> i) & 1)) ++i;
    return(i);
+}
+
+static void load_dialog_response(GtkWidget *widget, gint response_id,
+                                 gpointer data)
+{
+   switch(response_id)
+   {
+      case GTK_RESPONSE_OK:
+         runme = 1;
+      default:
+         gtk_widget_destroy(widget);
+         break;
+   }
+}
+
+static void toggle_clicked(GtkWidget *widget, gpointer data)
+{
+   int *flag = (int*)data;
+   (*flag) = !(*flag);
+}
+
+static int load_dialog(void)
+{
+   GtkWidget *dlg;
+   GtkWidget *vbox;
+   GtkWidget *check;
+   
+   dlg = gimp_dialog_new("Load DDS", "dds", NULL, GTK_WIN_POS_MOUSE,
+                         gimp_standard_help_func, LOAD_PROC,
+                         GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
+                         GTK_STOCK_OK, GTK_RESPONSE_OK,
+                         NULL);
+
+   gtk_signal_connect(GTK_OBJECT(dlg), "response",
+                      GTK_SIGNAL_FUNC(load_dialog_response),
+                      0);
+   gtk_signal_connect(GTK_OBJECT(dlg), "destroy",
+                      GTK_SIGNAL_FUNC(gtk_main_quit),
+                      0);
+   
+   vbox = gtk_vbox_new(0, 8);
+   gtk_container_set_border_width(GTK_CONTAINER(vbox), 8);
+   gtk_box_pack_start(GTK_BOX(GTK_DIALOG(dlg)->vbox), vbox, 1, 1, 0);
+   gtk_widget_show(vbox);
+   
+   check = gtk_check_button_new_with_label("Load mipmaps");
+   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check), dds_read_vals.mipmaps);
+   gtk_signal_connect(GTK_OBJECT(check), "clicked",
+                      GTK_SIGNAL_FUNC(toggle_clicked), &dds_read_vals.mipmaps);
+   gtk_box_pack_start(GTK_BOX(vbox), check, 1, 1, 0);
+   gtk_widget_show(check);
+
+   check = gtk_check_button_new_with_label("Show this dialog");
+   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check), dds_read_vals.show_dialog);
+   gtk_signal_connect(GTK_OBJECT(check), "clicked",
+                      GTK_SIGNAL_FUNC(toggle_clicked), &dds_read_vals.show_dialog);
+   gtk_box_pack_start(GTK_BOX(vbox), check, 1, 1, 0);
+   gtk_widget_show(check);
+   
+   gtk_widget_show(dlg);
+   
+   runme = 0;
+   
+   gtk_main();
+   
+   return(runme);
 }

@@ -47,10 +47,15 @@ GimpPlugInInfo PLUG_IN_INFO =
 };
 
 
-DDSSaveVals ddsvals =
+DDSWriteVals dds_write_vals =
 {
 	DDS_COMPRESS_NONE, 0, DDS_SAVE_SELECTED_LAYER, DDS_FORMAT_DEFAULT, -1,
    DDS_COLOR_DEFAULT, 0, 0
+};
+
+DDSReadVals dds_read_vals =
+{
+   1, 1
 };
 
 static GimpParamDef load_args[] =
@@ -144,7 +149,9 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
 		switch(run_mode)
 		{
 			case GIMP_RUN_INTERACTIVE:
+			   gimp_ui_init("dds", 0);
 			   interactive_dds = 1;
+            gimp_get_data(LOAD_PROC, &dds_read_vals);
 			   break;
 			case GIMP_RUN_NONINTERACTIVE:
 			   interactive_dds = 0;
@@ -157,14 +164,16 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
 		
 		if(status == GIMP_PDB_SUCCESS)
 		{
-			imageID = read_dds(param[1].data.d_string);
-			if(imageID != -1)
+			status = read_dds(param[1].data.d_string, &imageID);
+			if(status == GIMP_PDB_SUCCESS && imageID != -1)
 			{
 				*nreturn_vals = 2;
 				values[1].type = GIMP_PDB_IMAGE;
 				values[1].data.d_image = imageID;
+            if(interactive_dds)
+               gimp_set_data(LOAD_PROC, &dds_read_vals, sizeof(dds_read_vals));
 			}
-			else
+			else if(status != GIMP_PDB_CANCEL)
 				status = GIMP_PDB_EXECUTION_ERROR;
 		}
 	}
@@ -196,7 +205,7 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
 		switch(run_mode)
 		{
 			case GIMP_RUN_INTERACTIVE:
-			   gimp_get_data(SAVE_PROC, &ddsvals);
+			   gimp_get_data(SAVE_PROC, &dds_write_vals);
 			   interactive_dds = 1;
 			   break;
 			case GIMP_RUN_NONINTERACTIVE:
@@ -205,30 +214,30 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
 				   status = GIMP_PDB_CALLING_ERROR;
 			   else
 			   {
-					ddsvals.compression = param[5].data.d_int32;
-					ddsvals.mipmaps = param[6].data.d_int32;
-               ddsvals.savetype = param[7].data.d_int32;
-               ddsvals.format = param[8].data.d_int32;
-               ddsvals.transindex = param[9].data.d_int32;
-               ddsvals.color_type = param[10].data.d_int32;
-               ddsvals.dither = param[11].data.d_int32;
+					dds_write_vals.compression = param[5].data.d_int32;
+					dds_write_vals.mipmaps = param[6].data.d_int32;
+               dds_write_vals.savetype = param[7].data.d_int32;
+               dds_write_vals.format = param[8].data.d_int32;
+               dds_write_vals.transindex = param[9].data.d_int32;
+               dds_write_vals.color_type = param[10].data.d_int32;
+               dds_write_vals.dither = param[11].data.d_int32;
                
-					if(ddsvals.compression < DDS_COMPRESS_NONE ||
-						ddsvals.compression >= DDS_COMPRESS_MAX)
+					if(dds_write_vals.compression < DDS_COMPRESS_NONE ||
+						dds_write_vals.compression >= DDS_COMPRESS_MAX)
 						status = GIMP_PDB_CALLING_ERROR;
-               if(ddsvals.savetype < DDS_SAVE_SELECTED_LAYER ||
-                  ddsvals.savetype >= DDS_SAVE_MAX)
+               if(dds_write_vals.savetype < DDS_SAVE_SELECTED_LAYER ||
+                  dds_write_vals.savetype >= DDS_SAVE_MAX)
                   status = GIMP_PDB_CALLING_ERROR;
-               if(ddsvals.format < DDS_FORMAT_DEFAULT ||
-                  ddsvals.format >= DDS_FORMAT_MAX)
+               if(dds_write_vals.format < DDS_FORMAT_DEFAULT ||
+                  dds_write_vals.format >= DDS_FORMAT_MAX)
                   status = GIMP_PDB_CALLING_ERROR;
-               if(ddsvals.color_type < DDS_COLOR_DEFAULT ||
-                  ddsvals.color_type >= DDS_COLOR_MAX)
+               if(dds_write_vals.color_type < DDS_COLOR_DEFAULT ||
+                  dds_write_vals.color_type >= DDS_COLOR_MAX)
                   status = GIMP_PDB_CALLING_ERROR;
 				}
 			   break;
 			case GIMP_RUN_WITH_LAST_VALS:
-			   gimp_get_data(SAVE_PROC, &ddsvals);
+			   gimp_get_data(SAVE_PROC, &dds_write_vals);
 			   interactive_dds = 0;
 			   break;
 			default:
@@ -239,7 +248,7 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
 		{
 			status = write_dds(param[3].data.d_string, imageID, drawableID);
 			if(status == GIMP_PDB_SUCCESS)
-				gimp_set_data(SAVE_PROC, &ddsvals, sizeof(ddsvals));
+				gimp_set_data(SAVE_PROC, &dds_write_vals, sizeof(dds_write_vals));
 		}
 		
 		if(export == GIMP_EXPORT_EXPORT)

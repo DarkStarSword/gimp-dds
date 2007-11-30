@@ -33,11 +33,18 @@ typedef struct
    int color_type;
    int dither;
    int show_adv_opt;
-} DDSSaveVals;
+} DDSWriteVals;
 
-extern DDSSaveVals ddsvals;
+typedef struct
+{
+   int show_dialog;
+   int mipmaps;
+} DDSReadVals;
 
-extern gint32 read_dds(gchar *);
+extern DDSWriteVals dds_write_vals;
+extern DDSReadVals dds_read_vals;
+
+extern GimpPDBStatusType read_dds(gchar *filename, gint32 *imageID);
 extern GimpPDBStatusType write_dds(gchar *, gint32, gint32);
 
 extern gint interactive_dds;

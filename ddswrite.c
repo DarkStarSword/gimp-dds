@@ -314,20 +314,20 @@ GimpPDBStatusType write_dds(gchar *filename, gint32 image_id, gint32 drawable_id
    }
    else
    {
-      if(ddsvals.savetype == DDS_SAVE_CUBEMAP && !is_cubemap)
+      if(dds_write_vals.savetype == DDS_SAVE_CUBEMAP && !is_cubemap)
       {
          g_message("DDS: Cannot save image as cube map");
          return(GIMP_PDB_EXECUTION_ERROR);
       }
       
-      if(ddsvals.savetype == DDS_SAVE_VOLUMEMAP && !is_volume)
+      if(dds_write_vals.savetype == DDS_SAVE_VOLUMEMAP && !is_volume)
       {
          g_message("DDS: Cannot save image as volume map");
          return(GIMP_PDB_EXECUTION_ERROR);
       }
       
-      if(ddsvals.savetype == DDS_SAVE_VOLUMEMAP &&
-         ddsvals.compression != DDS_COMPRESS_NONE)
+      if(dds_write_vals.savetype == DDS_SAVE_VOLUMEMAP &&
+         dds_write_vals.compression != DDS_COMPRESS_NONE)
       {
          g_message("DDS: Cannot save volume map with compression");
          return(GIMP_PDB_EXECUTION_ERROR);
@@ -666,7 +666,7 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
    unsigned char *src, *dst, *fmtdst, *tmp, c;
    unsigned char *palette = NULL;
    int i, x, y, size, fmtsize, offset, colors;
-   int compression = ddsvals.compression;
+   int compression = dds_write_vals.compression;
 
    basetype = gimp_image_base_type(image_id);
    type = gimp_drawable_type(drawable_id);
@@ -755,7 +755,7 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
       {
          /* pre-convert indexed images to RGB for better quality mipmaps
             if a pixel format conversion is requested */
-         if(ddsvals.format > DDS_FORMAT_DEFAULT && basetype == GIMP_INDEXED)
+         if(dds_write_vals.format > DDS_FORMAT_DEFAULT && basetype == GIMP_INDEXED)
          {
             fmtsize = get_mipmapped_size(w, h, 3, 0, mipmaps, DDS_COMPRESS_NONE);
             fmtdst = g_malloc(fmtsize);
@@ -773,13 +773,13 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
             
          offset = 0;
          
-         if(ddsvals.format > DDS_FORMAT_DEFAULT)
+         if(dds_write_vals.format > DDS_FORMAT_DEFAULT)
          {
             fmtsize = get_mipmapped_size(w, h, fmtbpp, 0, mipmaps,
                                          DDS_COMPRESS_NONE);
             fmtdst = g_malloc(fmtsize);
             
-            convert_pixels(fmtdst, dst, ddsvals.format, w, h, bpp,
+            convert_pixels(fmtdst, dst, dds_write_vals.format, w, h, bpp,
                            palette, mipmaps);
             
             g_free(dst);
@@ -798,10 +798,10 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
       }
       else
       {
-         if(ddsvals.format > DDS_FORMAT_DEFAULT)
+         if(dds_write_vals.format > DDS_FORMAT_DEFAULT)
          {
             fmtdst = g_malloc(h * w * fmtbpp);
-            convert_pixels(fmtdst, src, ddsvals.format, w, h, bpp,
+            convert_pixels(fmtdst, src, dds_write_vals.format, w, h, bpp,
                            palette, 1);
             g_free(src);
             src = fmtdst;
@@ -830,7 +830,7 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
       }
       
       dxt_compress(dst, src, compression, w, h, bpp, mipmaps,
-                   ddsvals.color_type, ddsvals.dither);
+                   dds_write_vals.color_type, dds_write_vals.dither);
          
       offset = 0;
          
@@ -862,7 +862,7 @@ static void write_volume_mipmaps(FILE *fp, gint32 image_id, gint32 *layers,
    
    type = gimp_image_base_type(image_id);
 
-   if(ddsvals.compression != DDS_COMPRESS_NONE) return;
+   if(dds_write_vals.compression != DDS_COMPRESS_NONE) return;
 
    src = g_malloc(w * h * bpp * d);
 
@@ -894,7 +894,7 @@ static void write_volume_mipmaps(FILE *fp, gint32 image_id, gint32 *layers,
 
    /* pre-convert indexed images to RGB for better mipmaps if a
       pixel format conversion is requested */
-   if(ddsvals.format > DDS_FORMAT_DEFAULT && type == GIMP_INDEXED)
+   if(dds_write_vals.format > DDS_FORMAT_DEFAULT && type == GIMP_INDEXED)
    {
       size = get_volume_mipmapped_size(w, h, d, 3, 0, mipmaps,
                                        DDS_COMPRESS_NONE);
@@ -908,25 +908,25 @@ static void write_volume_mipmaps(FILE *fp, gint32 image_id, gint32 *layers,
    }
 
    size = get_volume_mipmapped_size(w, h, d, bpp, 0, mipmaps,
-                                    ddsvals.compression);
+                                    dds_write_vals.compression);
    
    dst = g_malloc(size);
 
    offset = get_volume_mipmapped_size(w, h, d, bpp, 0, 1,
-                                      ddsvals.compression);
+                                      dds_write_vals.compression);
 
    generate_volume_mipmaps(dst, src, w, h, d, bpp,
                            palette != NULL, mipmaps);
 
-   if(ddsvals.format > DDS_FORMAT_DEFAULT)
+   if(dds_write_vals.format > DDS_FORMAT_DEFAULT)
    {
       size = get_volume_mipmapped_size(w, h, d, fmtbpp, 0, mipmaps,
-                                       ddsvals.compression);
+                                       dds_write_vals.compression);
       offset = get_volume_mipmapped_size(w, h, d, fmtbpp, 0, 1,
-                                         ddsvals.compression);
+                                         dds_write_vals.compression);
       fmtdst = g_malloc(size);
       
-      convert_volume_pixels(fmtdst, dst, ddsvals.format, w, h, d, bpp,
+      convert_volume_pixels(fmtdst, dst, dds_write_vals.format, w, h, d, bpp,
                             palette, mipmaps);
       g_free(dst);
       dst = fmtdst;
@@ -965,10 +965,10 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    drawable_type = gimp_drawable_type(drawable_id);
    gimp_pixel_rgn_init(&rgn, drawable, 0, 0, w, h, 0, 0);
 
-   if((ddsvals.compression != DDS_COMPRESS_NONE) &&
+   if((dds_write_vals.compression != DDS_COMPRESS_NONE) &&
       !(IS_POT(w) && IS_POT(h)))
    {
-      ddsvals.compression = DDS_COMPRESS_NONE;
+      dds_write_vals.compression = DDS_COMPRESS_NONE;
       g_message("DDS: Cannot compress non power-of-2 sized images.\n"
                 "Saved image will not be compressed.");
    }
@@ -985,9 +985,9 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
          break;
    }
    
-   if(ddsvals.format > DDS_FORMAT_DEFAULT)
+   if(dds_write_vals.format > DDS_FORMAT_DEFAULT)
    {
-      switch(ddsvals.format)
+      switch(dds_write_vals.format)
       {
          case DDS_FORMAT_RGB8:
             fmtbpp = 3;
@@ -1162,7 +1162,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    flags = DDSD_CAPS | DDSD_PIXELFORMAT | DDSD_WIDTH | DDSD_HEIGHT;
      
    caps = DDSCAPS_TEXTURE;
-   if(ddsvals.mipmaps)
+   if(dds_write_vals.mipmaps)
    {
       flags |= DDSD_MIPMAPCOUNT;
       caps |= (DDSCAPS_COMPLEX | DDSCAPS_MIPMAP);
@@ -1171,7 +1171,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    else
       num_mipmaps = 1;
    
-   if(ddsvals.savetype == DDS_SAVE_CUBEMAP && is_cubemap)
+   if(dds_write_vals.savetype == DDS_SAVE_CUBEMAP && is_cubemap)
    {
       caps |= DDSCAPS_COMPLEX;
       caps2 |= (DDSCAPS2_CUBEMAP |
@@ -1182,7 +1182,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
                 DDSCAPS2_CUBEMAP_POSITIVEZ |
                 DDSCAPS2_CUBEMAP_NEGATIVEZ);
    }
-   else if(ddsvals.savetype == DDS_SAVE_VOLUMEMAP && is_volume)
+   else if(dds_write_vals.savetype == DDS_SAVE_VOLUMEMAP && is_volume)
    {
       PUTL32(hdr + 24, num_layers);
       flags |= DDSD_DEPTH;
@@ -1194,18 +1194,18 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    PUTL32(hdr + 108, caps);
    PUTL32(hdr + 112, caps2);
    
-   if(ddsvals.compression == DDS_COMPRESS_NONE)
+   if(dds_write_vals.compression == DDS_COMPRESS_NONE)
    {
       flags |= DDSD_PITCH;
 
-      if(ddsvals.format > DDS_FORMAT_DEFAULT)
+      if(dds_write_vals.format > DDS_FORMAT_DEFAULT)
       {
-         if(ddsvals.format == DDS_FORMAT_A8)
+         if(dds_write_vals.format == DDS_FORMAT_A8)
             pflags |= DDPF_ALPHA;
          else
          {
-            if((fmtbpp == 1 || ddsvals.format == DDS_FORMAT_L8A8) &&
-               (ddsvals.format != DDS_FORMAT_R3G3B2))
+            if((fmtbpp == 1 || dds_write_vals.format == DDS_FORMAT_L8A8) &&
+               (dds_write_vals.format != DDS_FORMAT_R3G3B2))
                pflags |= DDPF_LUMINANCE;
             else
                pflags |= DDPF_RGB;
@@ -1237,7 +1237,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
       flags |= DDSD_LINEARSIZE;
       PUTL32(hdr + 8, flags);
       PUTL32(hdr + 80, DDPF_FOURCC);
-      switch(ddsvals.compression)
+      switch(dds_write_vals.compression)
       {
          case DDS_COMPRESS_BC1:    format = "DXT1"; break;
          case DDS_COMPRESS_BC2:    format = "DXT3"; break;
@@ -1252,8 +1252,8 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
       memcpy(hdr + 84, format, 4);
 
       size = ((w + 3) >> 2) * ((h + 3) >> 2);
-      if(ddsvals.compression == DDS_COMPRESS_BC1 ||
-         ddsvals.compression == DDS_COMPRESS_BC4)
+      if(dds_write_vals.compression == DDS_COMPRESS_BC1 ||
+         dds_write_vals.compression == DDS_COMPRESS_BC4)
          size *= 8;
       else
          size *= 16;
@@ -1263,14 +1263,14 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
 
    fwrite(hdr, DDS_HEADERSIZE, 1, fp);
    
-   if(basetype == GIMP_INDEXED && ddsvals.format == DDS_FORMAT_DEFAULT &&
-      ddsvals.compression == DDS_COMPRESS_NONE)
+   if(basetype == GIMP_INDEXED && dds_write_vals.format == DDS_FORMAT_DEFAULT &&
+      dds_write_vals.compression == DDS_COMPRESS_NONE)
    {
       cmap = gimp_image_get_colormap(image_id, &colors);
       for(i = 0; i < colors; ++i)
       {
          fwrite(&cmap[3 * i], 1, 3, fp);
-         if(i == ddsvals.transindex)
+         if(i == dds_write_vals.transindex)
             fputc(0, fp);
          else
             fputc(255, fp);
@@ -1279,7 +1279,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
          fwrite(zero, 1, 4, fp);
    }
 
-   if(ddsvals.savetype == DDS_SAVE_CUBEMAP)
+   if(dds_write_vals.savetype == DDS_SAVE_CUBEMAP)
    {
       for(i = 0; i < 6; ++i)
       {
@@ -1289,7 +1289,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
             gimp_progress_update((float)(i + 1) / 6.0);
       }
    }
-   else if(ddsvals.savetype == DDS_SAVE_VOLUMEMAP)
+   else if(dds_write_vals.savetype == DDS_SAVE_VOLUMEMAP)
    {
       for(i = 0; i < num_layers; ++i)
       {
@@ -1331,25 +1331,25 @@ static void save_dialog_response(GtkWidget *widget, gint response_id,
 
 static void compression_selected(GtkWidget *widget, gpointer data)
 {
-   ddsvals.compression = (gint)(long)data;
-   gtk_widget_set_sensitive(format_opt, ddsvals.compression == DDS_COMPRESS_NONE);
+   dds_write_vals.compression = (gint)(long)data;
+   gtk_widget_set_sensitive(format_opt, dds_write_vals.compression == DDS_COMPRESS_NONE);
    gtk_widget_set_sensitive(color_type_opt,
-                            ddsvals.compression != DDS_COMPRESS_NONE &&
-                            ddsvals.compression != DDS_COMPRESS_BC4 &&
-                            ddsvals.compression != DDS_COMPRESS_BC5 &&
-                            ddsvals.compression != DDS_COMPRESS_YCOCGS);
+                            dds_write_vals.compression != DDS_COMPRESS_NONE &&
+                            dds_write_vals.compression != DDS_COMPRESS_BC4 &&
+                            dds_write_vals.compression != DDS_COMPRESS_BC5 &&
+                            dds_write_vals.compression != DDS_COMPRESS_YCOCGS);
    gtk_widget_set_sensitive(dither_chk,
-                            ddsvals.compression != DDS_COMPRESS_NONE &&
-                            ddsvals.compression != DDS_COMPRESS_BC4 &&
-                            ddsvals.compression != DDS_COMPRESS_BC5 &&
-                            ddsvals.compression != DDS_COMPRESS_YCOCGS);
+                            dds_write_vals.compression != DDS_COMPRESS_NONE &&
+                            dds_write_vals.compression != DDS_COMPRESS_BC4 &&
+                            dds_write_vals.compression != DDS_COMPRESS_BC5 &&
+                            dds_write_vals.compression != DDS_COMPRESS_YCOCGS);
 }
 
 static void savetype_selected(GtkWidget *widget, gpointer data)
 {
    int n = (int)(long)data;
 
-   ddsvals.savetype = n;
+   dds_write_vals.savetype = n;
    
    switch(n)
    {
@@ -1358,7 +1358,7 @@ static void savetype_selected(GtkWidget *widget, gpointer data)
          gtk_widget_set_sensitive(compress_opt, 1);
          break;
       case 2:
-         ddsvals.compression = DDS_COMPRESS_NONE;
+         dds_write_vals.compression = DDS_COMPRESS_NONE;
          gtk_menu_set_active(GTK_MENU(compress_menu), DDS_COMPRESS_NONE);
          gtk_widget_set_sensitive(compress_opt, 0);
          break;
@@ -1367,7 +1367,7 @@ static void savetype_selected(GtkWidget *widget, gpointer data)
 
 static void format_selected(GtkWidget *widget, gpointer data)
 {
-   ddsvals.format = (gint)(long)data;
+   dds_write_vals.format = (gint)(long)data;
 }
 
 static void toggle_clicked(GtkWidget *widget, gpointer data)
@@ -1382,30 +1382,30 @@ static void transindex_clicked(GtkWidget *widget, gpointer data)
       
    if(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget)))
    {
-      ddsvals.transindex = 0;
+      dds_write_vals.transindex = 0;
       gtk_widget_set_sensitive(spin, 1);
       gtk_spin_button_set_value(GTK_SPIN_BUTTON(spin), 0);
    }
    else
    {
       gtk_widget_set_sensitive(spin, 0);
-      ddsvals.transindex = -1;
+      dds_write_vals.transindex = -1;
    }
 }
 
 static void transindex_changed(GtkWidget *widget, gpointer data)
 {
-   ddsvals.transindex = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(widget));
+   dds_write_vals.transindex = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(widget));
 }
 
 static void adv_opt_expanded(GtkWidget *widget, gpointer data)
 {
-   ddsvals.show_adv_opt = !gtk_expander_get_expanded(GTK_EXPANDER(widget));
+   dds_write_vals.show_adv_opt = !gtk_expander_get_expanded(GTK_EXPANDER(widget));
 }
 
 static void color_type_selected(GtkWidget *widget, gpointer data)
 {
-   ddsvals.color_type = (gint)(long)data;
+   dds_write_vals.color_type = (gint)(long)data;
 }
 
 static gint save_dialog(gint32 image_id, gint32 drawable_id)
@@ -1424,11 +1424,11 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    int i, w, h;
    
    if(is_cubemap)
-      ddsvals.savetype = DDS_SAVE_CUBEMAP;
+      dds_write_vals.savetype = DDS_SAVE_CUBEMAP;
    else if(is_volume)
-      ddsvals.savetype = DDS_SAVE_VOLUMEMAP;
+      dds_write_vals.savetype = DDS_SAVE_VOLUMEMAP;
    else
-      ddsvals.savetype = DDS_SAVE_SELECTED_LAYER;
+      dds_write_vals.savetype = DDS_SAVE_SELECTED_LAYER;
    
    basetype = gimp_image_base_type(image_id);
    type = gimp_drawable_type(drawable_id);
@@ -1485,7 +1485,7 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
       gtk_menu_append(GTK_MENU(menu), menuitem);
    }
    
-   gtk_menu_set_active(GTK_MENU(menu), ddsvals.compression);
+   gtk_menu_set_active(GTK_MENU(menu), dds_write_vals.compression);
    
    gtk_option_menu_set_menu(GTK_OPTION_MENU(opt), menu);
    
@@ -1517,11 +1517,11 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
       gtk_menu_append(GTK_MENU(menu), menuitem);
    }
    
-   gtk_menu_set_active(GTK_MENU(menu), ddsvals.format);
+   gtk_menu_set_active(GTK_MENU(menu), dds_write_vals.format);
    
    gtk_option_menu_set_menu(GTK_OPTION_MENU(opt), menu);
 
-   gtk_widget_set_sensitive(opt, ddsvals.compression == DDS_COMPRESS_NONE);
+   gtk_widget_set_sensitive(opt, dds_write_vals.compression == DDS_COMPRESS_NONE);
    
    format_opt = opt;
    
@@ -1561,23 +1561,23 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    gtk_menu_append(GTK_MENU(menu), menuitem);
    gtk_widget_set_sensitive(menuitem, is_volume);
    
-   gtk_menu_set_active(GTK_MENU(menu), ddsvals.savetype);
+   gtk_menu_set_active(GTK_MENU(menu), dds_write_vals.savetype);
    
    gtk_option_menu_set_menu(GTK_OPTION_MENU(opt), menu);
    
    gtk_widget_set_sensitive(opt, is_cubemap || is_volume);
    
    check = gtk_check_button_new_with_label("Generate mipmaps");
-   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check), ddsvals.mipmaps);
+   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check), dds_write_vals.mipmaps);
    gtk_box_pack_start(GTK_BOX(vbox), check, 0, 0, 0);
    gtk_signal_connect(GTK_OBJECT(check), "clicked",
-                      GTK_SIGNAL_FUNC(toggle_clicked), &ddsvals.mipmaps);
+                      GTK_SIGNAL_FUNC(toggle_clicked), &dds_write_vals.mipmaps);
    gtk_widget_show(check);
    mipmap_check = check;
 
-   if(is_volume && ddsvals.savetype == DDS_SAVE_VOLUMEMAP)
+   if(is_volume && dds_write_vals.savetype == DDS_SAVE_VOLUMEMAP)
    {
-      ddsvals.compression = DDS_COMPRESS_NONE;
+      dds_write_vals.compression = DDS_COMPRESS_NONE;
       gtk_menu_set_active(GTK_MENU(compress_menu), DDS_COMPRESS_NONE);
       gtk_widget_set_sensitive(compress_opt, 0);
    }
@@ -1607,18 +1607,18 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
       gtk_widget_set_sensitive(check, 0);
       gtk_widget_set_sensitive(spin, 0);
    }
-   else if(ddsvals.transindex < 0)
+   else if(dds_write_vals.transindex < 0)
    {
       gtk_widget_set_sensitive(spin, 0);
    }
-   else if(ddsvals.transindex >= 0)
+   else if(dds_write_vals.transindex >= 0)
    {
       gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check), 1);
-      gtk_spin_button_set_value(GTK_SPIN_BUTTON(spin), ddsvals.transindex);
+      gtk_spin_button_set_value(GTK_SPIN_BUTTON(spin), dds_write_vals.transindex);
    }
 
    expander = gtk_expander_new("Advanced Options");
-   gtk_expander_set_expanded(GTK_EXPANDER(expander), ddsvals.show_adv_opt);
+   gtk_expander_set_expanded(GTK_EXPANDER(expander), dds_write_vals.show_adv_opt);
    gtk_expander_set_spacing(GTK_EXPANDER(expander), 8);
    gtk_signal_connect(GTK_OBJECT(expander), "activate",
                       GTK_SIGNAL_FUNC(adv_opt_expanded), 0);
@@ -1656,33 +1656,33 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
       gtk_menu_append(GTK_MENU(menu), menuitem);
    }
    
-   gtk_menu_set_active(GTK_MENU(menu), ddsvals.color_type);
+   gtk_menu_set_active(GTK_MENU(menu), dds_write_vals.color_type);
    
    gtk_option_menu_set_menu(GTK_OPTION_MENU(opt), menu);
    
    color_type_opt = opt;
 
    check = gtk_check_button_new_with_label("Use dithering");
-   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check), ddsvals.dither);
+   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check), dds_write_vals.dither);
    gtk_table_attach(GTK_TABLE(table), check, 0, 2, 1, 2,
                     (GtkAttachOptions)(GTK_FILL),
                     (GtkAttachOptions)(0), 0, 0);
    gtk_signal_connect(GTK_OBJECT(check), "clicked",
-                      GTK_SIGNAL_FUNC(toggle_clicked), &ddsvals.dither);
+                      GTK_SIGNAL_FUNC(toggle_clicked), &dds_write_vals.dither);
    gtk_widget_show(check);
    
    dither_chk = check;
 
    gtk_widget_set_sensitive(color_type_opt,
-                            ddsvals.compression != DDS_COMPRESS_NONE &&
-                            ddsvals.compression != DDS_COMPRESS_BC4 &&
-                            ddsvals.compression != DDS_COMPRESS_BC5 &&
-                            ddsvals.compression != DDS_COMPRESS_YCOCGS);
+                            dds_write_vals.compression != DDS_COMPRESS_NONE &&
+                            dds_write_vals.compression != DDS_COMPRESS_BC4 &&
+                            dds_write_vals.compression != DDS_COMPRESS_BC5 &&
+                            dds_write_vals.compression != DDS_COMPRESS_YCOCGS);
    gtk_widget_set_sensitive(dither_chk,
-                            ddsvals.compression != DDS_COMPRESS_NONE &&
-                            ddsvals.compression != DDS_COMPRESS_BC4 &&
-                            ddsvals.compression != DDS_COMPRESS_BC5 &&
-                            ddsvals.compression != DDS_COMPRESS_YCOCGS);
+                            dds_write_vals.compression != DDS_COMPRESS_NONE &&
+                            dds_write_vals.compression != DDS_COMPRESS_BC4 &&
+                            dds_write_vals.compression != DDS_COMPRESS_BC5 &&
+                            dds_write_vals.compression != DDS_COMPRESS_YCOCGS);
    
    gtk_widget_show(dlg);
    
