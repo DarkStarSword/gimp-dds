@@ -1005,7 +1005,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
             amask = 0xff000000;
             break;
          case DDS_FORMAT_BGR8:
-            fmtbpp = 4;
+            fmtbpp = 3;
             rmask = 0x000000ff;
             gmask = 0x0000ff00;
             bmask = 0x00ff0000;
