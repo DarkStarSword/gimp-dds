@@ -1617,7 +1617,8 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
       gtk_spin_button_set_value(GTK_SPIN_BUTTON(spin), dds_write_vals.transindex);
    }
 
-   expander = gtk_expander_new("Advanced Options");
+   expander = gtk_expander_new("<b>Advanced Options</b>");
+   gtk_expander_set_use_markup(GTK_EXPANDER(expander), 1);
    gtk_expander_set_expanded(GTK_EXPANDER(expander), dds_write_vals.show_adv_opt);
    gtk_expander_set_spacing(GTK_EXPANDER(expander), 8);
    gtk_signal_connect(GTK_OBJECT(expander), "activate",
