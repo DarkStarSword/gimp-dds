@@ -1,7 +1,7 @@
 /*
 	DDS GIMP plugin
 
-	Copyright (C) 2004 Shawn Kirst <skirst@fuse.net>,
+	Copyright (C) 2004-2008 Shawn Kirst <skirst@insightbb.com>,
    with parts (C) 2003 Arne Reuter <homepage@arnereuter.de> where specified.
 
 	This program is free software; you can redistribute it and/or
@@ -22,8 +22,8 @@
 
 /*
  * Parts of this code have been generously released in the public domain
- * by 'Ryg'.  The original code can be found (at the time of writing)
- * here:  https://mollyrocket.com/forums/viewtopic.php?t=392
+ * by Fabian Giesen ('Ryg').  The original code can be found (at the time
+ * of writing) here:  http://mollyrocket.com/forums/viewtopic.php?t=392
  */ 
 
 #include <stdlib.h>
@@ -386,7 +386,29 @@ static int refine_block(const unsigned char *block,
    float frb, fg;
    unsigned short v, oldmin, oldmax;
    int s;
-   
+
+   oldmin = *min16;
+   oldmax = *max16;
+   if((mask ^ (mask << 2)) < 4) /* all pixels have the same index */
+   {
+      /* degenerate system, use optimal single-color match for average color */
+      r = g = b = 8;
+      for(i = 0; i < 16; ++i)
+      {
+         r += block[4 * i + 2];
+         g += block[4 * i + 1];
+         b += block[4 * i + 0];
+      }
+      
+      r >>= 4;
+      g >>= 4;
+      b >>= 4;
+      
+      *max16 = (omatch5[r][0] << 11) | (omatch6[g][0] << 5) | omatch5[b][0];
+      *min16 = (omatch5[r][1] << 11) | (omatch6[g][1] << 5) | omatch5[b][1];
+      return(*min16 != oldmin || *max16 != oldmax);
+   }
+
    At1_r = At1_g = At1_b = 0;
    At2_r = At2_g = At2_b = 0;
    
@@ -415,15 +437,9 @@ static int refine_block(const unsigned char *block,
    yy = (akku >> 8) & 0xff;
    xy = (akku >> 0) & 0xff;
    
-   if(!yy || !xx || xx * yy == xy * xy)
-      return(0);
-   
    frb = 3.0f * 31.0f / 255.0f / (xx * yy - xy * xy);
    fg = frb * 63.0f / 31.0f;
    
-   oldmin = *min16;
-   oldmax = *max16;
-
    s = (int)((At1_r * yy - At2_r * xy) * frb + 0.5f);
    if(s < 0) s = 0;
    if(s > 31) s = 31;
@@ -451,7 +467,7 @@ static int refine_block(const unsigned char *block,
    if(s > 31) s = 31;
    v |= s;
    *min16 = v;
-   
+
    return(oldmin != *min16 || oldmax != *max16);
 }
 
