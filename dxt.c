@@ -100,13 +100,17 @@ static int luminance(const unsigned char *c)
    return((c[2] * 54 + c[1] * 182 + c[0] * 20) >> 8);
 }
 
+/* Block dithering function.  Simply dithers a block to 565 RGB.
+ * (Floyd-Steinberg)
+ */
 static void dither_block(unsigned char *dst, const unsigned char *block)
 {
    int err[8], *ep1 = err, *ep2 = err + 4, *tmp;
    int c, y;
    unsigned char *bp, *dp;
    const unsigned char *quant;
-   
+  
+   /* process channels seperately */
    for(c = 0; c < 3; ++c)
    {
       bp = (unsigned char *)block;
@@ -120,18 +124,23 @@ static void dither_block(unsigned char *dst, const unsigned char *block)
       
       for(y = 0; y < 4; ++y)
       {
+         /* pixel 0 */
          dp[ 0] = quant[bp[ 0] + ((3 * ep2[1] + 5 * ep2[0]) >> 4)];
          ep1[0] = bp[ 0] - dp[ 0];
          
+         /* pixel 1 */
          dp[ 4] = quant[bp[ 4] + ((7 * ep1[0] + 3 * ep2[2] + 5 * ep2[1] + ep2[0]) >> 4)];
          ep1[1] = bp[ 4] - dp[ 4];
          
+         /* pixel 2 */
          dp[ 8] = quant[bp[ 8] + ((7 * ep1[1] + 3 * ep2[3] + 5 * ep2[2] + ep2[1]) >> 4)];
          ep1[2] = bp[ 8] - dp[ 8];
          
+         /* pixel 3 */
          dp[12] = quant[bp[12] + ((7 * ep1[2] + 5 * ep2[3] + ep2[2]) >> 4)];
          ep1[3] = bp[12] - dp[12];
          
+         /* advance to next line */
          tmp = ep1;
          ep1 = ep2;
          ep2 = tmp;
@@ -142,6 +151,7 @@ static void dither_block(unsigned char *dst, const unsigned char *block)
    }
 }
 
+/* Color matching function */
 static unsigned int match_colors_block(const unsigned char *block,
                                        unsigned char color[4][3],
                                        int dither)
@@ -166,6 +176,7 @@ static unsigned int match_colors_block(const unsigned char *block,
    
    if(!dither)
    {
+      /* the version without dithering is straight-forward */
       for(i = 15; i >= 0; --i)
       {
          mask <<= 2;
@@ -179,6 +190,7 @@ static unsigned int match_colors_block(const unsigned char *block,
    }
    else
    {
+      /* with floyd-steinberg dithering (see above) */
       int err[8], *ep1 = err, *ep2 = err + 4, *tmp;
       int *dp = dots, y, lmask, step;
       
@@ -190,6 +202,7 @@ static unsigned int match_colors_block(const unsigned char *block,
       
       for(y = 0; y < 4; ++y)
       {
+         /* pixel 0 */
          dot = (dp[0] << 4) + (3 * ep2[1] + 5 * ep2[0]);
          if(dot < halfpt)
             step = (dot < c0pt) ? 1 : 3;
@@ -199,6 +212,7 @@ static unsigned int match_colors_block(const unsigned char *block,
          ep1[0] = dp[0] - stops[step];
          lmask = step;
          
+         /* pixel 1 */
          dot = (dp[1] << 4) + (7 * ep1[0] + 3 * ep2[2] + 5 * ep2[1] + ep2[0]);
          if(dot < halfpt)
             step = (dot < c0pt) ? 1 : 3;
@@ -208,6 +222,7 @@ static unsigned int match_colors_block(const unsigned char *block,
          ep1[1] = dp[1] - stops[step];
          lmask |= step << 2;
 
+         /* pixel 2 */
          dot = (dp[2] << 4) + (7 * ep1[1] + 3 * ep2[3] + 5 * ep2[2] + ep2[1]);
          if(dot < halfpt)
             step = (dot < c0pt) ? 1 : 3;
@@ -217,6 +232,7 @@ static unsigned int match_colors_block(const unsigned char *block,
          ep1[2] = dp[2] - stops[step];
          lmask |= step << 4;
          
+         /* pixel 3 */
          dot = (dp[3] << 4) + (7 * ep1[2] + 5 * ep2[3] + ep2[2]);
          if(dot < halfpt)
             step = (dot < c0pt) ? 1 : 3;
@@ -226,6 +242,7 @@ static unsigned int match_colors_block(const unsigned char *block,
          ep1[3] = dp[3] - stops[step];
          lmask |= step << 6;
 
+         /* advance to next line */
          tmp = ep1;
          ep1 = ep2;
          ep2 = tmp;
@@ -238,6 +255,10 @@ static unsigned int match_colors_block(const unsigned char *block,
    return(mask);
 }
 
+/* Special case color matching for DXT1 color blocks with non-opaque
+ * alpha values.  Simple distance based color matching.  This is my 
+ * little hack, Fabian had no need for DXT1-alpha :)
+ */
 static unsigned int match_colors_block_DXT1alpha(const unsigned char *block,
                                                  unsigned char color[4][3])
 {
@@ -264,6 +285,7 @@ static unsigned int match_colors_block_DXT1alpha(const unsigned char *block,
    return(mask);
 }
 
+/* The color optimization function. (Clever code, part 1) */
 static void optimize_colors_block(const unsigned char *block,
                                   unsigned short *max16, unsigned short *min16)
 {
@@ -277,6 +299,7 @@ static void optimize_colors_block(const unsigned char *block,
    float covf[6], vfr, vfg, vfb, magn;
    float fr, fg, fb;
    
+   /* determine color distribution */
    for(c = 0; c < 3; ++c)
    {
       bp = (unsigned char *)block + c;
@@ -296,6 +319,7 @@ static void optimize_colors_block(const unsigned char *block,
    
    memset(cov, 0, sizeof(cov));
    
+   /* determine covariance matrix */
    for(i = 0; i < 16; ++i)
    {
       b = block[4 * i + 0] - mu[0];
@@ -310,6 +334,7 @@ static void optimize_colors_block(const unsigned char *block,
       cov[5] += b * b;
    }
    
+   /* convert covariance matrix to float, find principal axis via power iter */
    for(i = 0; i < 6; ++i)
       covf[i] = cov[i] / 255.0f;
    
@@ -334,7 +359,7 @@ static void optimize_colors_block(const unsigned char *block,
    
    magn = MAX(MAX(vfr, vfg), vfb);
    
-   if(magn < 4.0)
+   if(magn < 4.0) /* too small, default to luminance */
    {
       r = 148;
       g = 300;
@@ -348,6 +373,7 @@ static void optimize_colors_block(const unsigned char *block,
       b = (int)(vfb * magn);
    }
    
+   /* pick colors at extreme points */
    mnd =  0x7fffffff;
    mxd = -0x7fffffff;
    
@@ -367,16 +393,23 @@ static void optimize_colors_block(const unsigned char *block,
       }
    }
 
+   /* reduce to 16-bit colors */
    *max16 = pack_rgb565(mxc);
    *min16 = pack_rgb565(mnc);
 }
 
+/* The refinement function (Clever code, part 2)
+ * Tries to optimize colors to suit block contents better.
+ * (By solving a least squares system via normal equations + Cramer's rule)
+ */
 static int refine_block(const unsigned char *block,
                         unsigned short *max16, unsigned short *min16,
                         unsigned int mask)
 {
    static const int w1tab[4] = {3, 0, 2, 1};
    static const int prods[4] = {0x090000, 0x000900, 0x040102, 0x010402};
+   /* ^ Some magic to save a lot of multiplies in the accumulating loop... */
+   
    int akku = 0;
    int At1_r, At1_g, At1_b;
    int At2_r, At2_g, At2_b;
@@ -432,7 +465,8 @@ static int refine_block(const unsigned char *block,
    At2_r = 3 * At2_r - At1_r;
    At2_g = 3 * At2_g - At1_g;
    At2_b = 3 * At2_b - At1_b;
-   
+
+   /* extract solutions and decide solvability */
    xx = akku >> 16;
    yy = (akku >> 8) & 0xff;
    xy = (akku >> 0) & 0xff;
@@ -440,6 +474,7 @@ static int refine_block(const unsigned char *block,
    frb = 3.0f * 31.0f / 255.0f / (xx * yy - xy * xy);
    fg = frb * 63.0f / 31.0f;
    
+   /* solve */
    s = (int)((At1_r * yy - At2_r * xy) * frb + 0.5f);
    if(s < 0) s = 0;
    if(s > 31) s = 31;
@@ -471,6 +506,7 @@ static int refine_block(const unsigned char *block,
    return(oldmin != *min16 || oldmax != *max16);
 }
 
+/* Find min/max colors by distance */
 static void get_min_max_colors_distance(const unsigned char *block,
                                         unsigned short *max16,
                                         unsigned short *min16)
@@ -496,6 +532,7 @@ static void get_min_max_colors_distance(const unsigned char *block,
    *min16 = MIN(c0, c1);
 }
 
+/* Find min-max colors by luminance */
 static void get_min_max_colors_luminance(const unsigned char *block,
                                          unsigned short *max16,
                                          unsigned short *min16)
@@ -524,6 +561,7 @@ static void get_min_max_colors_luminance(const unsigned char *block,
 
 #define INSET_SHIFT  4
 
+/* Find min-max colors using the inset bounding box method */
 static void get_min_max_colors_inset_bbox(const unsigned char *block,
                                           unsigned short *max16,
                                           unsigned short *min16)
@@ -702,6 +740,9 @@ static void encode_color_block(unsigned char *dst,
    unsigned int v, mn, mx, mask;
    int i, block_has_alpha = 0;
 
+   /* find min/max colors, determine if alpha values present in block
+    * (for DXT1-alpha)
+    */
    mn = mx = GETL32(block);
    for(i = 0; i < 16; ++i)
    {
@@ -711,8 +752,9 @@ static void encode_color_block(unsigned char *dst,
       if(v < mn) mn = v;
    }
    
-   if(mn != mx)
+   if(mn != mx) /* block is not a solid color, continue with compression */
    {
+      /* compute dithered block for PCA if desired */
       if(dither)
          dither_block(dblock, block);
       
@@ -728,6 +770,7 @@ static void encode_color_block(unsigned char *dst,
             get_min_max_colors_inset_bbox(dither ? dblock : block, &max16, &min16);
             break;
          default:
+            /* pca + map along principal axis */
             optimize_colors_block(dither ? dblock : block, &max16, &min16);
             if(max16 != min16)
             {
@@ -736,7 +779,8 @@ static void encode_color_block(unsigned char *dst,
             }
             else
                mask = 0;
-      
+         
+            /* refine */
             refine_block(dither ? dblock : block, &max16, &min16, mask);
             break;
       }
@@ -749,7 +793,7 @@ static void encode_color_block(unsigned char *dst,
       else
          mask = 0;
    }
-   else
+   else /* constant color */
    {
       mask = 0xaaaaaaaa;
       max16 = (omatch5[block[2]][0] << 11) |
@@ -760,6 +804,7 @@ static void encode_color_block(unsigned char *dst,
               (omatch5[block[0]][1]      );
    }
    
+   /* HACK! for DXT1 blocks which have non-opaque pixels */
    if(dxt1_alpha && block_has_alpha)
    {
       if(max16 > min16)
@@ -781,6 +826,7 @@ static void encode_color_block(unsigned char *dst,
    PUTL32(&dst[4], mask);
 }
 
+/* write DXT3 alpha block */
 static void encode_alpha_block_DXT3(unsigned char *dst,
                                     const unsigned char *block)
 {
@@ -796,6 +842,7 @@ static void encode_alpha_block_DXT3(unsigned char *dst,
    }
 }
 
+/* Write DXT5 alpha block */
 static void encode_alpha_block_DXT5(unsigned char *dst,
                                     const unsigned char *block)
 {
@@ -805,6 +852,7 @@ static void encode_alpha_block_DXT5(unsigned char *dst,
    
    block += 3;
    
+   /* find min/max alpha pair */
    mn = mx = block[0];
    for(i = 0; i < 16; ++i)
    {
@@ -813,9 +861,11 @@ static void encode_alpha_block_DXT5(unsigned char *dst,
       if(v < mn) mn = v;
    }
    
+   /* encode them */
    *dst++ = mx;
    *dst++ = mn;
    
+   /* determine bias and emit indices */
    dist = mx - mn;
    bias = mn * 7 - (dist >> 1);
    dist4 = dist * 4;
@@ -827,6 +877,7 @@ static void encode_alpha_block_DXT5(unsigned char *dst,
    {
       a = block[4 * i] * 7 - bias;
       
+      /* select index (hooray for bit magic) */
       t = (dist4 - a) >> 31; idx =  t & 4; a -= dist4 & t;
       t = (dist2 - a) >> 31; idx += t & 2; a -= dist2 & t;
       t = (dist  - a) >> 31; idx += t & 1;
@@ -834,6 +885,7 @@ static void encode_alpha_block_DXT5(unsigned char *dst,
       idx = -idx & 7;
       idx ^= (2 > idx);
       
+      /* write index */
       mask |= idx << bits;
       if((bits += 3) >= 8)
       {
