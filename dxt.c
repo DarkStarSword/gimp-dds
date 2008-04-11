@@ -22,8 +22,11 @@
 
 /*
  * Parts of this code have been generously released in the public domain
- * by Fabian Giesen ('Ryg').  The original code can be found (at the time
+ * by Fabian 'ryg' Giesen.  The original code can be found (at the time
  * of writing) here:  http://mollyrocket.com/forums/viewtopic.php?t=392
+ * 
+ * For more information about this code, see the README.dxt file that
+ * came with the source.
  */ 
 
 #include <stdlib.h>
