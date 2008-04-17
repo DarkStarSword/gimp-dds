@@ -50,7 +50,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id);
 
 static int runme = 0;
 
-const char *cubemap_face_names[4][6] =
+static const char *cubemap_face_names[4][6] =
 {
    {
       "positive x", "negative x",
