@@ -1054,7 +1054,7 @@ static void compress_YCoCg(unsigned char *dst, const unsigned char *src,
 
 int dxt_compress(unsigned char *dst, unsigned char *src, int format,
                  unsigned int width, unsigned int height, int bpp,
-                 int mipmaps, int type, int dither)
+                 int mipmaps, int type, int dither, int filter)
 {
    int i, size, w, h;
    unsigned int offset;
@@ -1069,7 +1069,7 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
    size = get_mipmapped_size(width, height, bpp, 0, mipmaps,
                              DDS_COMPRESS_NONE);
    tmp = g_malloc(size);
-   generate_mipmaps(tmp, src, width, height, bpp, 0, mipmaps);
+   generate_mipmaps(tmp, src, width, height, bpp, 0, mipmaps, filter);
    
    if(bpp == 4 && format == DDS_COMPRESS_BC1)
       dxt1_alpha = 1;

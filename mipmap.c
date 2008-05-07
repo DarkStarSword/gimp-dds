@@ -26,6 +26,9 @@
 #include "dds.h"
 #include "mipmap.h"
 
+typedef void (*mipmapfunc_t)(unsigned char *, int, int, unsigned char *, int, int, int);
+typedef void (*volmipmapfunc_t)(unsigned char *, int, int, int, unsigned char *, int, int, int, int);
+
 int get_num_mipmaps(int width, int height)
 {
    int w = width << 1;
@@ -134,6 +137,84 @@ float cubic_interpolate(float a, float b, float c, float d, float x)
    return(v0 * x * x2 + v1 * x2 + v2 * x + v3);
 }
 
+static void scale_image_nearest(unsigned char *dst, int dw, int dh,
+                                unsigned char *src, int sw, int sh,
+                                int bpp)
+{
+   int n, x, y;
+   int ix, iy;
+   int srowbytes = sw * bpp;
+   int drowbytes = dw * bpp;
+   
+   for(y = 0; y < dh; ++y)
+   {
+      iy = (y * sh + sh / 2) / dh;
+      for(x = 0; x < dw; ++x)
+      {
+         ix = (x * sw + sw / 2) / dw;
+         for(n = 0; n < bpp; ++n)
+         {
+            dst[y * drowbytes + (x * bpp) + n] =
+               src[iy * srowbytes + (ix * bpp) + n];
+         }
+      }
+   }
+}
+
+static void scale_image_bilinear(unsigned char *dst, int dw, int dh,
+                                 unsigned char *src, int sw, int sh,
+                                 int bpp)
+{
+   int x, y, n, ix, iy, wx, wy, v;
+   unsigned char *s, *d = dst;
+   
+   for(y = 0; y < dh; ++y)
+   {
+      if(dh > 1)
+      {
+         iy = (((sh - 1) * y) << 8) / (dh - 1);
+         if(y == dh - 1) --iy;
+         wy = iy & 0xff;
+         iy >>= 8;
+      }
+      else
+      {
+         iy = 0;
+         wy = 0;
+      }
+      
+      for(x = 0; x < dw; ++x)
+      {
+         if(dw > 1)
+         {
+            ix = (((sw - 1) * x) << 8) / (dw - 1);
+            if(x == dw - 1) --ix;
+            wx = ix & 0xff;
+            ix >>= 8;
+         }
+         else
+         {
+            ix = 0;
+            wx = 0;
+         }
+         
+         s = src + (iy * sw + ix) * bpp;
+         
+         for(n = 0; n < bpp; ++n)
+         {
+            v =
+               (256 - wx) * (256 - wy) * s[0] +
+               (256 - wx) * (      wy) * s[sw * bpp] +
+               (      wx) * (256 - wy) * s[bpp] +
+               (      wx) * (      wy) * s[(sw + 1) * bpp];
+            v = (v >> 16) & 0xff;
+            *d++ = v;
+            ++s;
+         }
+      }
+   }
+}
+
 static void scale_image_cubic(unsigned char *dst, int dw, int dh,
                               unsigned char *src, int sw, int sh,
                               int bpp)
@@ -189,38 +270,28 @@ static void scale_image_cubic(unsigned char *dst, int dw, int dh,
 #undef VAL   
 }
 
-static void scale_image_nearest(unsigned char *dst, int dw, int dh,
-                                unsigned char *src, int sw, int sh,
-                                int bpp)
-{
-   int n, x, y;
-   int ix, iy;
-   int srowbytes = sw * bpp;
-   int drowbytes = dw * bpp;
-   
-   for(y = 0; y < dh; ++y)
-   {
-      iy = (y * sh + sh / 2) / dh;
-      for(x = 0; x < dw; ++x)
-      {
-         ix = (x * sw + sw / 2) / dw;
-         for(n = 0; n < bpp; ++n)
-         {
-            dst[y * drowbytes + (x * bpp) + n] =
-               src[iy * srowbytes + (ix * bpp) + n];
-         }
-      }
-   }
-}
-
 int generate_mipmaps(unsigned char *dst, unsigned char *src,
                      unsigned int width, unsigned int height, int bpp,
-                     int indexed, int mipmaps)
+                     int indexed, int mipmaps, int filter)
 {
    int i;
    unsigned int w, h;
    unsigned int offset;
-
+   mipmapfunc_t mipmap_func = NULL;
+   
+   if(indexed)
+      mipmap_func = scale_image_nearest;
+   else
+   {
+      switch(filter)
+      {
+         case DDS_MIPMAP_NEAREST:  mipmap_func = scale_image_nearest;  break;
+         case DDS_MIPMAP_BICUBIC:  mipmap_func = scale_image_cubic;    break;
+         case DDS_MIPMAP_BILINEAR:
+         default:                  mipmap_func = scale_image_bilinear; break;
+      }
+   }
+   
    memcpy(dst, src, width * height * bpp);
    offset = width * height * bpp;
    
@@ -230,16 +301,119 @@ int generate_mipmaps(unsigned char *dst, unsigned char *src,
       h = height >> i;
       if(w < 1) w = 1;
       if(h < 1) h = 1;
-      
-      if(indexed)
-         scale_image_nearest(dst + offset, w, h, src, width, height, bpp);
-      else
-         scale_image_cubic(dst + offset, w, h, src, width, height, bpp);
+  
+      mipmap_func(dst + offset, w, h, src, width, height, bpp);
 
       offset += (w * h * bpp);
    }
    
    return(1);
+}
+
+static void scale_volume_image_nearest(unsigned char *dst, int dw, int dh, int dd,
+                                       unsigned char *src, int sw, int sh, int sd,
+                                       int bpp)
+{
+   int n, x, y, z;
+   int ix, iy, iz;
+
+   for(z = 0; z < dd; ++z)
+   {
+      iz = (z * sd + sd / 2) / dd;
+      for(y = 0; y < dh; ++y)
+      {
+         iy = (y * sh + sh / 2) / dh;
+         for(x = 0; x < dw; ++x)
+         {
+            ix = (x * sw + sw / 2) / dw;
+            for(n = 0; n < bpp; ++n)
+            {
+               dst[(z * (dw * dh)) + (y * dw) + (x * bpp) + n] =
+                  src[(iz * (sw * sh)) + (iy * sw) + (ix * bpp) + n];
+            }
+         }
+      }
+   }
+}
+
+static void scale_volume_image_bilinear(unsigned char *dst, int dw, int dh, int dd,
+                                        unsigned char *src, int sw, int sh, int sd,
+                                        int bpp)
+{
+   int x, y, z, n, ix, iy, iz, wx, wy, wz, v, v0, v1;
+   unsigned char *s1, *s2, *d = dst;
+   
+   for(z = 0; z < dd; ++z)
+   {
+      if(dd > 1)
+      {
+         iz = (((sd - 1) * z) << 8) / (dd - 1);
+         if(z == dd - 1) --iz;
+         wz = iz & 0xff;
+         iz >>= 8;
+      }
+      else
+      {
+         iz = 0;
+         wz = 0;
+      }
+      
+      for(y = 0; y < dh; ++y)
+      {
+         if(dh > 1)
+         {
+            iy = (((sh - 1) * y) << 8) / (dh - 1);
+            if(y == dh - 1) --iy;
+            wy = iy & 0xff;
+            iy >>= 8;
+         }
+         else
+         {
+            iy = 0;
+            wy = 0;
+         }
+         
+         for(x = 0; x < dw; ++x)
+         {
+            if(dw > 1)
+            {
+               ix = (((sw - 1) * x) << 8) / (dw - 1);
+               if(x == dw - 1) --ix;
+               wx = ix & 0xff;
+               ix >>= 8;
+            }
+            else
+            {
+               ix = 0;
+               wx = 0;
+            }
+            
+            s1 = src + ((iz * (sw * sh)) + (iy * sw) + ix) * bpp;
+            s2 = src + (((iz + 1) * (sw * sh)) + (iy * sw) + ix) * bpp;
+            
+            for(n = 0; n < bpp; ++n)
+            {
+               v0 =
+                  (256 - wx) * (256 - wy) * s1[0] +
+                  (256 - wx) * (      wy) * s1[sw * bpp] +
+                  (      wx) * (256 - wy) * s1[bpp] +
+                  (      wx) * (      wy) * s1[(sw + 1) * bpp];
+               v0 = (v0 >> 16) & 0xff;
+               v1 =
+                  (256 - wx) * (256 - wy) * s2[0] +
+                  (256 - wx) * (      wy) * s2[sw * bpp] +
+                  (      wx) * (256 - wy) * s2[bpp] +
+                  (      wx) * (      wy) * s2[(sw + 1) * bpp];
+               v1 = (v1 >> 16) & 0xff;
+               v = (256 - wz) * v0 + wz * v1;
+               v = (v >> 8) & 0xff;
+               *d++ = v;
+               ++s1;
+               ++s2;
+            }
+         }
+      }
+   }
 }
 
 static void scale_volume_image_cubic(unsigned char *dst, int dw, int dh, int dd,
@@ -365,40 +539,28 @@ static void scale_volume_image_cubic(unsigned char *dst, int dw, int dh, int dd,
 #undef VAL   
 }
 
-static void scale_volume_image_nearest(unsigned char *dst, int dw, int dh, int dd,
-                                       unsigned char *src, int sw, int sh, int sd,
-                                       int bpp)
-{
-   int n, x, y, z;
-   int ix, iy, iz;
-
-   for(z = 0; z < dd; ++z)
-   {
-      iz = (z * sd + sd / 2) / dd;
-      for(y = 0; y < dh; ++y)
-      {
-         iy = (y * sh + sh / 2) / dh;
-         for(x = 0; x < dw; ++x)
-         {
-            ix = (x * sw + sw / 2) / dw;
-            for(n = 0; n < bpp; ++n)
-            {
-               dst[(z * (dw * dh)) + (y * dw) + (x * bpp) + n] =
-                  src[(iz * (sw * sh)) + (iy * sw) + (ix * bpp) + n];
-            }
-         }
-      }
-   }
-}
-
 int generate_volume_mipmaps(unsigned char *dst, unsigned char *src,
                             unsigned int width, unsigned int height,
                             unsigned int depth, int bpp, int indexed,
-                            int mipmaps)
+                            int mipmaps, int filter)
 {
    int i;
    unsigned int w, h, d;
    unsigned int offset;
+   volmipmapfunc_t mipmap_func = NULL;
+   
+   if(indexed)
+      mipmap_func = scale_volume_image_nearest;
+   else
+   {
+      switch(filter)
+      {
+         case DDS_MIPMAP_NEAREST:  mipmap_func = scale_volume_image_nearest;  break;
+         case DDS_MIPMAP_BICUBIC:  mipmap_func = scale_volume_image_cubic;    break;
+         case DDS_MIPMAP_BILINEAR:
+         default:                  mipmap_func = scale_volume_image_bilinear; break;
+      }
+   }
 
    memcpy(dst, src, width * height * depth * bpp);
    offset = width * height * depth * bpp;
@@ -411,17 +573,8 @@ int generate_volume_mipmaps(unsigned char *dst, unsigned char *src,
       if(w < 1) w = 1;
       if(h < 1) h = 1;
       if(d < 1) d = 1;
-      
-      if(indexed)
-      {
-         scale_volume_image_nearest(dst + offset, w, h, d, src, width, height,
-                                    depth, bpp);
-      }
-      else
-      {
-         scale_volume_image_cubic(dst + offset, w, h, d, src, width, height,
-                                  depth, bpp);
-      }
+
+      mipmap_func(dst + offset, w, h, d, src, width, height, depth, bpp);
 
       offset += (w * h * d * bpp);
    }

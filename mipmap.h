@@ -34,10 +34,10 @@ unsigned int get_volume_mipmapped_size(int width, int height,
 float cubic_interpolate(float a, float b, float c, float d, float x);
 int generate_mipmaps(unsigned char *dst, unsigned char *src,
                      unsigned int width, unsigned int height, int bpp,
-                     int indexed, int mipmaps);
+                     int indexed, int mipmaps, int filter);
 int generate_volume_mipmaps(unsigned char *dst, unsigned char *src,
                             unsigned int width, unsigned int height,
                             unsigned int depth, int bpp, int indexed,
-                            int mipmaps);
+                            int mipmaps, int filter);
 
 #endif

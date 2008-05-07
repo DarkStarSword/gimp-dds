@@ -75,6 +75,15 @@ typedef enum
    DDS_COLOR_MAX
 } DDS_COLOR_TYPE;
 
+typedef enum
+{
+   DDS_MIPMAP_DEFAULT = 0,
+   DDS_MIPMAP_NEAREST,
+   DDS_MIPMAP_BILINEAR,
+   DDS_MIPMAP_BICUBIC,
+   DDS_MIPMAP_MAX
+} DDS_MIPMAP_TYPE;
+
 #define DDS_HEADERSIZE             128
 
 #define DDSD_CAPS                  0x00000001
