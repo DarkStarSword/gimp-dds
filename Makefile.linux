@@ -30,5 +30,5 @@ install: all
 dds.o: dds.c ddsplugin.h dds.h
 ddsread.o: ddsread.c ddsplugin.h dds.h dxt.h endian.h
 ddswrite.o: ddswrite.c ddsplugin.h dds.h dxt.h endian.h
-dxt.o: dxt.c dxt.h dxt_tables.h dds.h endian.h mipmap.h
-mipmap.o: mipmap.c mipmap.h dds.h
+dxt.o: dxt.c dxt.h dxt_tables.h dds.h endian.h mipmap.h imath.h
+mipmap.o: mipmap.c mipmap.h dds.h imath.h

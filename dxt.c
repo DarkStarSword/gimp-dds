@@ -37,6 +37,7 @@
 #include "dds.h"
 #include "endian.h"
 #include "mipmap.h"
+#include "imath.h"
 
 #include "dxt_tables.h"
 
@@ -59,12 +60,6 @@ static void extract_block(const unsigned char *src, int w,
    }
 }
 
-static inline int mul8bit(int a, int b)
-{
-   int t = a * b + 128;
-   return((t + (t >> 8)) >> 8);
-}
-
 /* pack BGR8 to RGB565 */
 static inline unsigned short pack_rgb565(const unsigned char *c)
 {
@@ -85,9 +80,9 @@ static void unpack_rgb565(unsigned char *dst, unsigned short v)
 
 static void lerp_rgb(unsigned char *dst, unsigned char *a, unsigned char *b, int f)
 {
-   dst[0] = a[0] + mul8bit(b[0] - a[0], f);
-   dst[1] = a[1] + mul8bit(b[1] - a[1], f);
-   dst[2] = a[2] + mul8bit(b[2] - a[2], f);
+   dst[0] = blerp(a[0], b[0], f);
+   dst[1] = blerp(a[1], b[1], f);
+   dst[2] = blerp(a[2], b[2], f);
 }
 
 static int color_distance(const unsigned char *c0,

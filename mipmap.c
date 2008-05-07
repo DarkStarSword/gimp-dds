@@ -25,6 +25,7 @@
 
 #include "dds.h"
 #include "mipmap.h"
+#include "imath.h"
 
 typedef void (*mipmapfunc_t)(unsigned char *, int, int, unsigned char *, int, int, int);
 typedef void (*volmipmapfunc_t)(unsigned char *, int, int, int, unsigned char *, int, int, int, int);
@@ -124,19 +125,6 @@ unsigned int get_volume_mipmapped_size(int width, int height,
    return(size);
 }
 
-float cubic_interpolate(float a, float b, float c, float d, float x)
-{
-   float v0, v1, v2, v3, x2;
-   
-   x2 = x * x;
-   v0 = d - c - a + b;
-   v1 = a - b - v0;
-   v2 = c - a;
-   v3 = b;
-   
-   return(v0 * x * x2 + v1 * x2 + v2 * x + v3);
-}
-
 static void scale_image_nearest(unsigned char *dst, int dw, int dh,
                                 unsigned char *src, int sw, int sh,
                                 int bpp)
@@ -165,8 +153,9 @@ static void scale_image_bilinear(unsigned char *dst, int dw, int dh,
                                  unsigned char *src, int sw, int sh,
                                  int bpp)
 {
-   int x, y, n, ix, iy, wx, wy, v;
-   unsigned char *s, *d = dst;
+   int x, y, n, ix, iy, wx, wy, v, v0, v1;
+   int dstride = dw * bpp;
+   unsigned char *s;
    
    for(y = 0; y < dh; ++y)
    {
@@ -178,10 +167,7 @@ static void scale_image_bilinear(unsigned char *dst, int dw, int dh,
          iy >>= 8;
       }
       else
-      {
-         iy = 0;
-         wy = 0;
-      }
+         iy = wy = 0;
       
       for(x = 0; x < dw; ++x)
       {
@@ -193,81 +179,97 @@ static void scale_image_bilinear(unsigned char *dst, int dw, int dh,
             ix >>= 8;
          }
          else
-         {
-            ix = 0;
-            wx = 0;
-         }
+            ix = wx = 0;
          
          s = src + (iy * sw + ix) * bpp;
          
          for(n = 0; n < bpp; ++n)
          {
-            v =
-               (256 - wx) * (256 - wy) * s[0] +
-               (256 - wx) * (      wy) * s[sw * bpp] +
-               (      wx) * (256 - wy) * s[bpp] +
-               (      wx) * (      wy) * s[(sw + 1) * bpp];
-            v = (v >> 16) & 0xff;
-            *d++ = v;
+            v0 = blerp(s[0], s[bpp], wx);
+            v1 = blerp(s[sw * bpp], s[(sw + 1) * bpp], wx);
+            v = blerp(v0, v1, wy);
+            if(v < 0) v = 0;
+            if(v > 255) v = 255;
+            dst[(y * dstride) + (x * bpp) + n] = v;
             ++s;
          }
       }
    }
 }
 
-static void scale_image_cubic(unsigned char *dst, int dw, int dh,
-                              unsigned char *src, int sw, int sh,
-                              int bpp)
+static void scale_image_bicubic(unsigned char *dst, int dw, int dh,
+                                unsigned char *src, int sw, int sh,
+                                int bpp)
 {
-   int n, x, y;
-   int ix, iy;
-   float fx, fy;
-   float dx, dy, val;
-   float r0, r1, r2, r3;
-   int srowbytes = sw * bpp;
-   int drowbytes = dw * bpp;
-   
-#define VAL(x, y, c) \
-   (float)src[((y) < 0 ? 0 : (y) >= sh ? sh - 1 : (y)) * srowbytes + \
-              (((x) < 0 ? 0 : (x) >= sw ? sw - 1 : (x)) * bpp) + c]
-      
+   int x, y, n, ix, iy, wx, wy, v;
+   int a, b, c, d;
+   int dstride = dw * bpp;
+   unsigned char *s;
+
    for(y = 0; y < dh; ++y)
    {
-      fy = ((float)y / (float)dh) * (float)sh;
-      iy = (int)fy;
-      dy = fy - (float)iy;
+      if(dh > 1)
+      {
+         iy = (((sh - 1) * y) << 7) / (dh - 1);
+         if(y == dh - 1) --iy;
+         wy = iy & 0x7f;
+         iy >>= 7;
+      }
+      else
+         iy = wy = 0;
+      
       for(x = 0; x < dw; ++x)
       {
-         fx = ((float)x / (float)dw) * (float)sw;
-         ix = (int)fx;
-         dx = fx - (float)ix;
+         if(dw > 1)
+         {
+            ix = (((sw - 1) * x) << 7) / (dw - 1);
+            if(x == dw - 1) --ix;
+            wx = ix & 0x7f;
+            ix >>= 7;
+         }
+         else
+            ix = wx = 0;
+         
+         s = src + ((iy - 1) * sw + (ix - 1)) * bpp;
          
          for(n = 0; n < bpp; ++n)
          {
-            r0 = cubic_interpolate(VAL(ix - 1, iy - 1, n),
-                                   VAL(ix,     iy - 1, n),
-                                   VAL(ix + 1, iy - 1, n),
-                                   VAL(ix + 2, iy - 1, n), dx);
-            r1 = cubic_interpolate(VAL(ix - 1, iy,     n),
-                                   VAL(ix,     iy,     n),
-                                   VAL(ix + 1, iy,     n),
-                                   VAL(ix + 2, iy,     n), dx);
-            r2 = cubic_interpolate(VAL(ix - 1, iy + 1, n),
-                                   VAL(ix,     iy + 1, n),
-                                   VAL(ix + 1, iy + 1, n),
-                                   VAL(ix + 2, iy + 1, n), dx);
-            r3 = cubic_interpolate(VAL(ix - 1, iy + 2, n),
-                                   VAL(ix,     iy + 2, n),
-                                   VAL(ix + 1, iy + 2, n),
-                                   VAL(ix + 2, iy + 2, n), dx);
-            val = cubic_interpolate(r0, r1, r2, r3, dy);
-            if(val <   0) val = 0;
-            if(val > 255) val = 255;
-            dst[y * drowbytes + (x * bpp) + n] = (unsigned char)val;
+            b = icerp(s[(sw + 0) * bpp],
+                      s[(sw + 1) * bpp],
+                      s[(sw + 2) * bpp],
+                      s[(sw + 3) * bpp], wx);
+            if(iy > 0)
+            {
+               a = icerp(s[      0],
+                         s[    bpp],
+                         s[2 * bpp],
+                         s[3 * bpp], wx);
+            }
+            else
+               a = b;
+            
+            c = icerp(s[(2 * sw + 0) * bpp],
+                      s[(2 * sw + 1) * bpp],
+                      s[(2 * sw + 2) * bpp],
+                      s[(2 * sw + 3) * bpp], wx);
+            if(iy < dh - 1)
+            {
+               d = icerp(s[(3 * sw + 0) * bpp],
+                         s[(3 * sw + 1) * bpp],
+                         s[(3 * sw + 2) * bpp],
+                         s[(3 * sw + 3) * bpp], wx);
+            }
+            else
+               d = c;
+            
+            v = icerp(a, b, c, d, wy);
+            if(v < 0) v = 0;
+            if(v > 255) v = 255;
+            dst[(y * dstride) + (x * bpp) + n] = v;
+            ++s;
          }
       }
    }
-#undef VAL   
 }
 
 int generate_mipmaps(unsigned char *dst, unsigned char *src,
@@ -286,7 +288,7 @@ int generate_mipmaps(unsigned char *dst, unsigned char *src,
       switch(filter)
       {
          case DDS_MIPMAP_NEAREST:  mipmap_func = scale_image_nearest;  break;
-         case DDS_MIPMAP_BICUBIC:  mipmap_func = scale_image_cubic;    break;
+         case DDS_MIPMAP_BICUBIC:  mipmap_func = scale_image_bicubic;  break;
          case DDS_MIPMAP_BILINEAR:
          default:                  mipmap_func = scale_image_bilinear; break;
       }
@@ -340,7 +342,7 @@ static void scale_volume_image_bilinear(unsigned char *dst, int dw, int dh, int 
                                         unsigned char *src, int sw, int sh, int sd,
                                         int bpp)
 {
-   int x, y, z, n, ix, iy, iz, wx, wy, wz, v, v0, v1;
+   int x, y, z, n, ix, iy, iz, wx, wy, wz, v, v0, v1, r0, r1;
    unsigned char *s1, *s2, *d = dst;
    
    for(z = 0; z < dd; ++z)
@@ -353,10 +355,7 @@ static void scale_volume_image_bilinear(unsigned char *dst, int dw, int dh, int 
          iz >>= 8;
       }
       else
-      {
-         iz = 0;
-         wz = 0;
-      }
+         iz = wz = 0;
       
       for(y = 0; y < dh; ++y)
       {
@@ -368,10 +367,7 @@ static void scale_volume_image_bilinear(unsigned char *dst, int dw, int dh, int 
             iy >>= 8;
          }
          else
-         {
-            iy = 0;
-            wy = 0;
-         }
+            iy = wy = 0;
          
          for(x = 0; x < dw; ++x)
          {
@@ -383,30 +379,24 @@ static void scale_volume_image_bilinear(unsigned char *dst, int dw, int dh, int 
                ix >>= 8;
             }
             else
-            {
-               ix = 0;
-               wx = 0;
-            }
+               ix = wx = 0;
             
             s1 = src + ((iz * (sw * sh)) + (iy * sw) + ix) * bpp;
             s2 = src + (((iz + 1) * (sw * sh)) + (iy * sw) + ix) * bpp;
             
             for(n = 0; n < bpp; ++n)
             {
-               v0 =
-                  (256 - wx) * (256 - wy) * s1[0] +
-                  (256 - wx) * (      wy) * s1[sw * bpp] +
-                  (      wx) * (256 - wy) * s1[bpp] +
-                  (      wx) * (      wy) * s1[(sw + 1) * bpp];
-               v0 = (v0 >> 16) & 0xff;
-               v1 =
-                  (256 - wx) * (256 - wy) * s2[0] +
-                  (256 - wx) * (      wy) * s2[sw * bpp] +
-                  (      wx) * (256 - wy) * s2[bpp] +
-                  (      wx) * (      wy) * s2[(sw + 1) * bpp];
-               v1 = (v1 >> 16) & 0xff;
-               v = (256 - wz) * v0 + wz * v1;
-               v = (v >> 8) & 0xff;
+               r0 = blerp(s1[0], s1[bpp], wx);
+               r1 = blerp(s1[sw * bpp], s1[(sw + 1) * bpp], wx);
+               v0 = blerp(r0, r1, wy);
+               
+               r0 = blerp(s2[0], s2[bpp], wx);
+               r1 = blerp(s2[sw * bpp], s2[(sw + 1) * bpp], wx);
+               v1 = blerp(r0, r1, wy);
+               
+               v = blerp(v0, v1, wz);
+               if(v < 0) v = 0;
+               if(v > 255) v = 255;
                *d++ = v;
                ++s1;
                ++s2;
@@ -422,121 +412,202 @@ static void scale_volume_image_cubic(unsigned char *dst, int dw, int dh, int dd,
 {
    int n, x, y, z;
    int ix, iy, iz;
-   float fx, fy, fz;
-   float dx, dy, dz, val;
-   float r0, r1, r2, r3;
-   float v0, v1, v2, v3;
-   int srowbytes = sw * bpp;
-   int drowbytes = dw * bpp;
-   int sslicebytes = sw * sh * bpp;
-   int dslicebytes = dw * dh * bpp;
+   int wx, wy, wz;
+   int a, b, c, d;
+   int val, v0, v1, v2, v3;
+   int dstride = dw * bpp;
+   int sslice = sw * sh * bpp;
+   int dslice = dw * dh * bpp;
+   unsigned char *s0, *s1, *s2, *s3;
    
-#define VAL(x, y, z, c) \
-   (float)src[(((z) < 0 ? 0 : (z) >= sd ? sd - 1 : (z)) * sslicebytes) + \
-              (((y) < 0 ? 0 : (y) >= sh ? sh - 1 : (y)) * srowbytes) + \
-              (((x) < 0 ? 0 : (x) >= sw ? sw - 1 : (x)) * bpp) + c]
-
    for(z = 0; z < dd; ++z)
    {
-      fz = ((float)z / (float)dd) * (float)sd;
-      iz = (int)fz;
-      dz = fz - (float)iz;
+      if(dd > 1)
+      {
+         iz = (((sd - 1) * z) << 7) / (dd - 1);
+         if(z == dd - 1) --iz;
+         wz = iz & 0x7f;
+         iz >>= 7;
+      }
+      else
+         iz = wz = 0;
+      
       for(y = 0; y < dh; ++y)
       {
-         fy = ((float)y / (float)dh) * (float)sh;
-         iy = (int)fy;
-         dy = fy - (float)iy;
+         if(dh > 1)
+         {
+            iy = (((sh - 1) * y) << 7) / (dh - 1);
+            if(y == dh - 1) --iy;
+            wy = iy & 0x7f;
+            iy >>= 7;
+         }
+         else
+            iy = wy = 0;
+
          for(x = 0; x < dw; ++x)
          {
-            fx = ((float)x / (float)dw) * (float)sw;
-            ix = (int)fx;
-            dx = fx - (float)ix;
+            if(dw > 1)
+            {
+               ix = (((sw - 1) * x) << 7) / (dw - 1);
+               if(x == dw - 1) --ix;
+               wx = ix & 0x7f;
+               ix >>= 7;
+            }
+            else 
+               ix = wx = 0;
+
+            s0 = src + (((iz - 1) * (sw * sh)) + ((iy - 1) * sw) + (ix - 1)) * bpp;
+            s1 = s0 + sslice;
+            s2 = s1 + sslice;
+            s3 = s2 + sslice;
+         
             for(n = 0; n < bpp; ++n)
             {
-               r0 = cubic_interpolate(VAL(ix - 1, iy - 1, z - 1, n),
-                                      VAL(ix,     iy - 1, z - 1, n),
-                                      VAL(ix + 1, iy - 1, z - 1, n),
-                                      VAL(ix + 2, iy - 1, z - 1, n), dx);
-               r1 = cubic_interpolate(VAL(ix - 1, iy,     z - 1, n),
-                                      VAL(ix,     iy,     z - 1, n),
-                                      VAL(ix + 1, iy,     z - 1, n),
-                                      VAL(ix + 2, iy,     z - 1, n), dx);
-               r2 = cubic_interpolate(VAL(ix - 1, iy + 1, z - 1, n),
-                                      VAL(ix,     iy + 1, z - 1, n),
-                                      VAL(ix + 1, iy + 1, z - 1, n),
-                                      VAL(ix + 2, iy + 1, z - 1, n), dx);
-               r3 = cubic_interpolate(VAL(ix - 1, iy + 2, z - 1, n),
-                                      VAL(ix,     iy + 2, z - 1, n),
-                                      VAL(ix + 1, iy + 2, z - 1, n),
-                                      VAL(ix + 2, iy + 2, z - 1, n), dx);
-               v0 = cubic_interpolate(r0, r1, r2, r3, dy);
-
-               r0 = cubic_interpolate(VAL(ix - 1, iy - 1, z, n),
-                                      VAL(ix,     iy - 1, z, n),
-                                      VAL(ix + 1, iy - 1, z, n),
-                                      VAL(ix + 2, iy - 1, z, n), dx);
-               r1 = cubic_interpolate(VAL(ix - 1, iy,     z, n),
-                                      VAL(ix,     iy,     z, n),
-                                      VAL(ix + 1, iy,     z, n),
-                                      VAL(ix + 2, iy,     z, n), dx);
-               r2 = cubic_interpolate(VAL(ix - 1, iy + 1, z, n),
-                                      VAL(ix,     iy + 1, z, n),
-                                      VAL(ix + 1, iy + 1, z, n),
-                                      VAL(ix + 2, iy + 1, z, n), dx);
-               r3 = cubic_interpolate(VAL(ix - 1, iy + 2, z, n),
-                                      VAL(ix,     iy + 2, z, n),
-                                      VAL(ix + 1, iy + 2, z, n),
-                                      VAL(ix + 2, iy + 2, z, n), dx);
-               v1 = cubic_interpolate(r0, r1, r2, r3, dy);
-
-               r0 = cubic_interpolate(VAL(ix - 1, iy - 1, z + 1, n),
-                                      VAL(ix,     iy - 1, z + 1, n),
-                                      VAL(ix + 1, iy - 1, z + 1, n),
-                                      VAL(ix + 2, iy - 1, z + 1, n), dx);
-               r1 = cubic_interpolate(VAL(ix - 1, iy,     z + 1, n),
-                                      VAL(ix,     iy,     z + 1, n),
-                                      VAL(ix + 1, iy,     z + 1, n),
-                                      VAL(ix + 2, iy,     z + 1, n), dx);
-               r2 = cubic_interpolate(VAL(ix - 1, iy + 1, z + 1, n),
-                                      VAL(ix,     iy + 1, z + 1, n),
-                                      VAL(ix + 1, iy + 1, z + 1, n),
-                                      VAL(ix + 2, iy + 1, z + 1, n), dx);
-               r3 = cubic_interpolate(VAL(ix - 1, iy + 2, z + 1, n),
-                                      VAL(ix,     iy + 2, z + 1, n),
-                                      VAL(ix + 1, iy + 2, z + 1, n),
-                                      VAL(ix + 2, iy + 2, z + 1, n), dx);
-               v2 = cubic_interpolate(r0, r1, r2, r3, dy);
-
-               r0 = cubic_interpolate(VAL(ix - 1, iy - 1, z + 2, n),
-                                      VAL(ix,     iy - 1, z + 2, n),
-                                      VAL(ix + 1, iy - 1, z + 2, n),
-                                      VAL(ix + 2, iy - 1, z + 2, n), dx);
-               r1 = cubic_interpolate(VAL(ix - 1, iy,     z + 2, n),
-                                      VAL(ix,     iy,     z + 2, n),
-                                      VAL(ix + 1, iy,     z + 2, n),
-                                      VAL(ix + 2, iy,     z + 2, n), dx);
-               r2 = cubic_interpolate(VAL(ix - 1, iy + 1, z + 2, n),
-                                      VAL(ix,     iy + 1, z + 2, n),
-                                      VAL(ix + 1, iy + 1, z + 2, n),
-                                      VAL(ix + 2, iy + 1, z + 2, n), dx);
-               r3 = cubic_interpolate(VAL(ix - 1, iy + 2, z + 2, n),
-                                      VAL(ix,     iy + 2, z + 2, n),
-                                      VAL(ix + 1, iy + 2, z + 2, n),
-                                      VAL(ix + 2, iy + 2, z + 2, n), dx);
-               v3 = cubic_interpolate(r0, r1, r2, r3, dy);
+               b = icerp(s1[(sw + 0) * bpp],
+                         s1[(sw + 1) * bpp],
+                         s1[(sw + 2) * bpp],
+                         s1[(sw + 3) * bpp], wx);
+               if(iy > 0)
+               {
+                  a = icerp(s1[      0],
+                            s1[    bpp],
+                            s1[2 * bpp],
+                            s1[3 * bpp], wx);
+               }
+               else
+                  a = b;
                
-               val = cubic_interpolate(v0, v1, v2, v3, dz);
+               c = icerp(s1[(2 * sw + 0) * bpp],
+                         s1[(2 * sw + 1) * bpp],
+                         s1[(2 * sw + 2) * bpp],
+                         s1[(2 * sw + 3) * bpp], wx);
+               if(iy < dh - 1)
+               {
+                  d = icerp(s1[(3 * sw + 0) * bpp],
+                            s1[(3 * sw + 1) * bpp],
+                            s1[(3 * sw + 2) * bpp],
+                            s1[(3 * sw + 3) * bpp], wx);
+               }
+               else
+                  d = c;
+            
+               v1 = icerp(a, b, c, d, wy);
+               
+               if(iz > 0)
+               {
+                  b = icerp(s0[(sw + 0) * bpp],
+                            s0[(sw + 1) * bpp],
+                            s0[(sw + 2) * bpp],
+                            s0[(sw + 3) * bpp], wx);
+                  if(iy > 0)
+                  {
+                     a = icerp(s0[      0],
+                               s0[    bpp],
+                               s0[2 * bpp],
+                               s0[3 * bpp], wx);
+                  }
+                  else
+                     a = b;
+                  
+                  c = icerp(s0[(2 * sw + 0) * bpp],
+                            s0[(2 * sw + 1) * bpp],
+                            s0[(2 * sw + 2) * bpp],
+                            s0[(2 * sw + 3) * bpp], wx);
+                  if(iy < dh - 1)
+                  {
+                     d = icerp(s0[(3 * sw + 0) * bpp],
+                               s0[(3 * sw + 1) * bpp],
+                               s0[(3 * sw + 2) * bpp],
+                               s0[(3 * sw + 3) * bpp], wx);
+                  }
+                  else
+                     d = c;
+            
+                  v0 = icerp(a, b, c, d, wy);
+               }
+               else
+                  v0 = v1;
+
+               b = icerp(s2[(sw + 0) * bpp],
+                         s2[(sw + 1) * bpp],
+                         s2[(sw + 2) * bpp],
+                         s2[(sw + 3) * bpp], wx);
+               if(iy > 0)
+               {
+                  a = icerp(s2[      0],
+                            s2[    bpp],
+                            s2[2 * bpp],
+                            s2[3 * bpp], wx);
+               }
+               else
+                  a = b;
+               
+               c = icerp(s2[(2 * sw + 0) * bpp],
+                         s2[(2 * sw + 1) * bpp],
+                         s2[(2 * sw + 2) * bpp],
+                         s2[(2 * sw + 3) * bpp], wx);
+               if(iy < dh - 1)
+               {
+                  d = icerp(s2[(3 * sw + 0) * bpp],
+                            s2[(3 * sw + 1) * bpp],
+                            s2[(3 * sw + 2) * bpp],
+                            s2[(3 * sw + 3) * bpp], wx);
+               }
+               else
+                  d = c;
+               
+               v2 = icerp(a, b, c, d, wy);
+               
+               if(iz < dd - 1)
+               {
+                  b = icerp(s3[(sw + 0) * bpp],
+                            s3[(sw + 1) * bpp],
+                            s3[(sw + 2) * bpp],
+                            s3[(sw + 3) * bpp], wx);
+                  if(iy > 0)
+                  {
+                     a = icerp(s3[      0],
+                               s3[    bpp],
+                               s3[2 * bpp],
+                               s3[3 * bpp], wx);
+                  }
+                  else
+                     a = b;
+                  
+                  c = icerp(s3[(2 * sw + 0) * bpp],
+                            s3[(2 * sw + 1) * bpp],
+                            s3[(2 * sw + 2) * bpp],
+                            s3[(2 * sw + 3) * bpp], wx);
+                  if(iy < dh - 1)
+                  {
+                     d = icerp(s3[(3 * sw + 0) * bpp],
+                               s3[(3 * sw + 1) * bpp],
+                               s3[(3 * sw + 2) * bpp],
+                               s3[(3 * sw + 3) * bpp], wx);
+                  }
+                  else
+                     d = c;
+            
+                  v3 = icerp(a, b, c, d, wy);
+               }
+               else
+                  v3 = v2;
+               
+               val = icerp(v0, v1, v2, v3, wz);
                
                if(val <   0) val = 0;
                if(val > 255) val = 255;
                
-               dst[(z * dslicebytes) + (y * drowbytes) + (x * bpp) + n] =
-                  (unsigned char)val;
+               dst[(z * dslice) + (y * dstride) + (x * bpp) + n] = val;
+               
+               ++s0;
+               ++s1;
+               ++s2;
+               ++s3;
             }
          }
       }
    }
-#undef VAL   
 }
 
 int generate_volume_mipmaps(unsigned char *dst, unsigned char *src,
