@@ -277,8 +277,8 @@ int generate_mipmaps(unsigned char *dst, unsigned char *src,
                      int indexed, int mipmaps, int filter)
 {
    int i;
-   unsigned int w, h;
-   unsigned int offset;
+   unsigned int sw, sh, dw, dh;
+   unsigned char *s, *d;
    mipmapfunc_t mipmap_func = NULL;
    
    if(indexed)
@@ -295,18 +295,26 @@ int generate_mipmaps(unsigned char *dst, unsigned char *src,
    }
    
    memcpy(dst, src, width * height * bpp);
-   offset = width * height * bpp;
+
+   s = dst;
+   d = dst + (width * height * bpp);
+   
+   sw = width;
+   sh = height;
    
    for(i = 1; i < mipmaps; ++i)
    {
-      w = width  >> i;
-      h = height >> i;
-      if(w < 1) w = 1;
-      if(h < 1) h = 1;
+      dw = sw >> 1;
+      dh = sh >> 1;
+      if(dw < 1) dw = 1;
+      if(dh < 1) dh = 1;
   
-      mipmap_func(dst + offset, w, h, src, width, height, bpp);
+      mipmap_func(d, dw, dh, s, sw, sh, bpp);
 
-      offset += (w * h * bpp);
+      s = d;
+      sw = dw;
+      sh = dh;
+      d += (dw * dh * bpp);
    }
    
    return(1);
@@ -616,8 +624,9 @@ int generate_volume_mipmaps(unsigned char *dst, unsigned char *src,
                             int mipmaps, int filter)
 {
    int i;
-   unsigned int w, h, d;
-   unsigned int offset;
+   unsigned int sw, sh, sd;
+   unsigned int dw, dh, dd;
+   unsigned char *s, *d;
    volmipmapfunc_t mipmap_func = NULL;
    
    if(indexed)
@@ -634,20 +643,30 @@ int generate_volume_mipmaps(unsigned char *dst, unsigned char *src,
    }
 
    memcpy(dst, src, width * height * depth * bpp);
-   offset = width * height * depth * bpp;
+
+   s = dst;
+   d = dst + (width * height * depth * bpp);
+   
+   sw = width;
+   sh = height;
+   sd = depth;
    
    for(i = 1; i < mipmaps; ++i)
    {
-      w = width  >> i;
-      h = height >> i;
-      d = depth  >> i;
-      if(w < 1) w = 1;
-      if(h < 1) h = 1;
-      if(d < 1) d = 1;
+      dw = sw >> 1;
+      dh = sh >> 1;
+      dd = sd >> 1;
+      if(dw < 1) dw = 1;
+      if(dh < 1) dh = 1;
+      if(dd < 1) dd = 1;
 
-      mipmap_func(dst + offset, w, h, d, src, width, height, depth, bpp);
+      mipmap_func(d, dw, dh, dd, s, sw, sh, sd, bpp);
 
-      offset += (w * h * d * bpp);
+      s = d;
+      sw = dw;
+      sh = dh;
+      sd = dd;
+      d += (dw * dh * dd * bpp);
    }
    
    return(1);
