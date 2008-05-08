@@ -149,6 +149,34 @@ static void scale_image_nearest(unsigned char *dst, int dw, int dh,
    }
 }
 
+static void scale_image_box(unsigned char *dst, int dw, int dh,
+                            unsigned char *src, int sw, int sh,
+                            int bpp)
+{
+   int x, y, n, ix, iy, v;
+   int dstride = dw * bpp;
+   unsigned char *s;
+   
+   for(y = 0; y < dh; ++y)
+   {
+      iy = (y * sh + sh / 2) / dh;
+      
+      for(x = 0; x < dw; ++x)
+      {
+         ix = (x * sw + sh / 2) / dw;
+         
+         s = src + (iy * sw + ix) * bpp;
+         
+         for(n = 0; n < bpp; ++n)
+         {
+            v = (s[0] + s[bpp] + s[sw * bpp] + s[(sw + 1) * bpp]) >> 2;
+            dst[(y * dstride) + (x * bpp) + n] = v;
+            ++s;
+         }
+      }
+   }
+}
+
 static void scale_image_bilinear(unsigned char *dst, int dw, int dh,
                                  unsigned char *src, int sw, int sh,
                                  int bpp)
@@ -288,9 +316,10 @@ int generate_mipmaps(unsigned char *dst, unsigned char *src,
       switch(filter)
       {
          case DDS_MIPMAP_NEAREST:  mipmap_func = scale_image_nearest;  break;
+         case DDS_MIPMAP_BILINEAR: mipmap_func = scale_image_bilinear; break;
          case DDS_MIPMAP_BICUBIC:  mipmap_func = scale_image_bicubic;  break;
-         case DDS_MIPMAP_BILINEAR:
-         default:                  mipmap_func = scale_image_bilinear; break;
+         case DDS_MIPMAP_BOX:
+         default:                  mipmap_func = scale_image_box;      break;
       }
    }
    
@@ -340,6 +369,41 @@ static void scale_volume_image_nearest(unsigned char *dst, int dw, int dh, int d
             {
                dst[(z * (dw * dh)) + (y * dw) + (x * bpp) + n] =
                   src[(iz * (sw * sh)) + (iy * sw) + (ix * bpp) + n];
+            }
+         }
+      }
+   }
+}
+
+static void scale_volume_image_box(unsigned char *dst, int dw, int dh, int dd,
+                                   unsigned char *src, int sw, int sh, int sd,
+                                   int bpp)
+{
+   int n, x, y, z, v, v0, v1;
+   int ix, iy, iz;
+   unsigned char *s1, *s2, *d = dst;
+
+   for(z = 0; z < dd; ++z)
+   {
+      iz = (z * sd + sd / 2) / dd;
+      for(y = 0; y < dh; ++y)
+      {
+         iy = (y * sh + sh / 2) / dh;
+         for(x = 0; x < dw; ++x)
+         {
+            ix = (x * sw + sw / 2) / dw;
+            
+            s1 = src + ((iz * (sw * sh)) + (iy * sw) + ix) * bpp;
+            s2 = src + (((iz + 1) * (sw * sh)) + (iy * sw) + ix) * bpp;
+            
+            for(n = 0; n < bpp; ++n)
+            {
+               v0 = (s1[0] + s1[bpp] + s1[sw * bpp] + s1[(sw + 1) * bpp]) >> 2;
+               v1 = (s2[0] + s2[bpp] + s2[sw * bpp] + s2[(sw + 1) * bpp]) >> 2;
+               v = (v0 + v1) >> 1;
+               *d++ = v;
+               ++s1;
+               ++s2;
             }
          }
       }
@@ -636,9 +700,11 @@ int generate_volume_mipmaps(unsigned char *dst, unsigned char *src,
       switch(filter)
       {
          case DDS_MIPMAP_NEAREST:  mipmap_func = scale_volume_image_nearest;  break;
+         case DDS_MIPMAP_BILINEAR: mipmap_func = scale_volume_image_bilinear; break;
          case DDS_MIPMAP_BICUBIC:  mipmap_func = scale_volume_image_cubic;    break;
-         case DDS_MIPMAP_BILINEAR:
-         default:                  mipmap_func = scale_volume_image_bilinear; break;
+         case DDS_MIPMAP_BOX:
+         default:
+                                   mipmap_func = scale_volume_image_box;      break;
       }
    }
 

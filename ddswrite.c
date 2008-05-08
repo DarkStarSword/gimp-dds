@@ -149,6 +149,7 @@ static struct
 {
    {DDS_MIPMAP_DEFAULT,  "Default"},
    {DDS_MIPMAP_NEAREST,  "Nearest"},
+   {DDS_MIPMAP_BOX,      "Box"},
    {DDS_MIPMAP_BILINEAR, "Bilinear"},
    {DDS_MIPMAP_BICUBIC,  "Bicubic"},
    {-1, 0}
