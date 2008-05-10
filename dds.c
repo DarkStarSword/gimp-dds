@@ -84,7 +84,7 @@ static GimpParamDef save_args[] =
    {GIMP_PDB_INT32, "transparent_index", "Index of transparent color or -1 to disable (for indexed images only)."},
    {GIMP_PDB_INT32, "color_type", "Color selection algorithm used in DXT compression (0 = default, 1 = distance, 2 = luminance, 3 = inset bounding box)"},
    {GIMP_PDB_INT32, "dither", "Work on dithered color blocks when doing color selection for DXT compression"},
-   {GIMP_PDB_INT32, "mipmap_filter", "Filtering to use when generating mipmaps (0 = default, 1 = nearest, 2 = bilinear, 3 = bicubic)"}
+   {GIMP_PDB_INT32, "mipmap_filter", "Filtering to use when generating mipmaps (0 = default, 1 = nearest, 2 = box, 3 = bilinear, 4 = bicubic, 5 = lanczos)"}
 };
 
 MAIN()

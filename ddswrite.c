@@ -152,6 +152,7 @@ static struct
    {DDS_MIPMAP_BOX,      "Box"},
    {DDS_MIPMAP_BILINEAR, "Bilinear"},
    {DDS_MIPMAP_BICUBIC,  "Bicubic"},
+   {DDS_MIPMAP_LANCZOS,  "Lanczos"},
    {-1, 0}
 };
 

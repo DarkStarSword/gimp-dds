@@ -23,6 +23,13 @@
 #ifndef IMATH_H
 #define IMATH_H
 
+#ifndef MIN
+#define MIN(a, b)  ((a) < (b) ? (a) : (b))
+#endif
+#ifndef MAX
+#define MAX(a, b)  ((a) > (b) ? (a) : (b))
+#endif
+
 static inline int mul8bit(int a, int b)
 {
    int t = a * b + 128;

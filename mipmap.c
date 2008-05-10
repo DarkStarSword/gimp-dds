@@ -23,6 +23,8 @@
 #include <string.h>
 #include <math.h>
 
+#include <gtk/gtk.h>
+
 #include "dds.h"
 #include "mipmap.h"
 #include "imath.h"
@@ -300,6 +302,130 @@ static void scale_image_bicubic(unsigned char *dst, int dw, int dh,
    }
 }
 
+static const float FILTER_RADIUS = 5.0f;
+
+static float lanczos(float r, float x)
+{
+   float t;
+   if(x == 0.0f) return(1.0f);
+   if(x <= -r || x >= r) return(0.0f);
+   t = x * M_PI;
+   return(r * sinf(t) * sinf(t / r) / (t * t));
+}
+
+static void scale_image_lanczos(unsigned char *dst, int dw, int dh,
+                                unsigned char *src, int sw, int sh,
+                                int bpp)
+{
+   const float blur = 1.0f;
+   const float xfactor = (float)dw / (float)sw;
+   const float yfactor = (float)dh / (float)sh;
+   
+   int x, y, start, stop, nmax, n, i;
+   int sstride = sw * bpp;
+   float center, contrib, density, s, r;
+   
+   unsigned char *d, *row, *col;
+   
+   float xscale = MIN(xfactor, 1.0f) / blur;
+   float yscale = MIN(yfactor, 1.0f) / blur;
+   float xsupport = FILTER_RADIUS / xscale;
+   float ysupport = FILTER_RADIUS / yscale;
+   
+   if(xsupport <= 0.5f)
+   {
+      xsupport = 0.5f + 1e-12f;
+      xscale = 1.0f;
+   }
+   if(ysupport <= 0.5f)
+   {
+      ysupport = 0.5f + 1e-12f;
+      yscale = 1.0f;
+   }
+   
+   /* resample in Y direction first to temporary buffer */
+   unsigned char *tmp;
+   
+   tmp = g_malloc(sw * dh * bpp);
+   d = tmp;
+   
+   for(y = 0; y < dh; ++y)
+   {
+      for(x = 0; x < sw; ++x)
+      {
+         col = src + (x * bpp);
+         
+         for(i = 0; i < bpp; ++i)
+         {
+            density = 0.0f;
+            r = 0.0f;
+            
+            center = ((float)y + 0.5f) / yfactor;
+            start = (int)MAX(center - ysupport + 0.5f, 0);
+            stop = (int)MIN(center + ysupport + 0.5f, sh);
+            nmax = stop - start;
+            s = (float)start - center + 0.5f;
+            
+            for(n = 0; n < nmax; ++n, ++s)
+            {
+               contrib = lanczos(FILTER_RADIUS, s * yscale);
+               density += contrib;
+               r += (float)col[((start + n) * sstride) + i] * contrib;
+            }
+
+            if(density != 0.0f && density != 1.0f)
+               r /= density;
+            
+            if(r < 0) r = 0;
+            if(r > 255) r = 255;
+            
+            *d++ = (unsigned char)r;
+         }
+      }
+   }
+   
+   /* resample temp buffer in X direction */
+   
+   d = dst;
+   
+   for(y = 0; y < dh; ++y)
+   {
+      row = tmp + (y * (sw * bpp));
+         
+      for(x = 0; x < dw; ++x)
+      {
+         for(i = 0; i < bpp; ++i)
+         {
+            density = 0.0f;
+            r = 0.0f;
+            
+            center = ((float)x + 0.5f) / xfactor;
+            start = (int)MAX(center - xsupport + 0.5f, 0);
+            stop = (int)MIN(center + xsupport + 0.5f, sh);
+            nmax = stop - start;
+            s = (float)start - center + 0.5f;
+            
+            for(n = 0; n < nmax; ++n, ++s)
+            {
+               contrib = lanczos(FILTER_RADIUS, s * xscale);
+               density += contrib;
+               r += (float)row[((start + n) * bpp) + i] * contrib;
+            }
+
+            if(density != 0.0f && density != 1.0f)
+               r /= density;
+            
+            if(r < 0) r = 0;
+            if(r > 255) r = 255;
+            
+            *d++ = (unsigned char)r;
+         }
+      }
+   }
+   
+   g_free(tmp);
+}
+
 int generate_mipmaps(unsigned char *dst, unsigned char *src,
                      unsigned int width, unsigned int height, int bpp,
                      int indexed, int mipmaps, int filter)
@@ -318,6 +444,7 @@ int generate_mipmaps(unsigned char *dst, unsigned char *src,
          case DDS_MIPMAP_NEAREST:  mipmap_func = scale_image_nearest;  break;
          case DDS_MIPMAP_BILINEAR: mipmap_func = scale_image_bilinear; break;
          case DDS_MIPMAP_BICUBIC:  mipmap_func = scale_image_bicubic;  break;
+         case DDS_MIPMAP_LANCZOS:  mipmap_func = scale_image_lanczos;  break;
          case DDS_MIPMAP_BOX:
          default:                  mipmap_func = scale_image_box;      break;
       }

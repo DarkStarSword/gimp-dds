@@ -41,13 +41,6 @@
 
 #include "dxt_tables.h"
 
-#ifndef MIN
-#define MIN(a, b)  ((a) < (b) ? (a) : (b))
-#endif
-#ifndef MAX
-#define MAX(a, b)  ((a) > (b) ? (a) : (b))
-#endif
-
 /* extract 4x4 BGRA block */
 static void extract_block(const unsigned char *src, int w,
                           unsigned char *block)
