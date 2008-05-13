@@ -84,6 +84,7 @@ static GtkWidget *format_opt;
 static GtkWidget *color_type_opt;
 static GtkWidget *dither_chk;
 static GtkWidget *mipmap_filter_opt;
+static GtkListStore *mipmap_filter_store;
 
 static struct
 {
@@ -1365,18 +1366,30 @@ static void compression_selected(GtkWidget *widget, gpointer data)
 
 static void savetype_selected(GtkWidget *widget, gpointer data)
 {
+   char path[4];
+   GtkTreeIter iter;
+   
    dds_write_vals.savetype = gtk_combo_box_get_active(GTK_COMBO_BOX(widget));
    
+   sprintf(path, "%d", DDS_MIPMAP_LANCZOS);
+   gtk_tree_model_get_iter_from_string(GTK_TREE_MODEL(mipmap_filter_store), &iter, path);
+      
    switch(dds_write_vals.savetype)
    {
       case 0:
       case 1:
          gtk_widget_set_sensitive(compress_opt, 1);
+         gtk_list_store_set(mipmap_filter_store, &iter, 1, 1, -1);
          break;
       case 2:
          dds_write_vals.compression = DDS_COMPRESS_NONE;
          gtk_combo_box_set_active(GTK_COMBO_BOX(compress_opt), DDS_COMPRESS_NONE);
          gtk_widget_set_sensitive(compress_opt, 0);
+         if(dds_write_vals.mipmap_filter == DDS_MIPMAP_LANCZOS)
+            dds_write_vals.mipmap_filter = DDS_MIPMAP_DEFAULT;
+         gtk_combo_box_set_active(GTK_COMBO_BOX(mipmap_filter_opt),
+                                  dds_write_vals.mipmap_filter);
+         gtk_list_store_set(mipmap_filter_store, &iter, 1, 0, -1);
          break;
    }
 }
@@ -1446,6 +1459,7 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    GtkWidget *spin;
    GtkWidget *expander;
    GtkListStore *list_store;
+   GtkTreeIter iter;
    GtkCellRenderer *renderer;
    GimpImageType type, basetype;
    int i, w, h;
@@ -1462,6 +1476,8 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    
    w = gimp_image_width(image_id);
    h = gimp_image_height(image_id);
+   
+   renderer = gtk_cell_renderer_text_new();
    
    dlg = gimp_dialog_new("Save as DDS", "dds", NULL, GTK_WIN_POS_MOUSE,
                          gimp_standard_help_func, SAVE_PROC,
@@ -1554,7 +1570,6 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    gtk_list_store_insert_with_values(list_store, 0, 2, 0, "As volume map", 1, is_volume, -1);
    
    opt = gtk_combo_box_new_with_model(GTK_TREE_MODEL(list_store));
-   renderer = gtk_cell_renderer_text_new();
    gtk_cell_layout_pack_start(GTK_CELL_LAYOUT(opt), renderer, 1);
    gtk_cell_layout_set_attributes(GTK_CELL_LAYOUT(opt), renderer,
                                   "text", 0, "sensitive", 1, NULL);
@@ -1679,17 +1694,29 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
                     (GtkAttachOptions)(0), 0, 0);
    gtk_misc_set_alignment(GTK_MISC(label), 0, 0.5);
    
-   opt = gtk_combo_box_new_text();
+   mipmap_filter_store = gtk_list_store_new(2, G_TYPE_STRING, G_TYPE_BOOLEAN);
+
+   for(i = 0; mipmap_filter_strings[i].string; ++i)
+   {
+      gtk_list_store_append(mipmap_filter_store, &iter);
+      gtk_list_store_set(mipmap_filter_store, &iter,
+                         0, mipmap_filter_strings[i].string,
+                         1, 1, -1);
+      if(mipmap_filter_strings[i].type == DDS_MIPMAP_LANCZOS &&
+         is_volume && dds_write_vals.savetype == DDS_SAVE_VOLUMEMAP)
+      {
+         gtk_list_store_set(mipmap_filter_store, &iter, 1, 0, -1);
+      }
+   }
+   
+   opt = gtk_combo_box_new_with_model(GTK_TREE_MODEL(mipmap_filter_store));
+   gtk_cell_layout_pack_start(GTK_CELL_LAYOUT(opt), renderer, 1);
+   gtk_cell_layout_set_attributes(GTK_CELL_LAYOUT(opt), renderer,
+                                  "text", 0, "sensitive", 1, NULL);
    gtk_widget_show(opt);
    gtk_table_attach(GTK_TABLE(table), opt, 1, 2, 2, 3,
                     (GtkAttachOptions)(GTK_EXPAND | GTK_FILL),
                     (GtkAttachOptions)(GTK_EXPAND), 0, 0);
-   
-   for(i = 0; mipmap_filter_strings[i].string; ++i)
-   {
-      gtk_combo_box_append_text(GTK_COMBO_BOX(opt),
-                                mipmap_filter_strings[i].string);
-   }
    
    gtk_combo_box_set_active(GTK_COMBO_BOX(opt), dds_write_vals.mipmap_filter);
    
