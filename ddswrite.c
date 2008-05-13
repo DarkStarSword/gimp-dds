@@ -80,7 +80,6 @@ static gint is_volume = 0;
 
 static GtkWidget *mipmap_check;
 static GtkWidget *compress_opt;
-static GtkWidget *compress_menu;
 static GtkWidget *format_opt;
 static GtkWidget *color_type_opt;
 static GtkWidget *dither_chk;
@@ -1350,7 +1349,7 @@ static void save_dialog_response(GtkWidget *widget, gint response_id,
 
 static void compression_selected(GtkWidget *widget, gpointer data)
 {
-   dds_write_vals.compression = (gint)(long)data;
+   dds_write_vals.compression = gtk_combo_box_get_active(GTK_COMBO_BOX(widget));
    gtk_widget_set_sensitive(format_opt, dds_write_vals.compression == DDS_COMPRESS_NONE);
    gtk_widget_set_sensitive(color_type_opt,
                             dds_write_vals.compression != DDS_COMPRESS_NONE &&
@@ -1366,11 +1365,9 @@ static void compression_selected(GtkWidget *widget, gpointer data)
 
 static void savetype_selected(GtkWidget *widget, gpointer data)
 {
-   int n = (int)(long)data;
-
-   dds_write_vals.savetype = n;
+   dds_write_vals.savetype = gtk_combo_box_get_active(GTK_COMBO_BOX(widget));
    
-   switch(n)
+   switch(dds_write_vals.savetype)
    {
       case 0:
       case 1:
@@ -1378,7 +1375,7 @@ static void savetype_selected(GtkWidget *widget, gpointer data)
          break;
       case 2:
          dds_write_vals.compression = DDS_COMPRESS_NONE;
-         gtk_menu_set_active(GTK_MENU(compress_menu), DDS_COMPRESS_NONE);
+         gtk_combo_box_set_active(GTK_COMBO_BOX(compress_opt), DDS_COMPRESS_NONE);
          gtk_widget_set_sensitive(compress_opt, 0);
          break;
    }
@@ -1386,7 +1383,7 @@ static void savetype_selected(GtkWidget *widget, gpointer data)
 
 static void format_selected(GtkWidget *widget, gpointer data)
 {
-   dds_write_vals.format = (gint)(long)data;
+   dds_write_vals.format = gtk_combo_box_get_active(GTK_COMBO_BOX(widget));
 }
 
 static void toggle_clicked(GtkWidget *widget, gpointer data)
@@ -1430,12 +1427,12 @@ static void adv_opt_expanded(GtkWidget *widget, gpointer data)
 
 static void color_type_selected(GtkWidget *widget, gpointer data)
 {
-   dds_write_vals.color_type = (gint)(long)data;
+   dds_write_vals.color_type = gtk_combo_box_get_active(GTK_COMBO_BOX(widget));
 }
 
 static void mipmap_filter_selected(GtkWidget *widget, gpointer data)
 {
-   dds_write_vals.mipmap_filter = (gint)(long)data;
+   dds_write_vals.mipmap_filter = gtk_combo_box_get_active(GTK_COMBO_BOX(widget));
 }
 
 static gint save_dialog(gint32 image_id, gint32 drawable_id)
@@ -1445,11 +1442,11 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    GtkWidget *table;
    GtkWidget *label;
    GtkWidget *opt;
-   GtkWidget *menu;
-   GtkWidget *menuitem;
    GtkWidget *check;
    GtkWidget *spin;
    GtkWidget *expander;
+   GtkListStore *list_store;
+   GtkCellRenderer *renderer;
    GimpImageType type, basetype;
    int i, w, h;
    
@@ -1497,30 +1494,24 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
                     (GtkAttachOptions)(0), 0, 0);
    gtk_misc_set_alignment(GTK_MISC(label), 0, 0.5);
    
-   opt = gtk_option_menu_new();
+   opt = gtk_combo_box_new_text();
    gtk_widget_show(opt);
    gtk_table_attach(GTK_TABLE(table), opt, 1, 2, 0, 1,
                     (GtkAttachOptions)(GTK_EXPAND | GTK_FILL),
                     (GtkAttachOptions)(GTK_EXPAND), 0, 0);
    
-   menu = gtk_menu_new();
-   
    for(i = 0; compression_strings[i].string; ++i)
    {
-      menuitem = gtk_menu_item_new_with_label(compression_strings[i].string);
-      gtk_signal_connect(GTK_OBJECT(menuitem), "activate",
-                         GTK_SIGNAL_FUNC(compression_selected),
-                         (gpointer)(long)compression_strings[i].compression);
-      gtk_widget_show(menuitem);
-      gtk_menu_append(GTK_MENU(menu), menuitem);
+      gtk_combo_box_append_text(GTK_COMBO_BOX(opt),
+                                compression_strings[i].string);
    }
    
-   gtk_menu_set_active(GTK_MENU(menu), dds_write_vals.compression);
-   
-   gtk_option_menu_set_menu(GTK_OPTION_MENU(opt), menu);
+   gtk_combo_box_set_active(GTK_COMBO_BOX(opt), dds_write_vals.compression);
+
+   gtk_signal_connect(GTK_OBJECT(opt), "changed",
+                      GTK_SIGNAL_FUNC(compression_selected), 0);
    
    compress_opt = opt;
-   compress_menu = menu;
 
    label = gtk_label_new("Format:");
    gtk_widget_show(label);
@@ -1529,27 +1520,22 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
                     (GtkAttachOptions)(0), 0, 0);
    gtk_misc_set_alignment(GTK_MISC(label), 0, 0.5);
    
-   opt = gtk_option_menu_new();
+   opt = gtk_combo_box_new_text();
    gtk_widget_show(opt);
    gtk_table_attach(GTK_TABLE(table), opt, 1, 2, 1, 2,
                     (GtkAttachOptions)(GTK_EXPAND | GTK_FILL),
                     (GtkAttachOptions)(GTK_EXPAND), 0, 0);
    
-   menu = gtk_menu_new();
-
    for(i = 0; format_strings[i].string; ++i)
    {
-      menuitem = gtk_menu_item_new_with_label(format_strings[i].string);
-      gtk_signal_connect(GTK_OBJECT(menuitem), "activate",
-                         GTK_SIGNAL_FUNC(format_selected),
-                         (gpointer)(long)format_strings[i].format);
-      gtk_widget_show(menuitem);
-      gtk_menu_append(GTK_MENU(menu), menuitem);
+      gtk_combo_box_append_text(GTK_COMBO_BOX(opt),
+                                format_strings[i].string);
    }
    
-   gtk_menu_set_active(GTK_MENU(menu), dds_write_vals.format);
-   
-   gtk_option_menu_set_menu(GTK_OPTION_MENU(opt), menu);
+   gtk_combo_box_set_active(GTK_COMBO_BOX(opt), dds_write_vals.format);
+
+   gtk_signal_connect(GTK_OBJECT(opt), "changed",
+                      GTK_SIGNAL_FUNC(format_selected), 0);
 
    gtk_widget_set_sensitive(opt, dds_write_vals.compression == DDS_COMPRESS_NONE);
    
@@ -1562,38 +1548,25 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
                     (GtkAttachOptions)(0), 0, 0);
    gtk_misc_set_alignment(GTK_MISC(label), 0, 0.5);
    
-   opt = gtk_option_menu_new();
+   list_store = gtk_list_store_new(2, G_TYPE_STRING, G_TYPE_BOOLEAN);
+   gtk_list_store_insert_with_values(list_store, 0, 0, 0, "Selected layer", 1, 1, -1);
+   gtk_list_store_insert_with_values(list_store, 0, 1, 0, "As cube map", 1, is_cubemap, -1);
+   gtk_list_store_insert_with_values(list_store, 0, 2, 0, "As volume map", 1, is_volume, -1);
+   
+   opt = gtk_combo_box_new_with_model(GTK_TREE_MODEL(list_store));
+   renderer = gtk_cell_renderer_text_new();
+   gtk_cell_layout_pack_start(GTK_CELL_LAYOUT(opt), renderer, 1);
+   gtk_cell_layout_set_attributes(GTK_CELL_LAYOUT(opt), renderer,
+                                  "text", 0, "sensitive", 1, NULL);
    gtk_widget_show(opt);
    gtk_table_attach(GTK_TABLE(table), opt, 1, 2, 2, 3,
                     (GtkAttachOptions)(GTK_EXPAND | GTK_FILL),
                     (GtkAttachOptions)(GTK_EXPAND), 0, 0);
    
-   menu = gtk_menu_new();
+   gtk_combo_box_set_active(GTK_COMBO_BOX(opt), dds_write_vals.savetype);
    
-   menuitem = gtk_menu_item_new_with_label("Selected layer");
-   gtk_signal_connect(GTK_OBJECT(menuitem), "activate",
-                      GTK_SIGNAL_FUNC(savetype_selected),
-                      (gpointer)DDS_SAVE_SELECTED_LAYER);
-   gtk_widget_show(menuitem);
-   gtk_menu_append(GTK_MENU(menu), menuitem);
-   menuitem = gtk_menu_item_new_with_label("As cube map");
-   gtk_signal_connect(GTK_OBJECT(menuitem), "activate",
-                      GTK_SIGNAL_FUNC(savetype_selected),
-                      (gpointer)DDS_SAVE_CUBEMAP);
-   gtk_widget_show(menuitem);
-   gtk_menu_append(GTK_MENU(menu), menuitem);
-   gtk_widget_set_sensitive(menuitem, is_cubemap);
-   menuitem = gtk_menu_item_new_with_label("As volume map");
-   gtk_signal_connect(GTK_OBJECT(menuitem), "activate",
-                      GTK_SIGNAL_FUNC(savetype_selected),
-                      (gpointer)DDS_SAVE_VOLUMEMAP);
-   gtk_widget_show(menuitem);
-   gtk_menu_append(GTK_MENU(menu), menuitem);
-   gtk_widget_set_sensitive(menuitem, is_volume);
-   
-   gtk_menu_set_active(GTK_MENU(menu), dds_write_vals.savetype);
-   
-   gtk_option_menu_set_menu(GTK_OPTION_MENU(opt), menu);
+   gtk_signal_connect(GTK_OBJECT(opt), "changed",
+                      GTK_SIGNAL_FUNC(savetype_selected), 0);
    
    gtk_widget_set_sensitive(opt, is_cubemap || is_volume);
    
@@ -1608,7 +1581,7 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    if(is_volume && dds_write_vals.savetype == DDS_SAVE_VOLUMEMAP)
    {
       dds_write_vals.compression = DDS_COMPRESS_NONE;
-      gtk_menu_set_active(GTK_MENU(compress_menu), DDS_COMPRESS_NONE);
+      gtk_combo_box_set_active(GTK_COMBO_BOX(compress_opt), DDS_COMPRESS_NONE);
       gtk_widget_set_sensitive(compress_opt, 0);
    }
    
@@ -1669,27 +1642,22 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
                     (GtkAttachOptions)(0), 0, 0);
    gtk_misc_set_alignment(GTK_MISC(label), 0, 0.5);
    
-   opt = gtk_option_menu_new();
+   opt = gtk_combo_box_new_text();
    gtk_widget_show(opt);
    gtk_table_attach(GTK_TABLE(table), opt, 1, 2, 0, 1,
                     (GtkAttachOptions)(GTK_EXPAND | GTK_FILL),
                     (GtkAttachOptions)(GTK_EXPAND), 0, 0);
    
-   menu = gtk_menu_new();
-   
    for(i = 0; color_type_strings[i].string; ++i)
    {
-      menuitem = gtk_menu_item_new_with_label(color_type_strings[i].string);
-      gtk_signal_connect(GTK_OBJECT(menuitem), "activate",
-                         GTK_SIGNAL_FUNC(color_type_selected),
-                         (gpointer)(long)color_type_strings[i].type);
-      gtk_widget_show(menuitem);
-      gtk_menu_append(GTK_MENU(menu), menuitem);
+      gtk_combo_box_append_text(GTK_COMBO_BOX(opt),
+                                color_type_strings[i].string);
    }
    
-   gtk_menu_set_active(GTK_MENU(menu), dds_write_vals.color_type);
+   gtk_combo_box_set_active(GTK_COMBO_BOX(opt), dds_write_vals.color_type);
    
-   gtk_option_menu_set_menu(GTK_OPTION_MENU(opt), menu);
+   gtk_signal_connect(GTK_OBJECT(opt), "changed",
+                      GTK_SIGNAL_FUNC(color_type_selected), 0);
    
    color_type_opt = opt;
 
@@ -1711,27 +1679,22 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
                     (GtkAttachOptions)(0), 0, 0);
    gtk_misc_set_alignment(GTK_MISC(label), 0, 0.5);
    
-   opt = gtk_option_menu_new();
+   opt = gtk_combo_box_new_text();
    gtk_widget_show(opt);
    gtk_table_attach(GTK_TABLE(table), opt, 1, 2, 2, 3,
                     (GtkAttachOptions)(GTK_EXPAND | GTK_FILL),
                     (GtkAttachOptions)(GTK_EXPAND), 0, 0);
    
-   menu = gtk_menu_new();
-   
    for(i = 0; mipmap_filter_strings[i].string; ++i)
    {
-      menuitem = gtk_menu_item_new_with_label(mipmap_filter_strings[i].string);
-      gtk_signal_connect(GTK_OBJECT(menuitem), "activate",
-                         GTK_SIGNAL_FUNC(mipmap_filter_selected),
-                         (gpointer)(long)mipmap_filter_strings[i].type);
-      gtk_widget_show(menuitem);
-      gtk_menu_append(GTK_MENU(menu), menuitem);
+      gtk_combo_box_append_text(GTK_COMBO_BOX(opt),
+                                mipmap_filter_strings[i].string);
    }
    
-   gtk_menu_set_active(GTK_MENU(menu), dds_write_vals.mipmap_filter);
+   gtk_combo_box_set_active(GTK_COMBO_BOX(opt), dds_write_vals.mipmap_filter);
    
-   gtk_option_menu_set_menu(GTK_OPTION_MENU(opt), menu);
+   gtk_signal_connect(GTK_OBJECT(opt), "changed",
+                      GTK_SIGNAL_FUNC(mipmap_filter_selected), 0);
    
    mipmap_filter_opt = opt;
    
