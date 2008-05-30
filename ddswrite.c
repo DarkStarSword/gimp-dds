@@ -34,13 +34,7 @@
 #include "dxt.h"
 #include "mipmap.h"
 #include "endian.h"
-
-#ifndef MAX
-#define MAX(a, b) ((a) > (b) ? (a) : (b))
-#endif
-#ifndef MIN
-#define MIN(a, b) ((a) < (b) ? (a) : (b))
-#endif
+#include "imath.h"
 
 static gint save_dialog(gint32 image_id, gint32 drawable);
 static void save_dialog_response(GtkWidget *widget, gint response_id, gpointer data);
@@ -849,15 +843,8 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
       dxt_compress(dst, src, compression, w, h, bpp, mipmaps,
                    dds_write_vals.color_type, dds_write_vals.dither,
                    dds_write_vals.mipmap_filter);
-         
-      offset = 0;
-         
-      for(i = 0; i < mipmaps; ++i)
-      {
-         size = get_mipmapped_size(w, h, bpp, i, 1, compression);
-         fwrite(dst + offset, 1, size, fp);
-         offset += size;
-      }
+
+      fwrite(dst, 1, size, fp);
 
       g_free(dst);
    }
@@ -985,10 +972,10 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    gimp_pixel_rgn_init(&rgn, drawable, 0, 0, w, h, 0, 0);
 
    if((dds_write_vals.compression != DDS_COMPRESS_NONE) &&
-      !(IS_POT(w) && IS_POT(h)))
+      !(IS_POW2(w) && IS_POW2(h)))
    {
       dds_write_vals.compression = DDS_COMPRESS_NONE;
-      g_message("DDS: Cannot compress non power-of-2 sized images.\n"
+      g_message("DDS: Cannot compress images whose dimensions are not powers of 2.\n"
                 "Saved image will not be compressed.");
    }
 
@@ -1366,13 +1353,12 @@ static void compression_selected(GtkWidget *widget, gpointer data)
 
 static void savetype_selected(GtkWidget *widget, gpointer data)
 {
-   char path[4];
    GtkTreeIter iter;
    
    dds_write_vals.savetype = gtk_combo_box_get_active(GTK_COMBO_BOX(widget));
    
-   sprintf(path, "%d", DDS_MIPMAP_LANCZOS);
-   gtk_tree_model_get_iter_from_string(GTK_TREE_MODEL(mipmap_filter_store), &iter, path);
+   gtk_tree_model_iter_nth_child(GTK_TREE_MODEL(mipmap_filter_store),
+                                 &iter, 0, DDS_MIPMAP_LANCZOS);
       
    switch(dds_write_vals.savetype)
    {

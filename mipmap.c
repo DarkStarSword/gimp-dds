@@ -355,20 +355,20 @@ static void scale_image_lanczos(unsigned char *dst, int dw, int dh,
       {
          col = src + (x * bpp);
          
+         center = ((float)y + 0.5f) / yfactor;
+         start = (int)MAX(center - ysupport + 0.5f, 0);
+         stop = (int)MIN(center + ysupport + 0.5f, sh);
+         nmax = stop - start;
+         s = (float)start - center + 0.5f;
+            
          for(i = 0; i < bpp; ++i)
          {
             density = 0.0f;
             r = 0.0f;
             
-            center = ((float)y + 0.5f) / yfactor;
-            start = (int)MAX(center - ysupport + 0.5f, 0);
-            stop = (int)MIN(center + ysupport + 0.5f, sh);
-            nmax = stop - start;
-            s = (float)start - center + 0.5f;
-            
-            for(n = 0; n < nmax; ++n, ++s)
+            for(n = 0; n < nmax; ++n)
             {
-               contrib = lanczos(FILTER_RADIUS, s * yscale);
+               contrib = lanczos(FILTER_RADIUS, (s + n) * yscale);
                density += contrib;
                r += (float)col[((start + n) * sstride) + i] * contrib;
             }
@@ -390,24 +390,24 @@ static void scale_image_lanczos(unsigned char *dst, int dw, int dh,
    
    for(y = 0; y < dh; ++y)
    {
-      row = tmp + (y * (sw * bpp));
+      row = tmp + (y * sstride);
          
       for(x = 0; x < dw; ++x)
       {
+         center = ((float)x + 0.5f) / xfactor;
+         start = (int)MAX(center - xsupport + 0.5f, 0);
+         stop = (int)MIN(center + xsupport + 0.5f, sw);
+         nmax = stop - start;
+         s = (float)start - center + 0.5f;
+            
          for(i = 0; i < bpp; ++i)
          {
             density = 0.0f;
             r = 0.0f;
-            
-            center = ((float)x + 0.5f) / xfactor;
-            start = (int)MAX(center - xsupport + 0.5f, 0);
-            stop = (int)MIN(center + xsupport + 0.5f, sh);
-            nmax = stop - start;
-            s = (float)start - center + 0.5f;
-            
-            for(n = 0; n < nmax; ++n, ++s)
+
+            for(n = 0; n < nmax; ++n)
             {
-               contrib = lanczos(FILTER_RADIUS, s * xscale);
+               contrib = lanczos(FILTER_RADIUS, (s + n) * xscale);
                density += contrib;
                r += (float)row[((start + n) * bpp) + i] * contrib;
             }
@@ -506,7 +506,7 @@ static void scale_volume_image_box(unsigned char *dst, int dw, int dh, int dd,
                                    unsigned char *src, int sw, int sh, int sd,
                                    int bpp)
 {
-   int n, x, y, z, v, v0, v1;
+   int n, x, y, z, v;
    int ix, iy, iz;
    unsigned char *s1, *s2, *d = dst;
 
@@ -521,13 +521,16 @@ static void scale_volume_image_box(unsigned char *dst, int dw, int dh, int dd,
             ix = (x * sw + sw / 2) / dw;
             
             s1 = src + ((iz * (sw * sh)) + (iy * sw) + ix) * bpp;
-            s2 = src + (((iz + 1) * (sw * sh)) + (iy * sw) + ix) * bpp;
+            if(iz < dd - 1)
+               s2 = src + (((iz + 1) * (sw * sh)) + (iy * sw) + ix) * bpp;
+            else
+               s2 = src;
             
             for(n = 0; n < bpp; ++n)
             {
-               v0 = (s1[0] + s1[bpp] + s1[sw * bpp] + s1[(sw + 1) * bpp]) >> 2;
-               v1 = (s2[0] + s2[bpp] + s2[sw * bpp] + s2[(sw + 1) * bpp]) >> 2;
-               v = (v0 + v1) >> 1;
+               v =
+                  ((s1[0] + s1[bpp] + s1[sw * bpp] + s1[(sw + 1) * bpp]) +
+                   (s2[0] + s2[bpp] + s2[sw * bpp] + s2[(sw + 1) * bpp])) >> 3;
                *d++ = v;
                ++s1;
                ++s2;

@@ -1051,7 +1051,7 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
    unsigned char *tmp2, *s;
    int dxt1_alpha = 0;
    
-   if(!(IS_POT(width) && IS_POT(height)))
+   if(!(IS_POW2(width) && IS_POW2(height)))
       return(0);
    
    size = get_mipmapped_size(width, height, bpp, 0, mipmaps,
@@ -1270,7 +1270,7 @@ int dxt_decompress(unsigned char *dst, unsigned char *src, int format,
    unsigned char *d, *s;
    unsigned int x, y, sx, sy;
    
-   if(!(IS_POT(width) && IS_POT(height)))
+   if(!(IS_POW2(width) && IS_POW2(height)))
       return(0);
    
    sx = (width  < 4) ? width  : 4;

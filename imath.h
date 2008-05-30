@@ -30,6 +30,9 @@
 #define MAX(a, b)  ((a) > (b) ? (a) : (b))
 #endif
 
+#define IS_POW2(x)     (!((x) & ((x) - 1)))
+#define IS_MUL4(x)     (((x) & 3) == 0)
+
 static inline int mul8bit(int a, int b)
 {
    int t = a * b + 128;

@@ -23,8 +23,6 @@
 #ifndef MIPMAP_H
 #define MIPMAP_H
 
-#define IS_POT(x)      (!((x) & ((x) - 1)))
-
 int get_num_mipmaps(int width, int height);
 unsigned int get_mipmapped_size(int width, int height, int bpp,
                                 int level, int num, int format);
