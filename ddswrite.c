@@ -972,11 +972,20 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    gimp_pixel_rgn_init(&rgn, drawable, 0, 0, w, h, 0, 0);
 
    if((dds_write_vals.compression != DDS_COMPRESS_NONE) &&
-      !(IS_POW2(w) && IS_POW2(h)))
+      !(IS_MUL4(w) && IS_MUL4(h)))
    {
       dds_write_vals.compression = DDS_COMPRESS_NONE;
-      g_message("DDS: Cannot compress images whose dimensions are not powers of 2.\n"
+      g_message("DDS: Cannot compress images whose dimensions are not multiples of 4.\n"
                 "Saved image will not be compressed.");
+   }
+   
+   if((dds_write_vals.compression != DDS_COMPRESS_NONE) &&
+      dds_write_vals.mipmaps &&
+      !(IS_POW2(w) && IS_POW2(h)))
+   {
+      dds_write_vals.mipmaps = 0;
+      g_message("DDS: Cannot generate mipmaps for compressed images whose dimensions are not powers of 2.\n"
+                "Saved image will not have mipmaps generated.");
    }
 
    switch(drawable_type)
