@@ -32,17 +32,29 @@
 typedef void (*mipmapfunc_t)(unsigned char *, int, int, unsigned char *, int, int, int);
 typedef void (*volmipmapfunc_t)(unsigned char *, int, int, int, unsigned char *, int, int, int, int);
 
-int get_num_mipmaps(int width, int height)
+int get_num_mipmaps(int width, int height, int format)
 {
    int w = width << 1;
    int h = height << 1;
    int n = 0;
    
-   while(w != 1 || h != 1)
+   if(format == DDS_COMPRESS_NONE)
    {
-      if(w > 1) w >>= 1;
-      if(h > 1) h >>= 1;
-      ++n;
+      while(w != 1 || h != 1)
+      {
+         if(w > 1) w >>= 1;
+         if(h > 1) h >>= 1;
+         ++n;
+      }
+   }
+   else
+   {
+      while(w > 4 && h > 4)
+      {
+         if(w > 4) w >>= 1;
+         if(h > 4) h >>= 1;
+         ++n;
+      }
    }
    
    return(n);

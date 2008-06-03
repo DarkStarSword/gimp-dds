@@ -23,7 +23,7 @@
 #ifndef MIPMAP_H
 #define MIPMAP_H
 
-int get_num_mipmaps(int width, int height);
+int get_num_mipmaps(int width, int height, int format);
 unsigned int get_mipmapped_size(int width, int height, int bpp,
                                 int level, int num, int format);
 unsigned int get_volume_mipmapped_size(int width, int height,
