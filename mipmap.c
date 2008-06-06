@@ -68,12 +68,14 @@ unsigned int get_mipmapped_size(int width, int height, int bpp,
    
    w = width >> level;
    h = height >> level;
-   if(w == 0) w = 1;
-   if(h == 0) h = 1;
+   w = MAX(1, w);
+   h = MAX(1, h);
    w <<= 1;
    h <<= 1;
    
-   while(n < num && (w != 1 || h != 1))
+   while(n < num &&
+         (format == DDS_COMPRESS_NONE ? (w != 1 || h != 1) :
+          (w > 4 && h > 4)))
    {
       if(w > 1) w >>= 1;
       if(h > 1) h >>= 1;
@@ -107,9 +109,9 @@ unsigned int get_volume_mipmapped_size(int width, int height,
    w = width >> level;
    h = height >> level;
    d = depth >> level;
-   if(w == 0) w = 1;
-   if(h == 0) h = 1;
-   if(d == 0) d = 1;
+   w = MAX(1, w);
+   h = MAX(1, h);
+   d = MAX(1, d);
    w <<= 1;
    h <<= 1;
    d <<= 1;
@@ -472,10 +474,8 @@ int generate_mipmaps(unsigned char *dst, unsigned char *src,
    
    for(i = 1; i < mipmaps; ++i)
    {
-      dw = sw >> 1;
-      dh = sh >> 1;
-      if(dw < 1) dw = 1;
-      if(dh < 1) dh = 1;
+      dw = MAX(1, sw >> 1);
+      dh = MAX(1, sh >> 1);
   
       mipmap_func(d, dw, dh, s, sw, sh, bpp);
 
@@ -861,12 +861,9 @@ int generate_volume_mipmaps(unsigned char *dst, unsigned char *src,
    
    for(i = 1; i < mipmaps; ++i)
    {
-      dw = sw >> 1;
-      dh = sh >> 1;
-      dd = sd >> 1;
-      if(dw < 1) dw = 1;
-      if(dh < 1) dh = 1;
-      if(dd < 1) dd = 1;
+      dw = MAX(1, sw >> 1);
+      dh = MAX(1, sh >> 1);
+      dd = MAX(1, sd >> 1);
 
       mipmap_func(d, dw, dh, dd, s, sw, sh, sd, bpp);
 

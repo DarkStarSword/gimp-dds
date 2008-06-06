@@ -2,7 +2,7 @@
 GIMPTOOL=gimptool-2.0
 
 CC=gcc
-CFLAGS=-pipe -g -O2 -Wall `pkg-config --cflags gtk+-2.0 gimp-2.0`
+CFLAGS=-pipe -g -O2 -Wall $(shell pkg-config --cflags gtk+-2.0 gimp-2.0)
 LD=gcc
 LDFLAGS=
 
@@ -11,7 +11,7 @@ TARGET=dds
 SRCS=dds.c ddsread.c ddswrite.c dxt.c mipmap.c
 OBJS=$(SRCS:.c=.o)
 
-LIBS=`pkg-config --libs gtk+-2.0 gimp-2.0 gimpui-2.0`
+LIBS=$(shell pkg-config --libs gtk+-2.0 gimp-2.0 gimpui-2.0)
 
 all: $(TARGET)
 

@@ -739,8 +739,8 @@ static void encode_color_block(unsigned char *dst,
    {
       block_has_alpha = block_has_alpha || (block[4 * i + 3] < 255);
       v = GETL32(&block[4 * i]);
-      if(v > mx) mx = v;
-      if(v < mn) mn = v;
+      mx = MAX(mx, v);
+      mn = MIN(mn, v);
    }
    
    if(mn != mx) /* block is not a solid color, continue with compression */
@@ -1157,8 +1157,8 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
       }
       s += (w * h * bpp);
       offset += get_mipmapped_size(w, h, 0, 0, 1, format);
-      if(w > 1) w >>= 1;
-      if(h > 1) h >>= 1;
+      w = MAX(1, w >> 1);
+      h = MAX(1, h >> 1);
    }
 
    g_free(tmp);

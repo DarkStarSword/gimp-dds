@@ -33,6 +33,9 @@
 #define IS_POW2(x)     (!((x) & ((x) - 1)))
 #define IS_MUL4(x)     (((x) & 3) == 0)
 
+/* round integer x up to next multiple of 4 */
+#define RND_MUL4(x)    ((x) + (4 - ((x) & 3)))
+
 static inline int mul8bit(int a, int b)
 {
    int t = a * b + 128;
