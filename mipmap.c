@@ -32,29 +32,17 @@
 typedef void (*mipmapfunc_t)(unsigned char *, int, int, unsigned char *, int, int, int);
 typedef void (*volmipmapfunc_t)(unsigned char *, int, int, int, unsigned char *, int, int, int, int);
 
-int get_num_mipmaps(int width, int height, int format)
+int get_num_mipmaps(int width, int height)
 {
    int w = width << 1;
    int h = height << 1;
    int n = 0;
    
-   if(format == DDS_COMPRESS_NONE)
+   while(w != 1 || h != 1)
    {
-      while(w != 1 || h != 1)
-      {
-         if(w > 1) w >>= 1;
-         if(h > 1) h >>= 1;
-         ++n;
-      }
-   }
-   else
-   {
-      while(w > 4 && h > 4)
-      {
-         if(w > 4) w >>= 1;
-         if(h > 4) h >>= 1;
-         ++n;
-      }
+      if(w > 1) w >>= 1;
+      if(h > 1) h >>= 1;
+      ++n;
    }
    
    return(n);
@@ -63,7 +51,7 @@ int get_num_mipmaps(int width, int height, int format)
 unsigned int get_mipmapped_size(int width, int height, int bpp,
                                 int level, int num, int format)
 {
-   int w, h, n = 0;
+   int w, h, cw, ch, n = 0;
    unsigned int size = 0;
    
    w = width >> level;
@@ -73,16 +61,18 @@ unsigned int get_mipmapped_size(int width, int height, int bpp,
    w <<= 1;
    h <<= 1;
    
-   while(n < num &&
-         (format == DDS_COMPRESS_NONE ? (w != 1 || h != 1) :
-          (w > 4 && h > 4)))
+   while(n < num && (w != 1 || h != 1))
    {
       if(w > 1) w >>= 1;
       if(h > 1) h >>= 1;
       if(format == DDS_COMPRESS_NONE)
          size += (w * h);
       else
-         size += ((w + 3) >> 2) * ((h + 3) >> 2);
+      {
+         cw = MAX(w, 4);
+         ch = MAX(h, 4);
+         size += ((cw + 3) >> 2) * ((ch + 3) >> 2);
+      }
       ++n;
    }
    

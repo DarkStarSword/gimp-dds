@@ -1181,7 +1181,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    {
       flags |= DDSD_MIPMAPCOUNT;
       caps |= (DDSCAPS_COMPLEX | DDSCAPS_MIPMAP);
-      num_mipmaps = get_num_mipmaps(w, h, dds_write_vals.compression);
+      num_mipmaps = get_num_mipmaps(w, h);
    }
    else
       num_mipmaps = 1;

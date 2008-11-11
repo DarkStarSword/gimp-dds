@@ -42,14 +42,36 @@
 #include "dxt_tables.h"
 
 /* extract 4x4 BGRA block */
-static void extract_block(const unsigned char *src, int w,
-                          unsigned char *block)
+static void extract_block(const unsigned char *src, int x, int y,
+                          int w, int h, unsigned char *block)
 {
-   int i;
+   int i, j;
+   int bw = MIN(w - x, 4);
+   int bh = MIN(h - y, 4);
+   int bx, by;
+   const int rem[] =
+   {
+      0, 0, 0, 0,
+      0, 1, 0, 1,
+      0, 1, 2, 0,
+      0, 1, 2, 3
+   };
+   
    for(i = 0; i < 4; ++i)
    {
-      memcpy(&block[i * 4 * 4], src, 4 * 4);
-      src += w * 4;
+      by = rem[(bh - 1) * 4 + i] + y;
+      for(j = 0; j < 4; ++j)
+      {
+         bx = rem[(bw - 1) * 4 + j] + x;
+         block[(i * 4 * 4) + (j * 4) + 0] =
+            src[(by * (w * 4)) + (bx * 4) + 0];
+         block[(i * 4 * 4) + (j * 4) + 1] =
+            src[(by * (w * 4)) + (bx * 4) + 1];
+         block[(i * 4 * 4) + (j * 4) + 2] =
+            src[(by * (w * 4)) + (bx * 4) + 2];
+         block[(i * 4 * 4) + (j * 4) + 3] =
+            src[(by * (w * 4)) + (bx * 4) + 3];
+      }
    }
 }
 
@@ -835,12 +857,14 @@ static void encode_alpha_block_DXT3(unsigned char *dst,
 
 /* Write DXT5 alpha block */
 static void encode_alpha_block_DXT5(unsigned char *dst,
-                                    const unsigned char *block)
+                                    const unsigned char *block,
+                                    const int offset)
 {
    int i, v, mn, mx;
    int dist, bias, dist2, dist4, bits, mask;
    int a, idx, t;
    
+   block += offset;
    block += 3;
    
    /* find min/max alpha pair */
@@ -893,11 +917,11 @@ static void compress_DXT1(unsigned char *dst, const unsigned char *src,
    unsigned char block[64];
    int x, y;
    
-   for(y = 0; y < h; y += 4, src += w * 4 * 4)
+   for(y = 0; y < h; y += 4)
    {
       for(x = 0; x < w; x += 4)
       {
-         extract_block(src + x * 4, w, block);
+         extract_block(src, x, y, w, h, block); 
          encode_color_block(dst, block, type, dither, alpha);
          dst += 8;
       }
@@ -910,11 +934,11 @@ static void compress_DXT3(unsigned char *dst, const unsigned char *src,
    unsigned char block[64];
    int x, y;
    
-   for(y = 0; y < h; y += 4, src += w * 4 * 4)
+   for(y = 0; y < h; y += 4)
    {
       for(x = 0; x < w; x += 4)
       {
-         extract_block(src + x * 4, w, block);
+         extract_block(src, x, y, w, h, block);
          encode_alpha_block_DXT3(dst, block);
          encode_color_block(dst + 8, block, type, dither, 0);
          dst += 16;
@@ -928,12 +952,12 @@ static void compress_DXT5(unsigned char *dst, const unsigned char *src,
    unsigned char block[64];
    int x, y;
    
-   for(y = 0; y < h; y += 4, src += w * 4 * 4)
+   for(y = 0; y < h; y += 4)
    {
       for(x = 0; x < w; x += 4)
       {
-         extract_block(src + x * 4, w, block);
-         encode_alpha_block_DXT5(dst, block);
+         extract_block(src, x, y, w, h, block);
+         encode_alpha_block_DXT5(dst, block, 0);
          encode_color_block(dst + 8, block, type, dither, 0);
          dst += 16;
       }
@@ -946,12 +970,12 @@ static void compress_BC4(unsigned char *dst, const unsigned char *src,
    unsigned char block[64];
    int x, y;
    
-   for(y = 0; y < h; y += 4, src += w * 4 * 4)
+   for(y = 0; y < h; y += 4)
    {
       for(x = 0; x < w; x += 4)
       {
-         extract_block(src + x * 4, w, block);
-         encode_alpha_block_DXT5(dst, block - 1);
+         extract_block(src, x, y, w, h, block);
+         encode_alpha_block_DXT5(dst, block, -1);
          dst += 8;
       }
    }
@@ -963,13 +987,13 @@ static void compress_BC5(unsigned char *dst, const unsigned char *src,
    unsigned char block[64];
    int x, y;
    
-   for(y = 0; y < h; y += 4, src += w * 4 * 4)
+   for(y = 0; y < h; y += 4)
    {
       for(x = 0; x < w; x += 4)
       {
-         extract_block(src + x * 4, w, block);
-         encode_alpha_block_DXT5(dst, block - 2);
-         encode_alpha_block_DXT5(dst + 8, block - 1);
+         extract_block(src, x, y, w, h, block);
+         encode_alpha_block_DXT5(dst, block, -2);
+         encode_alpha_block_DXT5(dst + 8, block, -1);
          dst += 16;
       }
    }
@@ -986,13 +1010,13 @@ static void compress_YCoCg(unsigned char *dst, const unsigned char *src,
    int x0, x1, x2;
    int x, y, i;
    
-   for(y = 0; y < h; y += 4, src += w * 4 * 4)
+   for(y = 0; y < h; y += 4)
    {
       for(x = 0; x < w; x += 4)
       {
-         extract_block(src + x * 4, w, block);
+         extract_block(src, x, y, w, h, block);
          
-         encode_alpha_block_DXT5(dst, block);
+         encode_alpha_block_DXT5(dst, block, 0);
          
          maxcolor = &colors[0][0];
          mincolor = &colors[1][0];

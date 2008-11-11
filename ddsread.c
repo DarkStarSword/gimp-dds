@@ -541,8 +541,16 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
    unsigned int size = hdr->pitch_or_linsize >> (2 * level);
    int format = DDS_COMPRESS_NONE;
 
-   if(width < 1) width = 1;
-   if(height < 1) height = 1;
+   if(hdr->pixelfmt.flags & DDPF_FOURCC)
+   {
+      width  = MAX(width,  4);
+      height = MAX(height, 4);
+   }
+   else
+   {
+      if(width < 1) width = 1;
+      if(height < 1) height = 1;
+   }
    
    switch(d->bpp)
    {
@@ -599,8 +607,6 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
          case CHAR32('A', 'T', 'I', '2'): format = DDS_COMPRESS_BC5; break;
       }
 
-      if(w == 0) w = 1;
-      if(h == 0) h = 1;
       size = w * h;
       if(format == DDS_COMPRESS_BC1 || format == DDS_COMPRESS_BC4)
          size *= 8;
