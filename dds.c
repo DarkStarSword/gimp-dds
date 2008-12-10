@@ -31,6 +31,7 @@
 
 #include "ddsplugin.h"
 #include "dds.h"
+#include "misc.h"
 
 FILE *errFile;
 gchar *prog_name = "dds";
@@ -87,6 +88,13 @@ static GimpParamDef save_args[] =
    {GIMP_PDB_INT32, "mipmap_filter", "Filtering to use when generating mipmaps (0 = default, 1 = nearest, 2 = box, 3 = bilinear, 4 = bicubic, 5 = lanczos)"}
 };
 
+static GimpParamDef decode_args[] =
+{
+   {GIMP_PDB_INT32, "run_mode", "Interactive, non-interactive"},
+   {GIMP_PDB_IMAGE, "image", "Input image"},
+   {GIMP_PDB_DRAWABLE, "drawable", "Drawable to save"}
+};
+
 MAIN()
 	
 static void query(void)
@@ -96,7 +104,7 @@ static void query(void)
 								  "Loads files in DDS image format",
 								  "Shawn Kirst",
 								  "Shawn Kirst",
-								  "2004",
+								  "2008",
 								  "<Load>/DDS image",
 								  0,
 								  GIMP_PLUGIN,
@@ -115,7 +123,7 @@ static void query(void)
 								  "Saves files in DDS image format",
 								  "Shawn Kirst",
 								  "Shawn Kirst",
-								  "2004",
+								  "2008",
 								  "<Save>/DDS image",
 								  "INDEXED, GRAY, RGB",
 								  GIMP_PLUGIN,
@@ -126,6 +134,43 @@ static void query(void)
 	gimp_register_save_handler(SAVE_PROC,
 										"dds",
 										"");
+   
+   gimp_install_procedure(DECODE_YCOCG_PROC,
+                          "Converts YCoCg encoded pixels to RGB",
+                          "Converts YCoCg encoded pixels to RGB",
+                          "Shawn Kirst",
+                          "Shawn Kirst",
+                          "2008",
+                          "<Image>/Filters/Colors/Decode YCoCg",
+                          "RGBA",
+                          GIMP_PLUGIN,
+                          G_N_ELEMENTS(decode_args), 0,
+                          decode_args, 0);
+   
+   gimp_install_procedure(DECODE_YCOCG_SCALED_PROC,
+                          "Converts YCoCg (scaled) encoded pixels to RGB",
+                          "Converts YCoCg (scaled) encoded pixels to RGB",
+                          "Shawn Kirst",
+                          "Shawn Kirst",
+                          "2008",
+                          "<Image>/Filters/Colors/Decode YCoCg (scaled)",
+                          "RGBA",
+                          GIMP_PLUGIN,
+                          G_N_ELEMENTS(decode_args), 0,
+                          decode_args, 0);
+   
+   gimp_install_procedure(DECODE_ALPHA_EXP_PROC,
+                          "Converts alpha exponent encoded pixels to RGB",
+                          "Converts alpha exponent encoded pixels to RGB",
+                          "Shawn Kirst",
+                          "Shawn Kirst",
+                          "2008",
+                          "<Image>/Filters/Colors/Decode Alpha exponent",
+                          "RGBA",
+                          GIMP_PLUGIN,
+                          G_N_ELEMENTS(decode_args), 0,
+                          decode_args, 0);
+   
 }
 
 static void run(const gchar *name, gint nparams, const GimpParam *param,
@@ -261,7 +306,43 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
 		
 		if(export == GIMP_EXPORT_EXPORT)
 			gimp_image_delete(imageID);
-	}
+   }
+   else if(!strcmp(name, DECODE_YCOCG_PROC))
+   {
+		imageID = param[1].data.d_int32;
+		drawableID = param[2].data.d_int32;
+
+      decode_ycocg_image(drawableID);
+      
+      status = GIMP_PDB_SUCCESS;
+      
+      if(run_mode != GIMP_RUN_NONINTERACTIVE)
+         gimp_displays_flush();
+   }
+   else if(!strcmp(name, DECODE_YCOCG_SCALED_PROC))
+   {
+		imageID = param[1].data.d_int32;
+		drawableID = param[2].data.d_int32;
+
+      decode_ycocg_scaled_image(drawableID);
+      
+      status = GIMP_PDB_SUCCESS;
+
+      if(run_mode != GIMP_RUN_NONINTERACTIVE)
+         gimp_displays_flush();
+   }
+   else if(!strcmp(name, DECODE_ALPHA_EXP_PROC))
+   {
+		imageID = param[1].data.d_int32;
+		drawableID = param[2].data.d_int32;
+
+      decode_alpha_exp_image(drawableID);
+      
+      status = GIMP_PDB_SUCCESS;
+      
+      if(run_mode != GIMP_RUN_NONINTERACTIVE)
+         gimp_displays_flush();
+   }
 	else
 		status = GIMP_PDB_CALLING_ERROR;
 

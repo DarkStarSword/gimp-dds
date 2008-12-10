@@ -43,12 +43,6 @@
    (((unsigned short)(buf)[0]     ) | \
     ((unsigned short)(buf)[1] << 8))
 
-#define CHAR32(c0, c1, c2, c3) \
-         ((unsigned int)(((c0) & 0xff)      ) | \
-                        (((c1) & 0xff) <<  8) | \
-                        (((c2) & 0xff) << 16) | \
-                        (((c3) & 0xff) << 24))
-
 #define PUTL16(buf, s) \
    (buf)[0] = ((s)     ) & 0xff; \
    (buf)[1] = ((s) >> 8) & 0xff;
@@ -58,5 +52,15 @@
 	(buf)[1] = ((l) >>  8) & 0xff; \
 	(buf)[2] = ((l) >> 16) & 0xff; \
 	(buf)[3] = ((l) >> 24) & 0xff;
+
+#define PUTL64(buf, ll) \
+   (buf)[0] = ((ll)      ) & 0xff; \
+	(buf)[1] = ((ll) >>  8) & 0xff; \
+	(buf)[2] = ((ll) >> 16) & 0xff; \
+	(buf)[3] = ((ll) >> 24) & 0xff; \
+   (buf)[4] = ((ll) >> 32) & 0xff; \
+   (buf)[5] = ((ll) >> 40) & 0xff; \
+   (buf)[6] = ((ll) >> 48) & 0xff; \
+   (buf)[7] = ((ll) >> 56) & 0xff;
 
 #endif

@@ -23,6 +23,12 @@
 #ifndef DDS_H
 #define DDS_H
 
+#define FOURCC(a, b, c, d) \
+         ((unsigned int)((unsigned int)(a)      ) | \
+                        ((unsigned int)(b) <<  8) | \
+                        ((unsigned int)(c) << 16) | \
+                        ((unsigned int)(d) << 24))
+
 typedef enum
 {
    DDS_COMPRESS_NONE = 0,

@@ -142,11 +142,11 @@ GimpPDBStatusType read_dds(gchar *filename, gint32 *imageID)
    {
       switch(GETL32(hdr.pixelfmt.fourcc))
       {
-         case CHAR32('A', 'T', 'I', '1'):
+         case FOURCC('A', 'T', 'I', '1'):
             d.bpp = d.gimp_bpp = 1;
             type = GIMP_GRAY;
             break;
-         case CHAR32('A', 'T', 'I', '2'):
+         case FOURCC('A', 'T', 'I', '2'):
             d.bpp = d.gimp_bpp = 3;
             type = GIMP_RGB;
             break;
@@ -494,11 +494,11 @@ static int validate_header(dds_header_t *hdr)
       g_message("Unknown pixel format!  Taking a guess, expect trouble!");
       switch(GETL32(hdr->pixelfmt.fourcc))
       {
-         case CHAR32('D', 'X', 'T', '1'):
-         case CHAR32('D', 'X', 'T', '3'):
-         case CHAR32('D', 'X', 'T', '5'):
-         case CHAR32('A', 'T', 'I', '1'):
-         case CHAR32('A', 'T', 'I', '2'):
+         case FOURCC('D', 'X', 'T', '1'):
+         case FOURCC('D', 'X', 'T', '3'):
+         case FOURCC('D', 'X', 'T', '5'):
+         case FOURCC('A', 'T', 'I', '1'):
+         case FOURCC('A', 'T', 'I', '2'):
             hdr->pixelfmt.flags |= DDPF_FOURCC;
             break;
          default:
@@ -600,11 +600,11 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
       
       switch(GETL32(hdr->pixelfmt.fourcc))
       {
-         case CHAR32('D', 'X', 'T', '1'): format = DDS_COMPRESS_BC1; break;
-         case CHAR32('D', 'X', 'T', '3'): format = DDS_COMPRESS_BC2; break;
-         case CHAR32('D', 'X', 'T', '5'): format = DDS_COMPRESS_BC3; break;
-         case CHAR32('A', 'T', 'I', '1'): format = DDS_COMPRESS_BC4; break;
-         case CHAR32('A', 'T', 'I', '2'): format = DDS_COMPRESS_BC5; break;
+         case FOURCC('D', 'X', 'T', '1'): format = DDS_COMPRESS_BC1; break;
+         case FOURCC('D', 'X', 'T', '3'): format = DDS_COMPRESS_BC2; break;
+         case FOURCC('D', 'X', 'T', '5'): format = DDS_COMPRESS_BC3; break;
+         case FOURCC('A', 'T', 'I', '1'): format = DDS_COMPRESS_BC4; break;
+         case FOURCC('A', 'T', 'I', '2'): format = DDS_COMPRESS_BC5; break;
       }
 
       size = w * h;
