@@ -1,5 +1,12 @@
 #include <libgimp/gimp.h>
 
+static inline float saturate(float a)
+{
+   if(a < 0) a = 0;
+   if(a > 1) a = 1;
+   return(a);
+}
+
 void decode_ycocg_image(gint32 drawableID)
 {
    GimpDrawable *drawable;
@@ -37,16 +44,9 @@ void decode_ycocg_image(gint32 drawableID)
          Co -= offset;
          Cg -= offset;
          
-         R = Y + Co - Cg;
-         G = Y + Cg;
-         B = Y - Co - Cg;
-         
-         if(R < 0.0f) R = 0.0f;
-         if(R > 1.0f) R = 1.0f;
-         if(G < 0.0f) G = 0.0f;
-         if(G > 1.0f) G = 1.0f;
-         if(B < 0.0f) B = 0.0f;
-         if(B > 1.0f) B = 1.0f;
+         R = saturate(Y + Co - Cg);
+         G = saturate(Y + Cg);
+         B = saturate(Y - Co - Cg);
          
          /* copy new alpha from blue */
          dst[4 * x + 3] = src[4 * x + 2];
@@ -113,17 +113,10 @@ void decode_ycocg_scaled_image(gint32 drawableID)
          Co = (Co - offset) * s;
          Cg = (Cg - offset) * s;
          
-         R = Y + Co - Cg;
-         G = Y + Cg;
-         B = Y - Co - Cg;
+         R = saturate(Y + Co - Cg);
+         G = saturate(Y + Cg);
+         B = saturate(Y - Co - Cg);
 
-         if(R < 0.0f) R = 0.0f;
-         if(R > 1.0f) R = 1.0f;
-         if(G < 0.0f) G = 0.0f;
-         if(G > 1.0f) G = 1.0f;
-         if(B < 0.0f) B = 0.0f;
-         if(B > 1.0f) B = 1.0f;
-         
          dst[4 * x + 0] = (unsigned char)(R * 255.0f);
          dst[4 * x + 1] = (unsigned char)(G * 255.0f);
          dst[4 * x + 2] = (unsigned char)(B * 255.0f);

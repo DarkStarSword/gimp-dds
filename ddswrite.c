@@ -118,6 +118,7 @@ static struct
    {DDS_FORMAT_A8, "A8"},
    {DDS_FORMAT_L8, "L8"},
    {DDS_FORMAT_L8A8, "L8A8"},
+   {DDS_FORMAT_AEXP, "AExp"},
    {DDS_FORMAT_YCOCG, "YCoCg"},
    {-1, 0}
 };
@@ -539,8 +540,8 @@ static void convert_pixels(unsigned char *dst, unsigned char *src,
             int co = TO_YCOCG_CO(r, g, b) + 128;
             int cg = TO_YCOCG_CG(r, g, b) + 128;
             dst[4 * i + 0] = a;
-            dst[4 * i + 1] = (cg < 0 ? 0 : (cg > 255 ? 255 : cg));
-            dst[4 * i + 2] = (co < 0 ? 0 : (co > 255 ? 255 : co));
+            dst[4 * i + 1] = MAX(0, MIN(255, cg));
+            dst[4 * i + 2] = MAX(0, MIN(255, co));
             dst[4 * i + 3] = TO_YCOCG_Y(r, g, b);
             break;
          }
@@ -653,8 +654,8 @@ static void convert_volume_pixels(unsigned char *dst, unsigned char *src,
             int co = TO_YCOCG_CO(r, g, b) + 128;
             int cg = TO_YCOCG_CG(r, g, b) + 128;
             dst[4 * i + 0] = a;
-            dst[4 * i + 1] = (cg < 0 ? 0 : (cg > 255 ? 255 : cg));
-            dst[4 * i + 2] = (co < 0 ? 0 : (co > 255 ? 255 : co));
+            dst[4 * i + 1] = MAX(0, MIN(255, cg));
+            dst[4 * i + 2] = MAX(0, MIN(255, co));
             dst[4 * i + 3] = TO_YCOCG_Y(r, g, b);
             break;
          }
@@ -954,7 +955,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    unsigned char hdr[DDS_HEADERSIZE];
    unsigned int flags = 0, pflags = 0, caps = 0, caps2 = 0, size = 0;
    unsigned int rmask = 0, gmask = 0, bmask = 0, amask = 0;
-   char *format = "XXXX";
+   unsigned int fourcc = 0;
    gint32 num_layers, *layers;
    guchar *cmap;
    gint colors;
@@ -1097,6 +1098,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
             bmask = 0x000000ff;
             amask = 0x0000ff00;
             break;
+         case DDS_FORMAT_AEXP:
          case DDS_FORMAT_YCOCG:
             fmtbpp = 4;
             has_alpha = 1;
@@ -1254,17 +1256,22 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
       PUTL32(hdr + 80, DDPF_FOURCC);
       switch(dds_write_vals.compression)
       {
-         case DDS_COMPRESS_BC1:    format = "DXT1"; break;
-         case DDS_COMPRESS_BC2:    format = "DXT3"; break;
+         case DDS_COMPRESS_BC1:
+            fourcc = FOURCC('D','X','T','1'); break;
+         case DDS_COMPRESS_BC2:
+            fourcc = FOURCC('D','X','T','3'); break;
          case DDS_COMPRESS_BC3:
          case DDS_COMPRESS_BC3N:
          case DDS_COMPRESS_YCOCG:
          case DDS_COMPRESS_YCOCGS:
-         case DDS_COMPRESS_AEXP:   format = "DXT5"; break;
-         case DDS_COMPRESS_BC4:    format = "ATI1"; break;
-         case DDS_COMPRESS_BC5:    format = "ATI2"; break;
+         case DDS_COMPRESS_AEXP:
+            fourcc = FOURCC('D','X','T','5'); break;
+         case DDS_COMPRESS_BC4:
+            fourcc = FOURCC('A','T','I','1'); break;
+         case DDS_COMPRESS_BC5:
+            fourcc = FOURCC('A','T','I','2'); break;
       }
-      memcpy(hdr + 84, format, 4);
+      PUTL32(hdr + 84, fourcc);
 
       size = ((w + 3) >> 2) * ((h + 3) >> 2);
       if(dds_write_vals.compression == DDS_COMPRESS_BC1 ||
@@ -1391,7 +1398,16 @@ static void savetype_selected(GtkWidget *widget, gpointer data)
 
 static void format_selected(GtkWidget *widget, gpointer data)
 {
-   dds_write_vals.format = gtk_combo_box_get_active(GTK_COMBO_BOX(widget));
+   gchar *fmt = gtk_combo_box_get_active_text(GTK_COMBO_BOX(widget));
+   int i;
+   for(i = 0; format_strings[i].string; ++i)
+   {
+      if(!strcmp(fmt, format_strings[i].string))
+      {
+         dds_write_vals.format = format_strings[i].format;
+         break;
+      }
+   }
 }
 
 static void toggle_clicked(GtkWidget *widget, gpointer data)
