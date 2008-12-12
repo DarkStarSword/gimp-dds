@@ -151,6 +151,33 @@ static string_value_t save_type_strings[] =
    {-1, 0}
 };
 
+static struct
+{
+   int format;
+   int bpp;
+   int alpha;
+   unsigned int rmask;
+   unsigned int gmask;
+   unsigned int bmask;
+   unsigned int amask;
+} format_info[] =
+{
+   {DDS_FORMAT_RGB8,    3, 0, 0x00ff0000, 0x0000ff00, 0x000000ff, 0x00000000},
+   {DDS_FORMAT_RGBA8,   4, 1, 0x00ff0000, 0x0000ff00, 0x000000ff, 0xff000000},
+   {DDS_FORMAT_BGR8,    3, 0, 0x000000ff, 0x0000ff00, 0x00ff0000, 0x00000000},
+   {DDS_FORMAT_ABGR8,   4, 1, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000},
+   {DDS_FORMAT_R5G6B5,  2, 0, 0x0000f800, 0x000007e0, 0x0000001f, 0x00000000},
+   {DDS_FORMAT_RGBA4,   2, 1, 0x00000f00, 0x000000f0, 0x0000000f, 0x0000f000},
+   {DDS_FORMAT_RGB5A1,  2, 1, 0x00007c00, 0x000003e0, 0x0000001f, 0x00008000},
+   {DDS_FORMAT_RGB10A2, 4, 1, 0x3ff00000, 0x000ffc00, 0x000003ff, 0xc0000000},
+   {DDS_FORMAT_R3G3B2,  1, 0, 0x000000e0, 0x0000001c, 0x00000003, 0x00000000},
+   {DDS_FORMAT_A8,      1, 0, 0x00000000, 0x00000000, 0x00000000, 0x000000ff},
+   {DDS_FORMAT_L8,      1, 0, 0x000000ff, 0x000000ff, 0x000000ff, 0x00000000},
+   {DDS_FORMAT_L8A8,    2, 1, 0x000000ff, 0x000000ff, 0x000000ff, 0x0000ff00},
+   {DDS_FORMAT_AEXP,    4, 1, 0x00ff0000, 0x0000ff00, 0x000000ff, 0xff000000},
+   {DDS_FORMAT_YCOCG,   4, 1, 0x00ff0000, 0x0000ff00, 0x000000ff, 0xff000000}
+};
+
 static int check_cubemap(gint32 image_id)
 {
    gint *layers, num_layers;
@@ -1003,112 +1030,18 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    
    if(dds_write_vals.format > DDS_FORMAT_DEFAULT)
    {
-      switch(dds_write_vals.format)
+      for(i = 0; ; ++i)
       {
-         case DDS_FORMAT_RGB8:
-            fmtbpp = 3;
-            rmask = 0x00ff0000;
-            gmask = 0x0000ff00;
-            bmask = 0x000000ff;
-            amask = 0xff000000;
+         if(format_info[i].format == dds_write_vals.format)
+         {
+            fmtbpp = format_info[i].bpp;
+            has_alpha = format_info[i].alpha;
+            rmask = format_info[i].rmask;
+            gmask = format_info[i].gmask;
+            bmask = format_info[i].bmask;
+            amask = format_info[i].amask;
             break;
-         case DDS_FORMAT_RGBA8:
-            fmtbpp = 4;
-            has_alpha = 1;
-            rmask = 0x00ff0000;
-            gmask = 0x0000ff00;
-            bmask = 0x000000ff;
-            amask = 0xff000000;
-            break;
-         case DDS_FORMAT_BGR8:
-            fmtbpp = 3;
-            rmask = 0x000000ff;
-            gmask = 0x0000ff00;
-            bmask = 0x00ff0000;
-            amask = 0x00000000;
-            break;
-         case DDS_FORMAT_ABGR8:
-            fmtbpp = 4;
-            has_alpha = 1;
-            rmask = 0x000000ff;
-            gmask = 0x0000ff00;
-            bmask = 0x00ff0000;
-            amask = 0xff000000;
-            break;
-         case DDS_FORMAT_R5G6B5:
-            fmtbpp = 2;
-            rmask = 0x0000f800;
-            gmask = 0x000007e0;
-            bmask = 0x0000001f;
-            amask = 0x00000000;
-            break;
-         case DDS_FORMAT_RGBA4:
-            fmtbpp = 2;
-            has_alpha = 1;
-            rmask = 0x00000f00;
-            gmask = 0x000000f0;
-            bmask = 0x0000000f;
-            amask = 0x0000f000;
-            break;
-         case DDS_FORMAT_RGB5A1:
-            fmtbpp = 2;
-            has_alpha = 1;
-            rmask = 0x00007c00;
-            gmask = 0x000003e0;
-            bmask = 0x0000001f;
-            amask = 0x00008000;
-            break;
-         case DDS_FORMAT_RGB10A2:
-            fmtbpp = 4;
-            has_alpha = 1;
-            rmask = 0x3ff00000;
-            gmask = 0x000ffc00;
-            bmask = 0x000003ff;
-            amask = 0xc0000000;
-            break;
-         case DDS_FORMAT_R3G3B2:
-            fmtbpp = 1;
-            has_alpha = 0;
-            rmask = 0x000000e0;
-            gmask = 0x0000001c;
-            bmask = 0x00000003;
-            amask = 0x00000000;
-            break;
-         case DDS_FORMAT_A8:
-            fmtbpp = 1;
-            has_alpha = 0;
-            rmask = 0x00000000;
-            gmask = 0x00000000;
-            bmask = 0x00000000;
-            amask = 0x000000ff;
-            break;
-         case DDS_FORMAT_L8:
-            fmtbpp = 1;
-            has_alpha = 0;
-            rmask = 0x000000ff;
-            gmask = 0x000000ff;
-            bmask = 0x000000ff;
-            amask = 0x00000000;
-            break;
-         case DDS_FORMAT_L8A8:
-            fmtbpp = 2;
-            has_alpha = 1;
-            rmask = 0x000000ff;
-            gmask = 0x000000ff;
-            bmask = 0x000000ff;
-            amask = 0x0000ff00;
-            break;
-         case DDS_FORMAT_AEXP:
-         case DDS_FORMAT_YCOCG:
-            fmtbpp = 4;
-            has_alpha = 1;
-            rmask = 0x00ff0000;
-            gmask = 0x0000ff00;
-            bmask = 0x000000ff;
-            amask = 0xff000000;
-            break;
-         default:
-            break;
+         }
       }
    }
    else if(bpp == 1)
