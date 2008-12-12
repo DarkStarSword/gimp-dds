@@ -38,11 +38,14 @@
 
 static gint save_dialog(gint32 image_id, gint32 drawable);
 static void save_dialog_response(GtkWidget *widget, gint response_id, gpointer data);
-static void compression_selected(GtkWidget *widget, gpointer data);
-static void toggle_clicked(GtkWidget *widget, gpointer data);
 static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id);
 
 static int runme = 0;
+
+enum
+{
+   COMBO_VALUE, COMBO_STRING, COMBO_SENSITIVE
+};
 
 static const char *cubemap_face_names[4][6] =
 {
@@ -78,13 +81,14 @@ static GtkWidget *format_opt;
 static GtkWidget *color_type_opt;
 static GtkWidget *dither_chk;
 static GtkWidget *mipmap_filter_opt;
-static GtkListStore *mipmap_filter_store;
 
-static struct
+typedef struct string_value_s
 {
-   int compression;
+   int value;
    char *string;
-} compression_strings[] =
+} string_value_t;
+
+static string_value_t compression_strings[] =
 {
    {DDS_COMPRESS_NONE,   "None"},
    {DDS_COMPRESS_BC1,    "BC1 / DXT1"},
@@ -99,11 +103,7 @@ static struct
    {-1, 0}
 };
 
-static struct
-{
-   int format;
-   char *string;
-} format_strings[] =
+static string_value_t format_strings[] =
 {
    {DDS_FORMAT_DEFAULT, "Default"},
    {DDS_FORMAT_RGB8, "RGB8"},
@@ -123,11 +123,7 @@ static struct
    {-1, 0}
 };
 
-static struct
-{
-   int type;
-   char *string;
-} color_type_strings[] =
+static string_value_t color_type_strings[] =
 {
    {DDS_COLOR_DEFAULT,    "Default"},
    {DDS_COLOR_DISTANCE,   "Distance"},
@@ -136,11 +132,7 @@ static struct
    {-1, 0}
 };
 
-static struct
-{
-   int type;
-   char *string;
-} mipmap_filter_strings[] =
+static string_value_t mipmap_filter_strings[] =
 {
    {DDS_MIPMAP_DEFAULT,  "Default"},
    {DDS_MIPMAP_NEAREST,  "Nearest"},
@@ -148,6 +140,14 @@ static struct
    {DDS_MIPMAP_BILINEAR, "Bilinear"},
    {DDS_MIPMAP_BICUBIC,  "Bicubic"},
    {DDS_MIPMAP_LANCZOS,  "Lanczos"},
+   {-1, 0}
+};
+
+static string_value_t save_type_strings[] =
+{
+   {DDS_SAVE_SELECTED_LAYER, "Selected layer"},
+   {DDS_SAVE_CUBEMAP,        "As cube map"},
+   {DDS_SAVE_VOLUMEMAP,      "As volume map"},
    {-1, 0}
 };
 
@@ -1338,6 +1338,97 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    return(1);
 }
 
+static GtkWidget *string_value_combo_new(string_value_t *strings,
+                                         int active_value)
+{
+   GtkWidget *opt;
+   GtkCellRenderer *renderer;
+   GtkListStore *store;
+   GtkTreeIter iter;
+   int i, active = 0;
+   
+   store = gtk_list_store_new(3, G_TYPE_INT, G_TYPE_STRING, G_TYPE_BOOLEAN);
+   for(i = 0; strings[i].string; ++i)
+   {
+      if(strings[i].value == active_value) active = i;
+      gtk_list_store_append(store, &iter);
+      gtk_list_store_set(store, &iter,
+                         0, strings[i].value,
+                         1, strings[i].string,
+                         2, 1,
+                         -1);
+   }
+ 
+   renderer = gtk_cell_renderer_text_new();
+   
+   opt = gtk_combo_box_new_with_model(GTK_TREE_MODEL(store));
+   gtk_cell_layout_pack_start(GTK_CELL_LAYOUT(opt), renderer, 1);
+   gtk_cell_layout_set_attributes(GTK_CELL_LAYOUT(opt), renderer,
+                                  "text", COMBO_STRING,
+                                  "sensitive", COMBO_SENSITIVE,
+                                  NULL);
+   
+   gtk_combo_box_set_active(GTK_COMBO_BOX(opt), active);
+
+   g_object_unref(store);
+   
+   return(opt);
+}
+
+static void string_value_combo_selected(GtkWidget *widget, gpointer data)
+{
+   int value;
+   GtkTreeIter iter;
+   GtkTreeModel *model;
+   
+   model = gtk_combo_box_get_model(GTK_COMBO_BOX(widget));
+   gtk_combo_box_get_active_iter(GTK_COMBO_BOX(widget), &iter);
+   gtk_tree_model_get(model, &iter, COMBO_VALUE, &value, -1);
+
+   *((int *)data) = value;
+}
+
+static void string_value_combo_set_item_sensitive(GtkWidget *widget,
+                                                  int value, int sensitive)
+{
+   GtkTreeIter iter;
+   GtkTreeModel *model;
+   int val;
+   
+   model = gtk_combo_box_get_model(GTK_COMBO_BOX(widget));
+   gtk_tree_model_get_iter_first(model, &iter);
+   do
+   {
+      gtk_tree_model_get(model, &iter, COMBO_VALUE, &val, -1);
+      if(val == value)
+      {
+         gtk_list_store_set(GTK_LIST_STORE(model), &iter,
+                            COMBO_SENSITIVE, sensitive, -1);
+         break;
+      }
+   } while(gtk_tree_model_iter_next(model, &iter));
+}
+
+static void string_value_combo_set_active(GtkWidget *widget,
+                                          int value)
+{
+   GtkTreeIter iter;
+   GtkTreeModel *model;
+   int val;
+   
+   model = gtk_combo_box_get_model(GTK_COMBO_BOX(widget));
+   gtk_tree_model_get_iter_first(model, &iter);
+   do
+   {
+      gtk_tree_model_get(model, &iter, COMBO_VALUE, &val, -1);
+      if(val == value)
+      {
+         gtk_combo_box_set_active_iter(GTK_COMBO_BOX(widget), &iter);
+         break;
+      }
+   } while(gtk_tree_model_iter_next(model, &iter));
+}
+
 static void save_dialog_response(GtkWidget *widget, gint response_id,
                                  gpointer data)
 {
@@ -1353,7 +1444,13 @@ static void save_dialog_response(GtkWidget *widget, gint response_id,
 
 static void compression_selected(GtkWidget *widget, gpointer data)
 {
-   dds_write_vals.compression = gtk_combo_box_get_active(GTK_COMBO_BOX(widget));
+   GtkTreeIter iter;
+   GtkTreeModel *model;
+   model = gtk_combo_box_get_model(GTK_COMBO_BOX(widget));
+   gtk_combo_box_get_active_iter(GTK_COMBO_BOX(widget), &iter);
+   gtk_tree_model_get(model, &iter, COMBO_VALUE,
+                      &dds_write_vals.compression, -1);
+
    gtk_widget_set_sensitive(format_opt, dds_write_vals.compression == DDS_COMPRESS_NONE);
    gtk_widget_set_sensitive(color_type_opt,
                             dds_write_vals.compression != DDS_COMPRESS_NONE &&
@@ -1369,44 +1466,27 @@ static void compression_selected(GtkWidget *widget, gpointer data)
 
 static void savetype_selected(GtkWidget *widget, gpointer data)
 {
-   GtkTreeIter iter;
-   
    dds_write_vals.savetype = gtk_combo_box_get_active(GTK_COMBO_BOX(widget));
    
-   gtk_tree_model_iter_nth_child(GTK_TREE_MODEL(mipmap_filter_store),
-                                 &iter, 0, DDS_MIPMAP_LANCZOS);
-      
    switch(dds_write_vals.savetype)
    {
-      case 0:
-      case 1:
+      case DDS_SAVE_SELECTED_LAYER:
+      case DDS_SAVE_CUBEMAP:
          gtk_widget_set_sensitive(compress_opt, 1);
-         gtk_list_store_set(mipmap_filter_store, &iter, 1, 1, -1);
+         string_value_combo_set_item_sensitive(mipmap_filter_opt,
+                                               DDS_MIPMAP_LANCZOS, 1);
          break;
-      case 2:
+      case DDS_SAVE_VOLUMEMAP:
          dds_write_vals.compression = DDS_COMPRESS_NONE;
          gtk_combo_box_set_active(GTK_COMBO_BOX(compress_opt), DDS_COMPRESS_NONE);
          gtk_widget_set_sensitive(compress_opt, 0);
          if(dds_write_vals.mipmap_filter == DDS_MIPMAP_LANCZOS)
             dds_write_vals.mipmap_filter = DDS_MIPMAP_DEFAULT;
-         gtk_combo_box_set_active(GTK_COMBO_BOX(mipmap_filter_opt),
-                                  dds_write_vals.mipmap_filter);
-         gtk_list_store_set(mipmap_filter_store, &iter, 1, 0, -1);
+         string_value_combo_set_active(mipmap_filter_opt,
+                                       dds_write_vals.mipmap_filter);
+         string_value_combo_set_item_sensitive(mipmap_filter_opt,
+                                               DDS_MIPMAP_LANCZOS, 0);
          break;
-   }
-}
-
-static void format_selected(GtkWidget *widget, gpointer data)
-{
-   gchar *fmt = gtk_combo_box_get_active_text(GTK_COMBO_BOX(widget));
-   int i;
-   for(i = 0; format_strings[i].string; ++i)
-   {
-      if(!strcmp(fmt, format_strings[i].string))
-      {
-         dds_write_vals.format = format_strings[i].format;
-         break;
-      }
    }
 }
 
@@ -1449,16 +1529,6 @@ static void adv_opt_expanded(GtkWidget *widget, gpointer data)
    dds_write_vals.show_adv_opt = !gtk_expander_get_expanded(GTK_EXPANDER(widget));
 }
 
-static void color_type_selected(GtkWidget *widget, gpointer data)
-{
-   dds_write_vals.color_type = gtk_combo_box_get_active(GTK_COMBO_BOX(widget));
-}
-
-static void mipmap_filter_selected(GtkWidget *widget, gpointer data)
-{
-   dds_write_vals.mipmap_filter = gtk_combo_box_get_active(GTK_COMBO_BOX(widget));
-}
-
 static gint save_dialog(gint32 image_id, gint32 drawable_id)
 {
    GtkWidget *dlg;
@@ -1469,11 +1539,8 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    GtkWidget *check;
    GtkWidget *spin;
    GtkWidget *expander;
-   GtkListStore *list_store;
-   GtkTreeIter iter;
-   GtkCellRenderer *renderer;
    GimpImageType type, basetype;
-   int i, w, h;
+   int w, h;
    
    if(is_cubemap)
       dds_write_vals.savetype = DDS_SAVE_CUBEMAP;
@@ -1487,8 +1554,6 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    
    w = gimp_image_width(image_id);
    h = gimp_image_height(image_id);
-   
-   renderer = gtk_cell_renderer_text_new();
    
    dlg = gimp_dialog_new("Save as DDS", "dds", NULL, GTK_WIN_POS_MOUSE,
                          gimp_standard_help_func, SAVE_PROC,
@@ -1521,20 +1586,14 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
                     (GtkAttachOptions)(0), 0, 0);
    gtk_misc_set_alignment(GTK_MISC(label), 0, 0.5);
    
-   opt = gtk_combo_box_new_text();
+
+   opt = string_value_combo_new(compression_strings,
+                                dds_write_vals.compression);
    gtk_widget_show(opt);
    gtk_table_attach(GTK_TABLE(table), opt, 1, 2, 0, 1,
                     (GtkAttachOptions)(GTK_EXPAND | GTK_FILL),
                     (GtkAttachOptions)(GTK_EXPAND), 0, 0);
    
-   for(i = 0; compression_strings[i].string; ++i)
-   {
-      gtk_combo_box_append_text(GTK_COMBO_BOX(opt),
-                                compression_strings[i].string);
-   }
-   
-   gtk_combo_box_set_active(GTK_COMBO_BOX(opt), dds_write_vals.compression);
-
    gtk_signal_connect(GTK_OBJECT(opt), "changed",
                       GTK_SIGNAL_FUNC(compression_selected), 0);
    
@@ -1546,23 +1605,16 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
                     (GtkAttachOptions)(GTK_FILL),
                     (GtkAttachOptions)(0), 0, 0);
    gtk_misc_set_alignment(GTK_MISC(label), 0, 0.5);
-   
-   opt = gtk_combo_box_new_text();
+
+   opt = string_value_combo_new(format_strings, dds_write_vals.format);
    gtk_widget_show(opt);
    gtk_table_attach(GTK_TABLE(table), opt, 1, 2, 1, 2,
                     (GtkAttachOptions)(GTK_EXPAND | GTK_FILL),
                     (GtkAttachOptions)(GTK_EXPAND), 0, 0);
-   
-   for(i = 0; format_strings[i].string; ++i)
-   {
-      gtk_combo_box_append_text(GTK_COMBO_BOX(opt),
-                                format_strings[i].string);
-   }
-   
-   gtk_combo_box_set_active(GTK_COMBO_BOX(opt), dds_write_vals.format);
 
    gtk_signal_connect(GTK_OBJECT(opt), "changed",
-                      GTK_SIGNAL_FUNC(format_selected), 0);
+                      GTK_SIGNAL_FUNC(string_value_combo_selected),
+                      &dds_write_vals.format);
 
    gtk_widget_set_sensitive(opt, dds_write_vals.compression == DDS_COMPRESS_NONE);
    
@@ -1575,25 +1627,18 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
                     (GtkAttachOptions)(0), 0, 0);
    gtk_misc_set_alignment(GTK_MISC(label), 0, 0.5);
    
-   list_store = gtk_list_store_new(2, G_TYPE_STRING, G_TYPE_BOOLEAN);
-   gtk_list_store_insert_with_values(list_store, 0, 0, 0, "Selected layer", 1, 1, -1);
-   gtk_list_store_insert_with_values(list_store, 0, 1, 0, "As cube map", 1, is_cubemap, -1);
-   gtk_list_store_insert_with_values(list_store, 0, 2, 0, "As volume map", 1, is_volume, -1);
-   
-   opt = gtk_combo_box_new_with_model(GTK_TREE_MODEL(list_store));
-   gtk_cell_layout_pack_start(GTK_CELL_LAYOUT(opt), renderer, 1);
-   gtk_cell_layout_set_attributes(GTK_CELL_LAYOUT(opt), renderer,
-                                  "text", 0, "sensitive", 1, NULL);
+   opt = string_value_combo_new(save_type_strings, dds_write_vals.savetype);
    gtk_widget_show(opt);
    gtk_table_attach(GTK_TABLE(table), opt, 1, 2, 2, 3,
                     (GtkAttachOptions)(GTK_EXPAND | GTK_FILL),
                     (GtkAttachOptions)(GTK_EXPAND), 0, 0);
    
-   gtk_combo_box_set_active(GTK_COMBO_BOX(opt), dds_write_vals.savetype);
-   
    gtk_signal_connect(GTK_OBJECT(opt), "changed",
                       GTK_SIGNAL_FUNC(savetype_selected), 0);
-   
+
+   string_value_combo_set_item_sensitive(opt, DDS_SAVE_CUBEMAP, is_cubemap);
+   string_value_combo_set_item_sensitive(opt, DDS_SAVE_VOLUMEMAP, is_volume);
+
    gtk_widget_set_sensitive(opt, is_cubemap || is_volume);
    
    check = gtk_check_button_new_with_label("Generate mipmaps");
@@ -1607,7 +1652,7 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    if(is_volume && dds_write_vals.savetype == DDS_SAVE_VOLUMEMAP)
    {
       dds_write_vals.compression = DDS_COMPRESS_NONE;
-      gtk_combo_box_set_active(GTK_COMBO_BOX(compress_opt), DDS_COMPRESS_NONE);
+      string_value_combo_set_active(compress_opt, DDS_COMPRESS_NONE);
       gtk_widget_set_sensitive(compress_opt, 0);
    }
    
@@ -1668,22 +1713,15 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
                     (GtkAttachOptions)(0), 0, 0);
    gtk_misc_set_alignment(GTK_MISC(label), 0, 0.5);
    
-   opt = gtk_combo_box_new_text();
+   opt = string_value_combo_new(color_type_strings, dds_write_vals.color_type);
    gtk_widget_show(opt);
    gtk_table_attach(GTK_TABLE(table), opt, 1, 2, 0, 1,
                     (GtkAttachOptions)(GTK_EXPAND | GTK_FILL),
                     (GtkAttachOptions)(GTK_EXPAND), 0, 0);
    
-   for(i = 0; color_type_strings[i].string; ++i)
-   {
-      gtk_combo_box_append_text(GTK_COMBO_BOX(opt),
-                                color_type_strings[i].string);
-   }
-   
-   gtk_combo_box_set_active(GTK_COMBO_BOX(opt), dds_write_vals.color_type);
-   
    gtk_signal_connect(GTK_OBJECT(opt), "changed",
-                      GTK_SIGNAL_FUNC(color_type_selected), 0);
+                      GTK_SIGNAL_FUNC(string_value_combo_selected),
+                      &dds_write_vals.color_type);
    
    color_type_opt = opt;
 
@@ -1705,34 +1743,19 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
                     (GtkAttachOptions)(0), 0, 0);
    gtk_misc_set_alignment(GTK_MISC(label), 0, 0.5);
    
-   mipmap_filter_store = gtk_list_store_new(2, G_TYPE_STRING, G_TYPE_BOOLEAN);
-
-   for(i = 0; mipmap_filter_strings[i].string; ++i)
-   {
-      gtk_list_store_append(mipmap_filter_store, &iter);
-      gtk_list_store_set(mipmap_filter_store, &iter,
-                         0, mipmap_filter_strings[i].string,
-                         1, 1, -1);
-      if(mipmap_filter_strings[i].type == DDS_MIPMAP_LANCZOS &&
-         is_volume && dds_write_vals.savetype == DDS_SAVE_VOLUMEMAP)
-      {
-         gtk_list_store_set(mipmap_filter_store, &iter, 1, 0, -1);
-      }
-   }
-   
-   opt = gtk_combo_box_new_with_model(GTK_TREE_MODEL(mipmap_filter_store));
-   gtk_cell_layout_pack_start(GTK_CELL_LAYOUT(opt), renderer, 1);
-   gtk_cell_layout_set_attributes(GTK_CELL_LAYOUT(opt), renderer,
-                                  "text", 0, "sensitive", 1, NULL);
+   opt = string_value_combo_new(mipmap_filter_strings,
+                                dds_write_vals.mipmap_filter);
    gtk_widget_show(opt);
    gtk_table_attach(GTK_TABLE(table), opt, 1, 2, 2, 3,
                     (GtkAttachOptions)(GTK_EXPAND | GTK_FILL),
                     (GtkAttachOptions)(GTK_EXPAND), 0, 0);
-   
-   gtk_combo_box_set_active(GTK_COMBO_BOX(opt), dds_write_vals.mipmap_filter);
+
+   if(is_volume && dds_write_vals.savetype == DDS_SAVE_VOLUMEMAP)
+      string_value_combo_set_item_sensitive(opt, DDS_MIPMAP_LANCZOS, 0);
    
    gtk_signal_connect(GTK_OBJECT(opt), "changed",
-                      GTK_SIGNAL_FUNC(mipmap_filter_selected), 0);
+                      GTK_SIGNAL_FUNC(string_value_combo_selected),
+                      &dds_write_vals.mipmap_filter);
    
    mipmap_filter_opt = opt;
    

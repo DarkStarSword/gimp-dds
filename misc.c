@@ -177,10 +177,10 @@ void decode_alpha_exp_image(gint32 drawableID)
          R *= A;
          G *= A;
          B *= A;
-         
-         if(R > 255) R = 255;
-         if(G > 255) G = 255;
-         if(B > 255) B = 255;
+
+         R = MIN(R, 255);
+         G = MIN(G, 255);
+         B = MIN(B, 255);
          
          dst[4 * x + 0] = (unsigned char)R;
          dst[4 * x + 1] = (unsigned char)G;
