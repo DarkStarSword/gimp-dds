@@ -78,7 +78,10 @@ static void extract_block(const unsigned char *src, int x, int y,
 /* pack BGR8 to RGB565 */
 static inline unsigned short pack_rgb565(const unsigned char *c)
 {
-   return(((c[2] >> 3) << 11) | ((c[1] >> 2) << 5) | (c[0] >> 3));
+   //return(((c[2] >> 3) << 11) | ((c[1] >> 2) << 5) | (c[0] >> 3));
+   return((mul8bit(c[2], 31) << 11) |
+          (mul8bit(c[1], 63) <<  5) |
+          (mul8bit(c[0], 31)      ));
 }
 
 /* unpack RGB565 to BGR */
@@ -1052,7 +1055,7 @@ static void compress_YCoCg(unsigned char *dst, const unsigned char *src,
             x2 = b0 & b4;
 
             mask <<= 2;
-            mask |= (x1 | ((x0 | x1) << 1));
+            mask |= (x2 | ((x0 | x1) << 1));
          }
          
          PUTL16(&dst[ 8], pack_rgb565(maxcolor));
