@@ -956,7 +956,9 @@ static void write_volume_mipmaps(FILE *fp, gint32 image_id, gint32 *layers,
 
    generate_volume_mipmaps(dst, src, w, h, d, bpp,
                            palette != NULL, mipmaps,
-                           dds_write_vals.mipmap_filter);
+                           dds_write_vals.mipmap_filter,
+                           dds_write_vals.gamma_correct,
+                           dds_write_vals.gamma);
 
    if(dds_write_vals.format > DDS_FORMAT_DEFAULT)
    {
