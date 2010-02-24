@@ -81,6 +81,8 @@ static GtkWidget *format_opt;
 static GtkWidget *color_type_opt;
 static GtkWidget *dither_chk;
 static GtkWidget *mipmap_filter_opt;
+static GtkWidget *gamma_chk;
+static GtkWidget *gamma_spin;
 
 typedef struct string_value_s
 {
@@ -808,7 +810,9 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
          size = get_mipmapped_size(w, h, bpp, 0, mipmaps, DDS_COMPRESS_NONE);
          dst = g_malloc(size);
          generate_mipmaps(dst, src, w, h, bpp, palette != NULL, mipmaps,
-                          dds_write_vals.mipmap_filter);
+                          dds_write_vals.mipmap_filter,
+                          dds_write_vals.gamma_correct,
+                          dds_write_vals.gamma);
             
          offset = 0;
          
@@ -870,7 +874,9 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
       
       dxt_compress(dst, src, compression, w, h, bpp, mipmaps,
                    dds_write_vals.color_type, dds_write_vals.dither,
-                   dds_write_vals.mipmap_filter);
+                   dds_write_vals.mipmap_filter,
+                   dds_write_vals.gamma_correct,
+                   dds_write_vals.gamma);
 
       fwrite(dst, 1, size, fp);
 
@@ -1433,6 +1439,8 @@ static void mipmaps_clicked(GtkWidget *widget, gpointer data)
 {
    dds_write_vals.mipmaps = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget));
    gtk_widget_set_sensitive(mipmap_filter_opt, dds_write_vals.mipmaps);
+   gtk_widget_set_sensitive(gamma_chk, dds_write_vals.mipmaps);
+   gtk_widget_set_sensitive(gamma_spin, dds_write_vals.mipmaps && dds_write_vals.gamma_correct);
 }
 
 static void transindex_clicked(GtkWidget *widget, gpointer data)
@@ -1460,6 +1468,17 @@ static void transindex_changed(GtkWidget *widget, gpointer data)
 static void adv_opt_expanded(GtkWidget *widget, gpointer data)
 {
    dds_write_vals.show_adv_opt = !gtk_expander_get_expanded(GTK_EXPANDER(widget));
+}
+
+static void gamma_correct_clicked(GtkWidget *widget, gpointer data)
+{
+   dds_write_vals.gamma_correct = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget));
+   gtk_widget_set_sensitive(gamma_spin, dds_write_vals.gamma_correct);
+}
+
+static void gamma_changed(GtkWidget *widget, gpointer data)
+{
+   dds_write_vals.gamma = gtk_spin_button_get_value(GTK_SPIN_BUTTON(widget));
 }
 
 static gint save_dialog(gint32 image_id, gint32 drawable_id)
@@ -1633,7 +1652,7 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    gtk_box_pack_start(GTK_BOX(vbox), expander, 1, 1, 0);
    gtk_widget_show(expander);
    
-   table = gtk_table_new(3, 2, 0);
+   table = gtk_table_new(5, 2, 0);
    gtk_table_set_row_spacings(GTK_TABLE(table), 8);
    gtk_table_set_col_spacings(GTK_TABLE(table), 8);
    gtk_container_add(GTK_CONTAINER(expander), table);
@@ -1692,6 +1711,35 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    
    mipmap_filter_opt = opt;
    
+   check = gtk_check_button_new_with_label("Gamma-correct mipmaps");
+   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check), dds_write_vals.gamma_correct && dds_write_vals.mipmaps);
+   gtk_table_attach(GTK_TABLE(table), check, 0, 2, 3, 4,
+                    (GtkAttachOptions)(GTK_FILL),
+                    (GtkAttachOptions)(0), 0, 0);
+   gtk_signal_connect(GTK_OBJECT(check), "clicked",
+                      GTK_SIGNAL_FUNC(gamma_correct_clicked), NULL);
+   gtk_widget_show(check);
+
+   gamma_chk = check;
+   
+   label = gtk_label_new("Gamma:");
+   gtk_widget_show(label);
+   gtk_table_attach(GTK_TABLE(table), label, 0, 1, 4, 5,
+                    (GtkAttachOptions)(GTK_FILL),
+                    (GtkAttachOptions)(0), 0, 0);
+   gtk_misc_set_alignment(GTK_MISC(label), 0, 0.5);
+   
+   spin = gtk_spin_button_new(GTK_ADJUSTMENT(gtk_adjustment_new(dds_write_vals.gamma, 1e-05, 100, 0.1, 0.5, 0)), 1, 1);
+   gtk_table_attach(GTK_TABLE(table), spin, 1, 2, 4, 5,
+                    (GtkAttachOptions)(GTK_EXPAND | GTK_FILL),
+                    (GtkAttachOptions)(GTK_EXPAND), 0, 0);
+   gtk_spin_button_set_update_policy(GTK_SPIN_BUTTON(spin), GTK_UPDATE_IF_VALID);
+   gtk_signal_connect(GTK_OBJECT(spin), "value_changed",
+                      GTK_SIGNAL_FUNC(gamma_changed), 0);
+   gtk_widget_show(spin);
+   
+   gamma_spin = spin;
+   
    gtk_widget_set_sensitive(color_type_opt,
                             dds_write_vals.compression != DDS_COMPRESS_NONE &&
                             dds_write_vals.compression != DDS_COMPRESS_BC4 &&
@@ -1703,6 +1751,8 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
                             dds_write_vals.compression != DDS_COMPRESS_BC5 &&
                             dds_write_vals.compression != DDS_COMPRESS_YCOCGS);
    gtk_widget_set_sensitive(mipmap_filter_opt, dds_write_vals.mipmaps);
+   gtk_widget_set_sensitive(gamma_chk, dds_write_vals.mipmaps);
+   gtk_widget_set_sensitive(gamma_spin, dds_write_vals.mipmaps && dds_write_vals.gamma_correct);
 
    gtk_widget_show(dlg);
    

@@ -29,7 +29,7 @@
 #include "mipmap.h"
 #include "imath.h"
 
-typedef void (*mipmapfunc_t)(unsigned char *, int, int, unsigned char *, int, int, int);
+typedef void (*mipmapfunc_t)(unsigned char *, int, int, unsigned char *, int, int, int, int, float);
 typedef void (*volmipmapfunc_t)(unsigned char *, int, int, int, unsigned char *, int, int, int, int);
 
 int get_num_mipmaps(int width, int height)
@@ -133,7 +133,7 @@ unsigned int get_volume_mipmapped_size(int width, int height,
 
 static void scale_image_nearest(unsigned char *dst, int dw, int dh,
                                 unsigned char *src, int sw, int sh,
-                                int bpp)
+                                int bpp, int gc, float gamma)
 {
    int n, x, y;
    int ix, iy;
@@ -155,29 +155,65 @@ static void scale_image_nearest(unsigned char *dst, int dw, int dh,
    }
 }
 
+static inline int gamma_correct(int v, float gamma)
+{
+   v = (int)(powf((float)v / 255.0f, gamma) * 255);
+   if(v > 255) v = 255;
+   return(v);
+}
+
 static void scale_image_box(unsigned char *dst, int dw, int dh,
                             unsigned char *src, int sw, int sh,
-                            int bpp)
+                            int bpp, int gc, float gamma)
 {
    int x, y, n, ix, iy, v;
    int dstride = dw * bpp;
    unsigned char *s;
-   
-   for(y = 0; y < dh; ++y)
+   float invgamma;
+
+   if(gc)
    {
-      iy = (y * sh + sh / 2) / dh;
-      
-      for(x = 0; x < dw; ++x)
+      invgamma = 1.0f / gamma;
+      for(y = 0; y < dh; ++y)
       {
-         ix = (x * sw + sh / 2) / dw;
+         iy = (y * sh + sh / 2) / dh;
          
-         s = src + (iy * sw + ix) * bpp;
-         
-         for(n = 0; n < bpp; ++n)
+         for(x = 0; x < dw; ++x)
          {
-            v = (s[0] + s[bpp] + s[sw * bpp] + s[(sw + 1) * bpp]) >> 2;
-            dst[(y * dstride) + (x * bpp) + n] = v;
-            ++s;
+            ix = (x * sw + sh / 2) / dw;
+            
+            s = src + (iy * sw + ix) * bpp;
+            
+            for(n = 0; n < bpp; ++n)
+            {
+               v = (gamma_correct(s[0], gamma) +
+                    gamma_correct(s[bpp], gamma) +
+                    gamma_correct(s[sw * bpp], gamma) +
+                    gamma_correct(s[(sw + 1) * bpp], gamma)) >> 2;
+               dst[(y * dstride) + (x * bpp) + n] = gamma_correct(v, invgamma);
+               ++s;
+            }
+         }
+      }
+   }
+   else
+   {
+      for(y = 0; y < dh; ++y)
+      {
+         iy = (y * sh + sh / 2) / dh;
+         
+         for(x = 0; x < dw; ++x)
+         {
+            ix = (x * sw + sh / 2) / dw;
+            
+            s = src + (iy * sw + ix) * bpp;
+            
+            for(n = 0; n < bpp; ++n)
+            {
+               v = (s[0] + s[bpp] + s[sw * bpp] + s[(sw + 1) * bpp]) >> 2;
+               dst[(y * dstride) + (x * bpp) + n] = v;
+               ++s;
+            }
          }
       }
    }
@@ -185,47 +221,94 @@ static void scale_image_box(unsigned char *dst, int dw, int dh,
 
 static void scale_image_bilinear(unsigned char *dst, int dw, int dh,
                                  unsigned char *src, int sw, int sh,
-                                 int bpp)
+                                 int bpp, int gc, float gamma)
 {
    int x, y, n, ix, iy, wx, wy, v, v0, v1;
    int dstride = dw * bpp;
    unsigned char *s;
+   float invgamma;
    
-   for(y = 0; y < dh; ++y)
+   if(gc)
    {
-      if(dh > 1)
-      {
-         iy = (((sh - 1) * y) << 8) / (dh - 1);
-         if(y == dh - 1) --iy;
-         wy = iy & 0xff;
-         iy >>= 8;
-      }
-      else
-         iy = wy = 0;
+      invgamma = 1.0 / gamma;
       
-      for(x = 0; x < dw; ++x)
+      for(y = 0; y < dh; ++y)
       {
-         if(dw > 1)
+         if(dh > 1)
          {
-            ix = (((sw - 1) * x) << 8) / (dw - 1);
-            if(x == dw - 1) --ix;
-            wx = ix & 0xff;
-            ix >>= 8;
+            iy = (((sh - 1) * y) << 8) / (dh - 1);
+            if(y == dh - 1) --iy;
+            wy = iy & 0xff;
+            iy >>= 8;
          }
          else
-            ix = wx = 0;
+            iy = wy = 0;
          
-         s = src + (iy * sw + ix) * bpp;
-         
-         for(n = 0; n < bpp; ++n)
+         for(x = 0; x < dw; ++x)
          {
-            v0 = blerp(s[0], s[bpp], wx);
-            v1 = blerp(s[sw * bpp], s[(sw + 1) * bpp], wx);
-            v = blerp(v0, v1, wy);
-            if(v < 0) v = 0;
-            if(v > 255) v = 255;
-            dst[(y * dstride) + (x * bpp) + n] = v;
-            ++s;
+            if(dw > 1)
+            {
+               ix = (((sw - 1) * x) << 8) / (dw - 1);
+               if(x == dw - 1) --ix;
+               wx = ix & 0xff;
+               ix >>= 8;
+            }
+            else
+               ix = wx = 0;
+            
+            s = src + (iy * sw + ix) * bpp;
+            
+            for(n = 0; n < bpp; ++n)
+            {
+               v0 = blerp(gamma_correct(s[0], gamma),
+                          gamma_correct(s[bpp], gamma), wx);
+               v1 = blerp(gamma_correct(s[sw * bpp], gamma),
+                          gamma_correct(s[(sw + 1) * bpp], gamma), wx);
+               v = blerp(v0, v1, wy);
+               dst[(y * dstride) + (x * bpp) + n] = gamma_correct(v, invgamma);
+               ++s;
+            }
+         }
+      }      
+   }
+   else
+   {
+      for(y = 0; y < dh; ++y)
+      {
+         if(dh > 1)
+         {
+            iy = (((sh - 1) * y) << 8) / (dh - 1);
+            if(y == dh - 1) --iy;
+            wy = iy & 0xff;
+            iy >>= 8;
+         }
+         else
+            iy = wy = 0;
+         
+         for(x = 0; x < dw; ++x)
+         {
+            if(dw > 1)
+            {
+               ix = (((sw - 1) * x) << 8) / (dw - 1);
+               if(x == dw - 1) --ix;
+               wx = ix & 0xff;
+               ix >>= 8;
+            }
+            else
+               ix = wx = 0;
+            
+            s = src + (iy * sw + ix) * bpp;
+            
+            for(n = 0; n < bpp; ++n)
+            {
+               v0 = blerp(s[0], s[bpp], wx);
+               v1 = blerp(s[sw * bpp], s[(sw + 1) * bpp], wx);
+               v = blerp(v0, v1, wy);
+               if(v < 0) v = 0;
+               if(v > 255) v = 255;
+               dst[(y * dstride) + (x * bpp) + n] = v;
+               ++s;
+            }
          }
       }
    }
@@ -233,74 +316,147 @@ static void scale_image_bilinear(unsigned char *dst, int dw, int dh,
 
 static void scale_image_bicubic(unsigned char *dst, int dw, int dh,
                                 unsigned char *src, int sw, int sh,
-                                int bpp)
+                                int bpp, int gc, float gamma)
 {
    int x, y, n, ix, iy, wx, wy, v;
    int a, b, c, d;
    int dstride = dw * bpp;
    unsigned char *s;
+   float invgamma;
 
-   for(y = 0; y < dh; ++y)
+   if(gc)
    {
-      if(dh > 1)
-      {
-         iy = (((sh - 1) * y) << 7) / (dh - 1);
-         if(y == dh - 1) --iy;
-         wy = iy & 0x7f;
-         iy >>= 7;
-      }
-      else
-         iy = wy = 0;
+      invgamma = 1.0 / gamma;
       
-      for(x = 0; x < dw; ++x)
+      for(y = 0; y < dh; ++y)
       {
-         if(dw > 1)
+         if(dh > 1)
          {
-            ix = (((sw - 1) * x) << 7) / (dw - 1);
-            if(x == dw - 1) --ix;
-            wx = ix & 0x7f;
-            ix >>= 7;
+            iy = (((sh - 1) * y) << 7) / (dh - 1);
+            if(y == dh - 1) --iy;
+            wy = iy & 0x7f;
+            iy >>= 7;
          }
          else
-            ix = wx = 0;
+            iy = wy = 0;
          
-         s = src + ((iy - 1) * sw + (ix - 1)) * bpp;
-         
-         for(n = 0; n < bpp; ++n)
+         for(x = 0; x < dw; ++x)
          {
-            b = icerp(s[(sw + 0) * bpp],
-                      s[(sw + 1) * bpp],
-                      s[(sw + 2) * bpp],
-                      s[(sw + 3) * bpp], wx);
-            if(iy > 0)
+            if(dw > 1)
             {
-               a = icerp(s[      0],
-                         s[    bpp],
-                         s[2 * bpp],
-                         s[3 * bpp], wx);
+               ix = (((sw - 1) * x) << 7) / (dw - 1);
+               if(x == dw - 1) --ix;
+               wx = ix & 0x7f;
+               ix >>= 7;
             }
             else
-               a = b;
+               ix = wx = 0;
             
-            c = icerp(s[(2 * sw + 0) * bpp],
-                      s[(2 * sw + 1) * bpp],
-                      s[(2 * sw + 2) * bpp],
-                      s[(2 * sw + 3) * bpp], wx);
-            if(iy < dh - 1)
+            s = src + ((iy - 1) * sw + (ix - 1)) * bpp;
+            
+            for(n = 0; n < bpp; ++n)
             {
-               d = icerp(s[(3 * sw + 0) * bpp],
-                         s[(3 * sw + 1) * bpp],
-                         s[(3 * sw + 2) * bpp],
-                         s[(3 * sw + 3) * bpp], wx);
+               b = icerp(gamma_correct(s[(sw + 0) * bpp], gamma),
+                         gamma_correct(s[(sw + 1) * bpp], gamma),
+                         gamma_correct(s[(sw + 2) * bpp], gamma),
+                         gamma_correct(s[(sw + 3) * bpp], gamma), wx);
+               if(iy > 0)
+               {
+                  a = icerp(gamma_correct(s[      0], gamma),
+                            gamma_correct(s[    bpp], gamma), 
+                            gamma_correct(s[2 * bpp], gamma),
+                            gamma_correct(s[3 * bpp], gamma), wx);
+               }
+               else
+                  a = b;
+               
+               c = icerp(gamma_correct(s[(2 * sw + 0) * bpp], gamma),
+                         gamma_correct(s[(2 * sw + 1) * bpp], gamma),
+                         gamma_correct(s[(2 * sw + 2) * bpp], gamma),
+                         gamma_correct(s[(2 * sw + 3) * bpp], gamma), wx);
+               if(iy < dh - 1)
+               {
+                  d = icerp(gamma_correct(s[(3 * sw + 0) * bpp], gamma),
+                            gamma_correct(s[(3 * sw + 1) * bpp], gamma),
+                            gamma_correct(s[(3 * sw + 2) * bpp], gamma),
+                            gamma_correct(s[(3 * sw + 3) * bpp], gamma), wx);
+               }
+               else
+                  d = c;
+               
+               v = icerp(a, b, c, d, wy);
+               if(v < 0) v = 0;
+               if(v > 255) v = 255;
+               dst[(y * dstride) + (x * bpp) + n] = gamma_correct(v, invgamma);
+               ++s;
+            }
+         }
+      }      
+   }
+   else
+   {
+      for(y = 0; y < dh; ++y)
+      {
+         if(dh > 1)
+         {
+            iy = (((sh - 1) * y) << 7) / (dh - 1);
+            if(y == dh - 1) --iy;
+            wy = iy & 0x7f;
+            iy >>= 7;
+         }
+         else
+            iy = wy = 0;
+         
+         for(x = 0; x < dw; ++x)
+         {
+            if(dw > 1)
+            {
+               ix = (((sw - 1) * x) << 7) / (dw - 1);
+               if(x == dw - 1) --ix;
+               wx = ix & 0x7f;
+               ix >>= 7;
             }
             else
-               d = c;
+               ix = wx = 0;
             
-            v = icerp(a, b, c, d, wy);
-            if(v < 0) v = 0;
-            if(v > 255) v = 255;
-            dst[(y * dstride) + (x * bpp) + n] = v;
-            ++s;
+            s = src + ((iy - 1) * sw + (ix - 1)) * bpp;
+            
+            for(n = 0; n < bpp; ++n)
+            {
+               b = icerp(s[(sw + 0) * bpp],
+                         s[(sw + 1) * bpp],
+                         s[(sw + 2) * bpp],
+                         s[(sw + 3) * bpp], wx);
+               if(iy > 0)
+               {
+                  a = icerp(s[      0],
+                            s[    bpp],
+                            s[2 * bpp],
+                            s[3 * bpp], wx);
+               }
+               else
+                  a = b;
+               
+               c = icerp(s[(2 * sw + 0) * bpp],
+                         s[(2 * sw + 1) * bpp],
+                         s[(2 * sw + 2) * bpp],
+                         s[(2 * sw + 3) * bpp], wx);
+               if(iy < dh - 1)
+               {
+                  d = icerp(s[(3 * sw + 0) * bpp],
+                            s[(3 * sw + 1) * bpp],
+                            s[(3 * sw + 2) * bpp],
+                            s[(3 * sw + 3) * bpp], wx);
+               }
+               else
+                  d = c;
+               
+               v = icerp(a, b, c, d, wy);
+               if(v < 0) v = 0;
+               if(v > 255) v = 255;
+               dst[(y * dstride) + (x * bpp) + n] = v;
+               ++s;
+            }
          }
       }
    }
@@ -319,7 +475,7 @@ static float lanczos(float r, float x)
 
 static void scale_image_lanczos(unsigned char *dst, int dw, int dh,
                                 unsigned char *src, int sw, int sh,
-                                int bpp)
+                                int bpp, int gc, float gamma)
 {
    const float blur = 1.0f;
    const float xfactor = (float)dw / (float)sw;
@@ -335,6 +491,8 @@ static void scale_image_lanczos(unsigned char *dst, int dw, int dh,
    float yscale = MIN(yfactor, 1.0f) / blur;
    float xsupport = FILTER_RADIUS / xscale;
    float ysupport = FILTER_RADIUS / yscale;
+   
+   float invgamma;
    
    if(xsupport <= 0.5f)
    {
@@ -352,77 +510,158 @@ static void scale_image_lanczos(unsigned char *dst, int dw, int dh,
    
    tmp = g_malloc(sw * dh * bpp);
    d = tmp;
-   
-   for(y = 0; y < dh; ++y)
-   {
-      for(x = 0; x < sw; ++x)
-      {
-         col = src + (x * bpp);
-         
-         center = ((float)y + 0.5f) / yfactor;
-         start = (int)MAX(center - ysupport + 0.5f, 0);
-         stop = (int)MIN(center + ysupport + 0.5f, sh);
-         nmax = stop - start;
-         s = (float)start - center + 0.5f;
-            
-         for(i = 0; i < bpp; ++i)
-         {
-            density = 0.0f;
-            r = 0.0f;
-            
-            for(n = 0; n < nmax; ++n)
-            {
-               contrib = lanczos(FILTER_RADIUS, (s + n) * yscale);
-               density += contrib;
-               r += (float)col[((start + n) * sstride) + i] * contrib;
-            }
 
-            if(density != 0.0f && density != 1.0f)
-               r /= density;
+   if(gc)
+   {
+      invgamma = 1.0 / gamma;
+      
+      for(y = 0; y < dh; ++y)
+      {
+         for(x = 0; x < sw; ++x)
+         {
+            col = src + (x * bpp);
             
-            if(r < 0) r = 0;
-            if(r > 255) r = 255;
-            
-            *d++ = (unsigned char)r;
+            center = ((float)y + 0.5f) / yfactor;
+            start = (int)MAX(center - ysupport + 0.5f, 0);
+            stop = (int)MIN(center + ysupport + 0.5f, sh);
+            nmax = stop - start;
+            s = (float)start - center + 0.5f;
+               
+            for(i = 0; i < bpp; ++i)
+            {
+               density = 0.0f;
+               r = 0.0f;
+               
+               for(n = 0; n < nmax; ++n)
+               {
+                  contrib = lanczos(FILTER_RADIUS, (s + n) * yscale);
+                  density += contrib;
+                  r += (float)gamma_correct(col[((start + n) * sstride) + i], gamma) * contrib;
+               }
+
+               if(density != 0.0f && density != 1.0f)
+                  r /= density;
+               
+               if(r < 0) r = 0;
+               if(r > 255) r = 255;
+               
+               *d++ = (unsigned char)gamma_correct(r, invgamma);
+            }
          }
       }
-   }
-   
-   /* resample temp buffer in X direction */
-   
-   d = dst;
-   
-   for(y = 0; y < dh; ++y)
-   {
-      row = tmp + (y * sstride);
-         
-      for(x = 0; x < dw; ++x)
+      
+      /* resample temp buffer in X direction */
+      
+      d = dst;
+      
+      for(y = 0; y < dh; ++y)
       {
-         center = ((float)x + 0.5f) / xfactor;
-         start = (int)MAX(center - xsupport + 0.5f, 0);
-         stop = (int)MIN(center + xsupport + 0.5f, sw);
-         nmax = stop - start;
-         s = (float)start - center + 0.5f;
+         row = tmp + (y * sstride);
             
-         for(i = 0; i < bpp; ++i)
+         for(x = 0; x < dw; ++x)
          {
-            density = 0.0f;
-            r = 0.0f;
-
-            for(n = 0; n < nmax; ++n)
+            center = ((float)x + 0.5f) / xfactor;
+            start = (int)MAX(center - xsupport + 0.5f, 0);
+            stop = (int)MIN(center + xsupport + 0.5f, sw);
+            nmax = stop - start;
+            s = (float)start - center + 0.5f;
+               
+            for(i = 0; i < bpp; ++i)
             {
-               contrib = lanczos(FILTER_RADIUS, (s + n) * xscale);
-               density += contrib;
-               r += (float)row[((start + n) * bpp) + i] * contrib;
-            }
+               density = 0.0f;
+               r = 0.0f;
 
-            if(density != 0.0f && density != 1.0f)
-               r /= density;
+               for(n = 0; n < nmax; ++n)
+               {
+                  contrib = lanczos(FILTER_RADIUS, (s + n) * xscale);
+                  density += contrib;
+                  r += (float)gamma_correct(row[((start + n) * bpp) + i], gamma) * contrib;
+               }
+
+               if(density != 0.0f && density != 1.0f)
+                  r /= density;
+               
+               if(r < 0) r = 0;
+               if(r > 255) r = 255;
+               
+               *d++ = (unsigned char)gamma_correct(r, invgamma);
+            }
+         }
+      }      
+   }
+   else
+   {
+      for(y = 0; y < dh; ++y)
+      {
+         for(x = 0; x < sw; ++x)
+         {
+            col = src + (x * bpp);
             
-            if(r < 0) r = 0;
-            if(r > 255) r = 255;
+            center = ((float)y + 0.5f) / yfactor;
+            start = (int)MAX(center - ysupport + 0.5f, 0);
+            stop = (int)MIN(center + ysupport + 0.5f, sh);
+            nmax = stop - start;
+            s = (float)start - center + 0.5f;
+               
+            for(i = 0; i < bpp; ++i)
+            {
+               density = 0.0f;
+               r = 0.0f;
+               
+               for(n = 0; n < nmax; ++n)
+               {
+                  contrib = lanczos(FILTER_RADIUS, (s + n) * yscale);
+                  density += contrib;
+                  r += (float)col[((start + n) * sstride) + i] * contrib;
+               }
+
+               if(density != 0.0f && density != 1.0f)
+                  r /= density;
+               
+               if(r < 0) r = 0;
+               if(r > 255) r = 255;
+               
+               *d++ = (unsigned char)r;
+            }
+         }
+      }
+      
+      /* resample temp buffer in X direction */
+      
+      d = dst;
+      
+      for(y = 0; y < dh; ++y)
+      {
+         row = tmp + (y * sstride);
             
-            *d++ = (unsigned char)r;
+         for(x = 0; x < dw; ++x)
+         {
+            center = ((float)x + 0.5f) / xfactor;
+            start = (int)MAX(center - xsupport + 0.5f, 0);
+            stop = (int)MIN(center + xsupport + 0.5f, sw);
+            nmax = stop - start;
+            s = (float)start - center + 0.5f;
+               
+            for(i = 0; i < bpp; ++i)
+            {
+               density = 0.0f;
+               r = 0.0f;
+
+               for(n = 0; n < nmax; ++n)
+               {
+                  contrib = lanczos(FILTER_RADIUS, (s + n) * xscale);
+                  density += contrib;
+                  r += (float)row[((start + n) * bpp) + i] * contrib;
+               }
+
+               if(density != 0.0f && density != 1.0f)
+                  r /= density;
+               
+               if(r < 0) r = 0;
+               if(r > 255) r = 255;
+               
+               *d++ = (unsigned char)r;
+            }
          }
       }
    }
@@ -432,7 +671,8 @@ static void scale_image_lanczos(unsigned char *dst, int dw, int dh,
 
 int generate_mipmaps(unsigned char *dst, unsigned char *src,
                      unsigned int width, unsigned int height, int bpp,
-                     int indexed, int mipmaps, int filter)
+                     int indexed, int mipmaps, int filter,
+                     int gc, float gamma)
 {
    int i;
    unsigned int sw, sh, dw, dh;
@@ -467,7 +707,7 @@ int generate_mipmaps(unsigned char *dst, unsigned char *src,
       dw = MAX(1, sw >> 1);
       dh = MAX(1, sh >> 1);
   
-      mipmap_func(d, dw, dh, s, sw, sh, bpp);
+      mipmap_func(d, dw, dh, s, sw, sh, bpp, gc, gamma);
 
       s = d;
       sw = dw;

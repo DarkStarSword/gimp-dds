@@ -25,7 +25,8 @@
 
 int dxt_compress(unsigned char *dst, unsigned char *src, int format,
                  unsigned int width, unsigned int height, int bpp,
-                 int mipmaps, int type, int dither, int filter);
+                 int mipmaps, int type, int dither, int filter,
+                 int gamma_correct, float gamma);
 int dxt_decompress(unsigned char *dst, unsigned char *src, int format,
                    unsigned int size, unsigned int width, unsigned int height,
                    int bpp);

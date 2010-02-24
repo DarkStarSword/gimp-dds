@@ -51,7 +51,7 @@ GimpPlugInInfo PLUG_IN_INFO =
 DDSWriteVals dds_write_vals =
 {
 	DDS_COMPRESS_NONE, 0, DDS_SAVE_SELECTED_LAYER, DDS_FORMAT_DEFAULT, -1,
-   DDS_COLOR_DEFAULT, 0, DDS_MIPMAP_DEFAULT, 0
+   DDS_COLOR_DEFAULT, 0, DDS_MIPMAP_DEFAULT, 0, 2.2, 0
 };
 
 DDSReadVals dds_read_vals =
@@ -85,7 +85,9 @@ static GimpParamDef save_args[] =
    {GIMP_PDB_INT32, "transparent_index", "Index of transparent color or -1 to disable (for indexed images only)."},
    {GIMP_PDB_INT32, "color_type", "Color selection algorithm used in DXT compression (0 = default, 1 = distance, 2 = luminance, 3 = inset bounding box)"},
    {GIMP_PDB_INT32, "dither", "Work on dithered color blocks when doing color selection for DXT compression"},
-   {GIMP_PDB_INT32, "mipmap_filter", "Filtering to use when generating mipmaps (0 = default, 1 = nearest, 2 = box, 3 = bilinear, 4 = bicubic, 5 = lanczos)"}
+   {GIMP_PDB_INT32, "mipmap_filter", "Filtering to use when generating mipmaps (0 = default, 1 = nearest, 2 = box, 3 = bilinear, 4 = bicubic, 5 = lanczos)"},
+   {GIMP_PDB_INT32, "gamma_correct", "Use gamma correct mipmap filtering"},
+   {GIMP_PDB_FLOAT, "gamma", "Gamma value to use for gamma correction (i.e. 2.2)"}
 };
 
 static GimpParamDef decode_args[] =
@@ -271,6 +273,8 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
                dds_write_vals.color_type = param[10].data.d_int32;
                dds_write_vals.dither = param[11].data.d_int32;
                dds_write_vals.mipmap_filter = param[12].data.d_int32;
+               dds_write_vals.gamma_correct = param[13].data.d_int32;
+               dds_write_vals.gamma = param[14].data.d_float;
                
 					if(dds_write_vals.compression < DDS_COMPRESS_NONE ||
 						dds_write_vals.compression >= DDS_COMPRESS_MAX)

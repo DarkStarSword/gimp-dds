@@ -33,6 +33,8 @@ typedef struct
    int color_type;
    int dither;
    int mipmap_filter;
+   int gamma_correct;
+   float gamma;
    int show_adv_opt;
 } DDSWriteVals;
 
