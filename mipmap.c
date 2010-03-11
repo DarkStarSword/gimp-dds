@@ -177,10 +177,12 @@ static void scale_image_box(unsigned char *dst, int dw, int dh,
       for(y = 0; y < dh; ++y)
       {
          iy = ((y * sh + sh / 2) / dh) - 1;
+         if(iy < 0) iy = 0;
          
          for(x = 0; x < dw; ++x)
          {
             ix = ((x * sw + sw / 2) / dw) - 1;
+            if(ix < 0) ix = 0;
 
             s = src + (iy * sw + ix) * bpp;
             
@@ -201,10 +203,12 @@ static void scale_image_box(unsigned char *dst, int dw, int dh,
       for(y = 0; y < dh; ++y)
       {
          iy = ((y * sh + sh / 2) / dh) - 1;
+         if(iy < 0) iy = 0;
          
          for(x = 0; x < dw; ++x)
          {
             ix = ((x * sw + sw / 2) / dw) - 1;
+            if(ix < 0) ix = 0;
             
             s = src + (iy * sw + ix) * bpp;
             
@@ -760,12 +764,17 @@ static void scale_volume_image_box(unsigned char *dst, int dw, int dh, int dd,
       for(z = 0; z < dd; ++z)
       {
          iz = ((z * sd + sd / 2) / dd) - 1;
+         if(iz < 0) iz = 0;
+         
          for(y = 0; y < dh; ++y)
          {
             iy = ((y * sh + sh / 2) / dh) - 1;
+            if(iy < 0) iy = 0;
+            
             for(x = 0; x < dw; ++x)
             {
                ix = ((x * sw + sw / 2) / dw) - 1;
+               if(ix < 0) ix = 0;
                
                s1 = src + ((iz * (sw * sh)) + (iy * sw) + ix) * bpp;
                if(iz < dd - 1)
@@ -796,12 +805,17 @@ static void scale_volume_image_box(unsigned char *dst, int dw, int dh, int dd,
       for(z = 0; z < dd; ++z)
       {
          iz = ((z * sd + sd / 2) / dd) - 1;
+         if(iz < 0) iz = 0;
+         
          for(y = 0; y < dh; ++y)
          {
             iy = ((y * sh + sh / 2) / dh) - 1;
+            if(iy < 0) iy = 0;
+            
             for(x = 0; x < dw; ++x)
             {
                ix = ((x * sw + sw / 2) / dw) - 1;
+               if(ix < 0) ix = 0;
                
                s1 = src + ((iz * (sw * sh)) + (iy * sw) + ix) * bpp;
                if(iz < dd - 1)
