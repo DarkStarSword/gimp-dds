@@ -176,12 +176,12 @@ static void scale_image_box(unsigned char *dst, int dw, int dh,
       invgamma = 1.0f / gamma;
       for(y = 0; y < dh; ++y)
       {
-         iy = (y * sh + sh / 2) / dh;
+         iy = ((y * sh + sh / 2) / dh) - 1;
          
          for(x = 0; x < dw; ++x)
          {
-            ix = (x * sw + sh / 2) / dw;
-            
+            ix = ((x * sw + sw / 2) / dw) - 1;
+
             s = src + (iy * sw + ix) * bpp;
             
             for(n = 0; n < bpp; ++n)
@@ -200,11 +200,11 @@ static void scale_image_box(unsigned char *dst, int dw, int dh,
    {
       for(y = 0; y < dh; ++y)
       {
-         iy = (y * sh + sh / 2) / dh;
+         iy = ((y * sh + sh / 2) / dh) - 1;
          
          for(x = 0; x < dw; ++x)
          {
-            ix = (x * sw + sh / 2) / dw;
+            ix = ((x * sw + sw / 2) / dw) - 1;
             
             s = src + (iy * sw + ix) * bpp;
             
@@ -759,13 +759,13 @@ static void scale_volume_image_box(unsigned char *dst, int dw, int dh, int dd,
 
       for(z = 0; z < dd; ++z)
       {
-         iz = (z * sd + sd / 2) / dd;
+         iz = ((z * sd + sd / 2) / dd) - 1;
          for(y = 0; y < dh; ++y)
          {
-            iy = (y * sh + sh / 2) / dh;
+            iy = ((y * sh + sh / 2) / dh) - 1;
             for(x = 0; x < dw; ++x)
             {
-               ix = (x * sw + sw / 2) / dw;
+               ix = ((x * sw + sw / 2) / dw) - 1;
                
                s1 = src + ((iz * (sw * sh)) + (iy * sw) + ix) * bpp;
                if(iz < dd - 1)
@@ -795,13 +795,13 @@ static void scale_volume_image_box(unsigned char *dst, int dw, int dh, int dd,
    {
       for(z = 0; z < dd; ++z)
       {
-         iz = (z * sd + sd / 2) / dd;
+         iz = ((z * sd + sd / 2) / dd) - 1;
          for(y = 0; y < dh; ++y)
          {
-            iy = (y * sh + sh / 2) / dh;
+            iy = ((y * sh + sh / 2) / dh) - 1;
             for(x = 0; x < dw; ++x)
             {
-               ix = (x * sw + sw / 2) / dw;
+               ix = ((x * sw + sw / 2) / dw) - 1;
                
                s1 = src + ((iz * (sw * sh)) + (iy * sw) + ix) * bpp;
                if(iz < dd - 1)
