@@ -703,7 +703,7 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
    GimpDrawable *drawable;
    GimpPixelRgn rgn;
    GimpImageType basetype, type;
-   unsigned char *src, *dst, *fmtdst, *tmp, c;
+   unsigned char *src, *dst, *fmtdst, *tmp;
    unsigned char *palette = NULL;
    int i, x, y, size, fmtsize, offset, colors;
    int compression = dds_write_vals.compression;
@@ -751,10 +751,12 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
       {
          for(x = 0; x < drawable->width; ++x)
          {
-            c = src[y * (drawable->width * 4) + (x * 4) + 2];
+            /* set alpha to red (x) */
+            src[y * (drawable->width * 4) + (x * 4) + 3] =
+               src[y * (drawable->width * 4) + (x * 4) + 2];
+            /* set red to blue (z) */
             src[y * (drawable->width * 4) + (x * 4) + 2] =
-               src[y * (drawable->width * 4) + (x * 4) + 3];
-            src[y * (drawable->width * 4) + (x * 4) + 3] = c;
+               src[y * (drawable->width * 4) + (x * 4)];
          }
       }
       
