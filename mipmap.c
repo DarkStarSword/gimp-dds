@@ -466,7 +466,7 @@ static void scale_image_bicubic(unsigned char *dst, int dw, int dh,
    }
 }
 
-static const float FILTER_RADIUS = 5.0f;
+static const float FILTER_RADIUS = 3.0f;
 
 static float lanczos(float r, float x)
 {
