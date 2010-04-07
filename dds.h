@@ -93,6 +93,7 @@ typedef enum
 } DDS_MIPMAP_TYPE;
 
 #define DDS_HEADERSIZE             128
+#define DDS_HEADERSIZE_DX10        20
 
 #define DDSD_CAPS                  0x00000001
 #define DDSD_HEIGHT                0x00000002
@@ -122,6 +123,12 @@ typedef enum
 #define DDSCAPS2_CUBEMAP_POSITIVEZ 0x00004000
 #define DDSCAPS2_CUBEMAP_NEGATIVEZ 0x00008000
 #define DDSCAPS2_VOLUME            0x00200000
+
+#define D3D10_RESOURCE_MISC_TEXTURECUBE    0x04
+#define D3D10_RESOURCE_DIMENSION_BUFFER    1
+#define D3D10_RESOURCE_DIMENSION_TEXTURE1D 2
+#define D3D10_RESOURCE_DIMENSION_TEXTURE2D 3
+#define D3D10_RESOURCE_DIMENSION_TEXTURE3D 4
 
 typedef struct __attribute__((packed))
 {
@@ -157,5 +164,14 @@ typedef struct __attribute__((packed))
    dds_caps_t caps;
    unsigned int reserved2;
 } dds_header_t;
+
+typedef struct __attribute__((packed))
+{
+   unsigned int dxgiFormat;
+   unsigned int resourceDimension;
+   unsigned int miscFlag;
+   unsigned int arraySize;
+   unsigned int reserved;
+} dds_header_dx10_t;
 
 #endif

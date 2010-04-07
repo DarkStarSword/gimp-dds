@@ -53,6 +53,7 @@ typedef struct
 } dds_load_info_t;
 
 static int read_header(dds_header_t *hdr, FILE *fp);
+static int read_header_dx10(dds_header_dx10_t *hdr, FILE *fp);
 static int validate_header(dds_header_t *hdr);
 static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
                       gint32 image, unsigned int level, char *prefix,
@@ -78,6 +79,7 @@ GimpPDBStatusType read_dds(gchar *filename, gint32 *imageID)
    gchar *tmp;
    FILE *fp;
    dds_header_t hdr;
+   dds_header_dx10_t dx10hdr;
    dds_load_info_t d;
    gint *layers, layer_count;
    GimpImageBaseType type;
@@ -132,85 +134,98 @@ GimpPDBStatusType read_dds(gchar *filename, gint32 *imageID)
       }
    }
    
-   if(hdr.pixelfmt.flags & DDPF_FOURCC)
-   {      
-      if(hdr.pixelfmt.fourcc[0] == 'D')
-         hdr.pixelfmt.flags |= DDPF_ALPHAPIXELS;
-   }
-   
-   if(hdr.pixelfmt.flags & DDPF_FOURCC)
+   if(GETL32(hdr.pixelfmt.fourcc) == FOURCC('D', 'X', '1', '0'))
    {
-      switch(GETL32(hdr.pixelfmt.fourcc))
-      {
-         case FOURCC('A', 'T', 'I', '1'):
-            d.bpp = d.gimp_bpp = 1;
-            type = GIMP_GRAY;
-            break;
-         case FOURCC('A', 'T', 'I', '2'):
-            d.bpp = d.gimp_bpp = 3;
-            type = GIMP_RGB;
-            break;
-         default: 
-            d.bpp = d.gimp_bpp = 4;
-            type = GIMP_RGB;
-            break;
-      }
+      read_header_dx10(&dx10hdr, fp);
+      
+      /* TODO: Support DX10 DDS extensions */
+      
+      fclose(fp);
+      g_message("DX10 images not yet supported!\n");
+      return(GIMP_PDB_EXECUTION_ERROR);      
    }
    else
    {
-      d.bpp = hdr.pixelfmt.bpp >> 3;
-
-      if(d.bpp == 2)
+      if(hdr.pixelfmt.flags & DDPF_FOURCC)
+      {      
+         if(hdr.pixelfmt.fourcc[0] == 'D')
+            hdr.pixelfmt.flags |= DDPF_ALPHAPIXELS;
+      }
+   
+      if(hdr.pixelfmt.flags & DDPF_FOURCC)
       {
-         if(hdr.pixelfmt.amask == 0xf000) // RGBA4
+         switch(GETL32(hdr.pixelfmt.fourcc))
          {
-            d.gimp_bpp = 4;
-            type = GIMP_RGB;
-         }
-         else if(hdr.pixelfmt.amask == 0xff00) //L8A8
-         {
-            d.gimp_bpp = 2;
-            type = GIMP_GRAY;
-         }
-         else if(hdr.pixelfmt.bmask == 0x1f) //R5G6B5 or RGB5A1
-         {
-            if(hdr.pixelfmt.amask == 0x8000) // RGB5A1
-               d.gimp_bpp = 4;
-            else
-               d.gimp_bpp = 3;
-            
-            type = GIMP_RGB;
-         }
-         else //L16
-         {
-            d.gimp_bpp = 1;
-            type = GIMP_GRAY;
+            case FOURCC('A', 'T', 'I', '1'):
+               d.bpp = d.gimp_bpp = 1;
+               type = GIMP_GRAY;
+               break;
+            case FOURCC('A', 'T', 'I', '2'):
+               d.bpp = d.gimp_bpp = 3;
+               type = GIMP_RGB;
+               break;
+            default: 
+               d.bpp = d.gimp_bpp = 4;
+               type = GIMP_RGB;
+               break;
          }
       }
       else
       {
-         if(hdr.pixelfmt.flags & DDPF_PALETTEINDEXED8)
+         d.bpp = hdr.pixelfmt.bpp >> 3;
+         
+         if(d.bpp == 2)
          {
-            type = GIMP_INDEXED;
-            d.gimp_bpp = 1;
-         }
-         else if(hdr.pixelfmt.rmask == 0xe0) // R3G3B2
-         {
-            type = GIMP_RGB;
-            d.gimp_bpp = 3;
-         }
-         else
-         {
-            /* test alpha only image */
-            if(d.bpp == 1 && (hdr.pixelfmt.flags & DDPF_ALPHA))
+            if(hdr.pixelfmt.amask == 0xf000) // RGBA4
+            {
+               d.gimp_bpp = 4;
+               type = GIMP_RGB;
+            }
+            else if(hdr.pixelfmt.amask == 0xff00) //L8A8
             {
                d.gimp_bpp = 2;
                type = GIMP_GRAY;
             }
+            else if(hdr.pixelfmt.bmask == 0x1f) //R5G6B5 or RGB5A1
+            {
+               if(hdr.pixelfmt.amask == 0x8000) // RGB5A1
+                  d.gimp_bpp = 4;
+               else
+                  d.gimp_bpp = 3;
+               
+               type = GIMP_RGB;
+            }
+            else //L16
+            {
+               d.gimp_bpp = 1;
+               type = GIMP_GRAY;
+            }
+         }
+         else
+         {
+            if(hdr.pixelfmt.flags & DDPF_PALETTEINDEXED8)
+            {
+               type = GIMP_INDEXED;
+               d.gimp_bpp = 1;
+            }
+            else if(hdr.pixelfmt.rmask == 0xe0) // R3G3B2
+            {
+               type = GIMP_RGB;
+               d.gimp_bpp = 3;
+            }
             else
             {
-               d.gimp_bpp = d.bpp;
-               type = (d.bpp == 1) ? GIMP_GRAY : GIMP_RGB;
+               /* test alpha only image */
+               if(d.bpp == 1 && (hdr.pixelfmt.flags & DDPF_ALPHA))
+               {
+                  d.gimp_bpp = 2;
+                  type = GIMP_GRAY;
+               }
+               else
+               {
+                  d.gimp_bpp = d.bpp;
+                  type = (d.bpp == 1) ? GIMP_GRAY : GIMP_RGB;
+               }
             }
          }
       }
@@ -419,6 +434,24 @@ static int read_header(dds_header_t *hdr, FILE *fp)
    
    hdr->caps.caps1 = GETL32(buf + 108);
    hdr->caps.caps2 = GETL32(buf + 112);
+   
+   return(1);
+}
+
+static int read_header_dx10(dds_header_dx10_t *hdr, FILE *fp)
+{
+   char buf[DDS_HEADERSIZE_DX10];
+   
+   memset(hdr, 0, sizeof(dds_header_dx10_t));
+   
+   if(fread(buf, 1, DDS_HEADERSIZE_DX10, fp) != DDS_HEADERSIZE_DX10)
+      return(0);
+   
+   hdr->dxgiFormat = GETL32(buf);
+   hdr->resourceDimension = GETL32(buf + 4);
+   hdr->miscFlag = GETL32(buf + 8);
+   hdr->arraySize = GETL32(buf + 12);
+   hdr->reserved = GETL32(buf + 16);
    
    return(1);
 }
