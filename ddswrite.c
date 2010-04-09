@@ -1724,6 +1724,8 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
                       GTK_SIGNAL_FUNC(gtk_main_quit),
                       0);
    
+   gtk_window_set_resizable(GTK_WINDOW(dlg), 0);
+   
    vbox = gtk_vbox_new(0, 8);
    gtk_container_set_border_width(GTK_CONTAINER(vbox), 8);
    gtk_box_pack_start(GTK_BOX(GTK_DIALOG(dlg)->vbox), vbox, 1, 1, 0);
