@@ -74,8 +74,8 @@ static const char *cubemap_face_names[4][6] =
 static gint cubemap_faces[6];
 static gint is_cubemap = 0;
 static gint is_volume = 0;
+static gint is_mipmap_chain_valid = 0;
 
-static GtkWidget *mipmap_check;
 static GtkWidget *compress_opt;
 static GtkWidget *format_opt;
 static GtkWidget *color_type_opt;
@@ -83,6 +83,7 @@ static GtkWidget *dither_chk;
 static GtkWidget *mipmap_filter_opt;
 static GtkWidget *gamma_chk;
 static GtkWidget *gamma_spin;
+static GtkWidget *mipmap_old = NULL;
 
 typedef struct string_value_s
 {
@@ -136,12 +137,12 @@ static string_value_t color_type_strings[] =
 
 static string_value_t mipmap_filter_strings[] =
 {
-   {DDS_MIPMAP_DEFAULT,  "Default"},
-   {DDS_MIPMAP_NEAREST,  "Nearest"},
-   {DDS_MIPMAP_BOX,      "Box"},
-   {DDS_MIPMAP_BILINEAR, "Bilinear"},
-   {DDS_MIPMAP_BICUBIC,  "Bicubic"},
-   {DDS_MIPMAP_LANCZOS,  "Lanczos"},
+   {DDS_MIPMAP_FILTER_DEFAULT,  "Default"},
+   {DDS_MIPMAP_FILTER_NEAREST,  "Nearest"},
+   {DDS_MIPMAP_FILTER_BOX,      "Box"},
+   {DDS_MIPMAP_FILTER_BILINEAR, "Bilinear"},
+   {DDS_MIPMAP_FILTER_BICUBIC,  "Bicubic"},
+   {DDS_MIPMAP_FILTER_LANCZOS,  "Lanczos"},
    {-1, 0}
 };
 
@@ -243,13 +244,14 @@ static int check_cubemap(gint32 image_id)
             }
             gimp_drawable_detach(drawable);
          }
-         
+         /*
          if(cubemap == 0)
          {
             g_message("DDS: It appears that your image is a cube map,\n"
                       "but not all layers are the same size, thus a cube\n"
                       "map cannot be written.");
          }
+         */
       }
       
       /* make sure they are all the same type */
@@ -265,6 +267,7 @@ static int check_cubemap(gint32 image_id)
             }
          }
          
+         /*
          if(cubemap == 0)
          {
             g_message("DDS: It appears that your image is a cube map,\n"
@@ -272,6 +275,7 @@ static int check_cubemap(gint32 image_id)
                       "map cannot be written (Perhaps some layers have\n"
                       "transparency and others do not?).");
          }
+         */
       }
    }
    
@@ -306,13 +310,15 @@ static int check_volume(gint32 image_id)
          gimp_drawable_detach(drawable);
       }
       
+      /*
       if(!volume)
       {
          g_message("DDS: It appears your image may be a volume map,\n"
                    "but not all layers are the same size, thus a volume\n"
                    "map cannot be written.");
       }
-   
+      */
+      
       if(volume)
       {
          type = gimp_drawable_type(layers[0]);
@@ -325,6 +331,7 @@ static int check_volume(gint32 image_id)
             }
          }
          
+         /*
          if(!volume)
          {
             g_message("DDS: It appears your image may be a volume map,\n"
@@ -332,10 +339,73 @@ static int check_volume(gint32 image_id)
                       "map cannot be written (Perhaps some layers have\n"
                       "transparency and others do not?).");
          }
+         */
       }
    }
 
    return(volume);
+}
+
+static int check_mipmap_chain_consitency(gint32 image_id)
+{
+   gint *layers, num_layers;
+   GimpDrawable *drawable;
+   GimpImageType type = GIMP_RGB_IMAGE;
+   int i, w, h, mipw, miph, mipmaps = 1;
+   int max_w = 0, max_h = 0, max_layer = -1;
+
+   layers = gimp_image_get_layers(image_id, &num_layers);
+   
+   if(num_layers == 1) return(1);
+   
+   /* find largest layer */
+   for(i = 0; i < num_layers; ++i)
+   {
+      drawable = gimp_drawable_get(layers[i]);
+      if((drawable->width * drawable->height) > (max_w * max_h))
+      {
+         type = gimp_drawable_type(layers[i]);
+         max_w = drawable->width;
+         max_h = drawable->height;
+         max_layer = i;
+      }
+      gimp_drawable_detach(drawable);
+   }
+   
+   w = max_w;
+   h = max_h;
+   
+   /* look for a complete mipmap chain */
+   while(get_next_mipmap_dimensions(&mipw, &miph, w, h))
+   {
+      /* search layers for the next mipmap */
+      for(i = 0; i < num_layers; ++i)
+      {
+         drawable = gimp_drawable_get(layers[i]);
+         if((drawable->width  == mipw) &&
+            (drawable->height == miph) &&
+            (gimp_drawable_type(layers[i]) == type))
+         {
+            break;
+         }
+         else
+         {
+            gimp_drawable_detach(drawable);
+         }
+      }
+      
+      /* a layer meeting the needed mipmap dimensions was not found */
+      if(i == num_layers)
+         break;
+      
+      ++mipmaps;
+      w = mipw;
+      h = miph;
+      
+      gimp_drawable_detach(drawable);
+   }
+   
+   return(mipmaps == num_layers);
 }
 
 GimpPDBStatusType write_dds(gchar *filename, gint32 image_id, gint32 drawable_id)
@@ -344,8 +414,14 @@ GimpPDBStatusType write_dds(gchar *filename, gint32 image_id, gint32 drawable_id
    gchar *tmp;
    int rc = 0;
    
+   is_mipmap_chain_valid = check_mipmap_chain_consitency(image_id);
+
    is_cubemap = check_cubemap(image_id);
    is_volume = check_volume(image_id);
+   
+   if(!is_mipmap_chain_valid &&
+      dds_write_vals.mipmaps == DDS_MIPMAP_EXISTING)
+      dds_write_vals.mipmaps = DDS_MIPMAP_NONE;
    
    if(interactive_dds)
    {
@@ -370,6 +446,13 @@ GimpPDBStatusType write_dds(gchar *filename, gint32 image_id, gint32 drawable_id
          dds_write_vals.compression != DDS_COMPRESS_NONE)
       {
          g_message("DDS: Cannot save volume map with compression");
+         return(GIMP_PDB_EXECUTION_ERROR);
+      }
+      
+      if(dds_write_vals.mipmaps == DDS_MIPMAP_EXISTING &&
+         !is_mipmap_chain_valid)
+      {
+         g_message("DDS: Cannot save with existing mipmaps as the mipmap chain is incomplete");
          return(GIMP_PDB_EXECUTION_ERROR);
       }
    }
@@ -697,6 +780,49 @@ static void convert_volume_pixels(unsigned char *dst, unsigned char *src,
    }
 }
 
+static void get_mipmap_chain(unsigned char *dst, int w, int h, int bpp,
+                             gint32 image_id)
+{
+   gint *layers, num_layers;
+   GimpDrawable *drawable;
+   GimpPixelRgn rgn;
+   int i, offset, mipw, miph;
+
+   layers = gimp_image_get_layers(image_id, &num_layers);
+   
+   offset = 0;
+   
+   while(get_next_mipmap_dimensions(&mipw, &miph, w, h))
+   {
+      drawable = NULL;
+      
+      /* search layers for the next mipmap */
+      for(i = 0; i < num_layers; ++i)
+      {
+         drawable = gimp_drawable_get(layers[i]);
+         if((drawable->width  == mipw) &&
+            (drawable->height == miph))
+            break;
+      }
+      
+      if(i == num_layers) return;
+      if(drawable == NULL) return;
+      
+      gimp_pixel_rgn_init(&rgn, drawable, 0, 0, mipw, miph, 0, 0);
+      gimp_pixel_rgn_get_rect(&rgn, dst + offset, 0, 0, mipw, miph);
+
+      /* we need BGRX or BGRA */
+      if(bpp >= 3)
+         swap_rb(dst + offset, mipw * miph, bpp);
+
+      offset += (mipw * miph * bpp);
+      w = mipw;
+      h = miph;
+      
+      gimp_drawable_detach(drawable);
+   }
+}
+
 static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
                         int w, int h, int bpp, int fmtbpp, int mipmaps)
 {
@@ -707,6 +833,7 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
    unsigned char *palette = NULL;
    int i, x, y, size, fmtsize, offset, colors;
    int compression = dds_write_vals.compression;
+   int dxt1_alpha = 0;
 
    basetype = gimp_image_base_type(image_id);
    type = gimp_drawable_type(drawable_id);
@@ -811,13 +938,20 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
 
          size = get_mipmapped_size(w, h, bpp, 0, mipmaps, DDS_COMPRESS_NONE);
          dst = g_malloc(size);
-         generate_mipmaps(dst, src, w, h, bpp, palette != NULL, mipmaps,
-                          dds_write_vals.mipmap_filter,
-                          dds_write_vals.gamma_correct,
-                          dds_write_vals.gamma);
+         if(dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE)
+         {
+            generate_mipmaps(dst, src, w, h, bpp, palette != NULL,
+                             mipmaps,
+                             dds_write_vals.mipmap_filter,
+                             dds_write_vals.gamma_correct,
+                             dds_write_vals.gamma);
+         }
+         else
+         {
+            memcpy(dst, src, w * h * bpp);
+            get_mipmap_chain(dst + (w * h * bpp), w, h, bpp, image_id);
+         }
             
-         offset = 0;
-         
          if(dds_write_vals.format > DDS_FORMAT_DEFAULT)
          {
             fmtsize = get_mipmapped_size(w, h, fmtbpp, 0, mipmaps,
@@ -832,6 +966,8 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
             bpp = fmtbpp;
          }
 
+         offset = 0;
+                  
          for(i = 0; i < mipmaps; ++i)
          {
             size = get_mipmapped_size(w, h, bpp, i, 1, DDS_COMPRESS_NONE);
@@ -873,12 +1009,33 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
          src = fmtdst;
          bpp = 3;
       }
+            
+      if(mipmaps > 1)
+      {
+         fmtsize = get_mipmapped_size(w, h, bpp, 0, mipmaps,
+                                      DDS_COMPRESS_NONE);
+         fmtdst = g_malloc(fmtsize);
+         if(dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE)
+         {
+            generate_mipmaps(fmtdst, src, w, h, bpp, 0, mipmaps,
+                             dds_write_vals.mipmap_filter,
+                             dds_write_vals.gamma_correct, dds_write_vals.gamma);
+         }
+         else
+         {
+            memcpy(fmtdst, src, w * h * bpp);
+            get_mipmap_chain(fmtdst + (w * h * bpp), w, h, bpp, image_id);
+         }
+         
+         g_free(src);
+         src = fmtdst;
+      }
       
-      dxt_compress(dst, src, compression, w, h, bpp, mipmaps,
-                   dds_write_vals.color_type, dds_write_vals.dither,
-                   dds_write_vals.mipmap_filter,
-                   dds_write_vals.gamma_correct,
-                   dds_write_vals.gamma);
+      if(bpp == 4 && compression == DDS_COMPRESS_BC1)
+         dxt1_alpha = 1;
+      
+      dxt_compress(dst, src, compression, w, h, bpp, mipmaps, dxt1_alpha,
+                   dds_write_vals.color_type, dds_write_vals.dither);
 
       fwrite(dst, 1, size, fp);
 
@@ -1126,7 +1283,10 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    {
       flags |= DDSD_MIPMAPCOUNT;
       caps |= (DDSCAPS_COMPLEX | DDSCAPS_MIPMAP);
-      num_mipmaps = get_num_mipmaps(w, h);
+      if(dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE)
+         num_mipmaps = get_num_mipmaps(w, h);
+      else
+         num_mipmaps = num_layers;
    }
    else
       num_mipmaps = 1;
@@ -1417,34 +1577,72 @@ static void savetype_selected(GtkWidget *widget, gpointer data)
       case DDS_SAVE_CUBEMAP:
          gtk_widget_set_sensitive(compress_opt, 1);
          string_value_combo_set_item_sensitive(mipmap_filter_opt,
-                                               DDS_MIPMAP_LANCZOS, 1);
+                                               DDS_MIPMAP_FILTER_LANCZOS,
+                                               1);
          break;
       case DDS_SAVE_VOLUMEMAP:
          dds_write_vals.compression = DDS_COMPRESS_NONE;
-         gtk_combo_box_set_active(GTK_COMBO_BOX(compress_opt), DDS_COMPRESS_NONE);
+         gtk_combo_box_set_active(GTK_COMBO_BOX(compress_opt),
+                                  DDS_COMPRESS_NONE);
          gtk_widget_set_sensitive(compress_opt, 0);
-         if(dds_write_vals.mipmap_filter == DDS_MIPMAP_LANCZOS)
-            dds_write_vals.mipmap_filter = DDS_MIPMAP_DEFAULT;
+         if(dds_write_vals.mipmap_filter == DDS_MIPMAP_FILTER_LANCZOS)
+            dds_write_vals.mipmap_filter = DDS_MIPMAP_FILTER_DEFAULT;
          string_value_combo_set_active(mipmap_filter_opt,
                                        dds_write_vals.mipmap_filter);
          string_value_combo_set_item_sensitive(mipmap_filter_opt,
-                                               DDS_MIPMAP_LANCZOS, 0);
+                                               DDS_MIPMAP_FILTER_LANCZOS,
+                                               0);
          break;
    }
 }
 
 static void toggle_clicked(GtkWidget *widget, gpointer data)
 {
-   int *flag = (int*)data;
+   int *flag = (int *)data;
    (*flag) = !(*flag);
 }
 
 static void mipmaps_clicked(GtkWidget *widget, gpointer data)
 {
-   dds_write_vals.mipmaps = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget));
-   gtk_widget_set_sensitive(mipmap_filter_opt, dds_write_vals.mipmaps);
-   gtk_widget_set_sensitive(gamma_chk, dds_write_vals.mipmaps);
-   gtk_widget_set_sensitive(gamma_spin, dds_write_vals.mipmaps && dds_write_vals.gamma_correct);
+   int old = dds_write_vals.mipmaps;
+   
+   if(!gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget)))
+   {
+      mipmap_old = widget;
+      return;
+   }
+   
+   dds_write_vals.mipmaps = (int)data;
+   
+   if(dds_write_vals.mipmaps == DDS_MIPMAP_EXISTING)
+   {
+      if(!is_mipmap_chain_valid)
+      {
+         const gchar *message = "An inconsistent mipmap chain was discovered in this image!\n"
+                                "This mipmap option cannot be used.\n"
+                                "To use this option, your image layers must form a consistent\n"
+                                "mipmap chain from the largest sized layer to the smallest.\n"
+                                "Layer ordering is not important, but each layer in the chain\n"
+                                "should be 1/4 the size of it's predecessor.\n"
+                                "For example: 128x128 -> 64x64 -> 32x32 ..\n"
+                                "With non-power-of-two or odd number dimensioned images, this can be difficult to determine.";
+         GtkWindow *parent = GTK_WINDOW(gtk_widget_get_toplevel(widget));
+         GtkWidget *dlg = gtk_message_dialog_new(parent,
+                                                 GTK_DIALOG_DESTROY_WITH_PARENT,
+                                                 GTK_MESSAGE_ERROR,
+                                                 GTK_BUTTONS_CLOSE,
+                                                 "%s", message);
+         gtk_dialog_run(GTK_DIALOG(dlg));
+         gtk_widget_destroy(dlg);
+         dds_write_vals.mipmaps = old;
+         if(mipmap_old != NULL)
+            gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(mipmap_old), 1);
+      }
+   }
+   
+   gtk_widget_set_sensitive(mipmap_filter_opt, dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE);
+   gtk_widget_set_sensitive(gamma_chk, dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE);
+   gtk_widget_set_sensitive(gamma_spin, (dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE) && dds_write_vals.gamma_correct);
 }
 
 static void transindex_clicked(GtkWidget *widget, gpointer data)
@@ -1488,13 +1686,15 @@ static void gamma_changed(GtkWidget *widget, gpointer data)
 static gint save_dialog(gint32 image_id, gint32 drawable_id)
 {
    GtkWidget *dlg;
-   GtkWidget *vbox, *hbox;
+   GtkWidget *vbox, *vbox2, *hbox;
    GtkWidget *table;
    GtkWidget *label;
    GtkWidget *opt;
    GtkWidget *check;
    GtkWidget *spin;
    GtkWidget *expander;
+   GtkWidget *frame;
+   GtkWidget *radio;
    GimpImageType type, basetype;
    int w, h;
    
@@ -1597,21 +1797,6 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
 
    gtk_widget_set_sensitive(opt, is_cubemap || is_volume);
    
-   check = gtk_check_button_new_with_label("Generate mipmaps");
-   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check), dds_write_vals.mipmaps);
-   gtk_box_pack_start(GTK_BOX(vbox), check, 0, 0, 0);
-   gtk_signal_connect(GTK_OBJECT(check), "clicked",
-                      GTK_SIGNAL_FUNC(mipmaps_clicked), 0);
-   gtk_widget_show(check);
-   mipmap_check = check;
-
-   if(is_volume && dds_write_vals.savetype == DDS_SAVE_VOLUMEMAP)
-   {
-      dds_write_vals.compression = DDS_COMPRESS_NONE;
-      string_value_combo_set_active(compress_opt, DDS_COMPRESS_NONE);
-      gtk_widget_set_sensitive(compress_opt, 0);
-   }
-   
    hbox = gtk_hbox_new(0, 8);
    gtk_box_pack_start(GTK_BOX(vbox), hbox, 1, 1, 0);
    gtk_widget_show(hbox);
@@ -1646,7 +1831,52 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
       gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check), 1);
       gtk_spin_button_set_value(GTK_SPIN_BUTTON(spin), dds_write_vals.transindex);
    }
+   
+   frame = gtk_frame_new("Mipmaps");
+   gtk_box_pack_start(GTK_BOX(vbox), frame, 0, 0, 0);
+   gtk_widget_show(frame);
+   
+   vbox2 = gtk_vbox_new(0, 8);
+   gtk_container_set_border_width(GTK_CONTAINER(vbox2), 8);
+   gtk_container_add(GTK_CONTAINER(frame), vbox2);
+   gtk_widget_show(vbox2);
+   
+   radio = gtk_radio_button_new_with_label(NULL, "No mipmaps");
+   gtk_box_pack_start(GTK_BOX(vbox2), radio, 0, 0, 0);
+   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(radio),
+                                dds_write_vals.mipmaps == DDS_MIPMAP_NONE);
+   gtk_signal_connect(GTK_OBJECT(radio), "clicked",
+                      GTK_SIGNAL_FUNC(mipmaps_clicked),
+                      (gpointer)DDS_MIPMAP_NONE);
+   gtk_widget_show(radio);
+   radio = gtk_radio_button_new_with_label_from_widget(GTK_RADIO_BUTTON(radio),
+                                                       "Generate mipmaps");
+   gtk_box_pack_start(GTK_BOX(vbox2), radio, 0, 0, 0);
+   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(radio),
+                                dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE);
+   gtk_signal_connect(GTK_OBJECT(radio), "clicked",
+                      GTK_SIGNAL_FUNC(mipmaps_clicked),
+                      (gpointer)DDS_MIPMAP_GENERATE);
+   gtk_widget_show(radio);
+   radio = gtk_radio_button_new_with_label_from_widget(GTK_RADIO_BUTTON(radio),
+                                                       "Use existing mipmaps");
+   gtk_box_pack_start(GTK_BOX(vbox2), radio, 0, 0, 0);
+   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(radio),
+                                dds_write_vals.mipmaps == DDS_MIPMAP_EXISTING);
+   gtk_signal_connect(GTK_OBJECT(radio), "clicked",
+                      GTK_SIGNAL_FUNC(mipmaps_clicked),
+                      (gpointer)DDS_MIPMAP_EXISTING);
+   gtk_widget_show(radio);   
+   gtk_widget_set_sensitive(radio, !(is_volume || is_cubemap) &&
+                            is_mipmap_chain_valid);
 
+   if(is_volume && dds_write_vals.savetype == DDS_SAVE_VOLUMEMAP)
+   {
+      dds_write_vals.compression = DDS_COMPRESS_NONE;
+      string_value_combo_set_active(compress_opt, DDS_COMPRESS_NONE);
+      gtk_widget_set_sensitive(compress_opt, 0);
+   }
+   
    expander = gtk_expander_new("<b>Advanced Options</b>");
    gtk_expander_set_use_markup(GTK_EXPANDER(expander), 1);
    gtk_expander_set_expanded(GTK_EXPANDER(expander), dds_write_vals.show_adv_opt);
@@ -1707,7 +1937,7 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
                     (GtkAttachOptions)(GTK_EXPAND), 0, 0);
 
    if(is_volume && dds_write_vals.savetype == DDS_SAVE_VOLUMEMAP)
-      string_value_combo_set_item_sensitive(opt, DDS_MIPMAP_LANCZOS, 0);
+      string_value_combo_set_item_sensitive(opt, DDS_MIPMAP_FILTER_LANCZOS, 0);
    
    gtk_signal_connect(GTK_OBJECT(opt), "changed",
                       GTK_SIGNAL_FUNC(string_value_combo_selected),
@@ -1754,9 +1984,9 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
                             dds_write_vals.compression != DDS_COMPRESS_BC4 &&
                             dds_write_vals.compression != DDS_COMPRESS_BC5 &&
                             dds_write_vals.compression != DDS_COMPRESS_YCOCGS);
-   gtk_widget_set_sensitive(mipmap_filter_opt, dds_write_vals.mipmaps);
-   gtk_widget_set_sensitive(gamma_chk, dds_write_vals.mipmaps);
-   gtk_widget_set_sensitive(gamma_spin, dds_write_vals.mipmaps && dds_write_vals.gamma_correct);
+   gtk_widget_set_sensitive(mipmap_filter_opt, dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE);
+   gtk_widget_set_sensitive(gamma_chk, dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE);
+   gtk_widget_set_sensitive(gamma_spin, (dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE) && dds_write_vals.gamma_correct);
 
    gtk_widget_show(dlg);
    

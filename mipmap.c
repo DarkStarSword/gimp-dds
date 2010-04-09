@@ -131,6 +131,18 @@ unsigned int get_volume_mipmapped_size(int width, int height,
    return(size);
 }
 
+int get_next_mipmap_dimensions(int *next_w, int *next_h,
+                               int  curr_w, int  curr_h)
+{
+   if(curr_w == 1 || curr_h == 1)
+      return(0);
+   
+   if(next_w) *next_w = curr_w >> 1;
+   if(next_h) *next_h = curr_h >> 1;
+   
+   return(1);
+}
+
 static void scale_image_nearest(unsigned char *dst, int dw, int dh,
                                 unsigned char *src, int sw, int sh,
                                 int bpp, int gc, float gamma)
@@ -689,12 +701,12 @@ int generate_mipmaps(unsigned char *dst, unsigned char *src,
    {
       switch(filter)
       {
-         case DDS_MIPMAP_NEAREST:  mipmap_func = scale_image_nearest;  break;
-         case DDS_MIPMAP_BILINEAR: mipmap_func = scale_image_bilinear; break;
-         case DDS_MIPMAP_BICUBIC:  mipmap_func = scale_image_bicubic;  break;
-         case DDS_MIPMAP_LANCZOS:  mipmap_func = scale_image_lanczos;  break;
-         case DDS_MIPMAP_BOX:
-         default:                  mipmap_func = scale_image_box;      break;
+         case DDS_MIPMAP_FILTER_NEAREST:  mipmap_func = scale_image_nearest;  break;
+         case DDS_MIPMAP_FILTER_BILINEAR: mipmap_func = scale_image_bilinear; break;
+         case DDS_MIPMAP_FILTER_BICUBIC:  mipmap_func = scale_image_bicubic;  break;
+         case DDS_MIPMAP_FILTER_LANCZOS:  mipmap_func = scale_image_lanczos;  break;
+         case DDS_MIPMAP_FILTER_BOX:
+         default:                         mipmap_func = scale_image_box;      break;
       }
    }
    
@@ -1397,10 +1409,10 @@ int generate_volume_mipmaps(unsigned char *dst, unsigned char *src,
    {
       switch(filter)
       {
-         case DDS_MIPMAP_NEAREST:  mipmap_func = scale_volume_image_nearest;  break;
-         case DDS_MIPMAP_BILINEAR: mipmap_func = scale_volume_image_bilinear; break;
-         case DDS_MIPMAP_BICUBIC:  mipmap_func = scale_volume_image_cubic;    break;
-         case DDS_MIPMAP_BOX:
+         case DDS_MIPMAP_FILTER_NEAREST:  mipmap_func = scale_volume_image_nearest;  break;
+         case DDS_MIPMAP_FILTER_BILINEAR: mipmap_func = scale_volume_image_bilinear; break;
+         case DDS_MIPMAP_FILTER_BICUBIC:  mipmap_func = scale_volume_image_cubic;    break;
+         case DDS_MIPMAP_FILTER_BOX:
          default:
                                    mipmap_func = scale_volume_image_box;      break;
       }

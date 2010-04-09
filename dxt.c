@@ -1069,49 +1069,30 @@ static void compress_YCoCg(unsigned char *dst, const unsigned char *src,
 
 int dxt_compress(unsigned char *dst, unsigned char *src, int format,
                  unsigned int width, unsigned int height, int bpp,
-                 int mipmaps, int type, int dither, int filter,
-                 int gamma_correct, float gamma)
+                 int mipmaps, int alpha, int type, int dither)
 {
    int i, size, w, h;
    unsigned int offset;
-   unsigned char *tmp;
+   unsigned char *tmp = NULL;
    int j;
-   unsigned char *tmp2, *s;
-   int dxt1_alpha = 0;
+   unsigned char *s;
    
-   if(!(IS_MUL4(width) && IS_MUL4(height)))
-      return(0);
-   
-   if((mipmaps > 1) && !(IS_POW2(width) && IS_POW2(height)))
-      return(0);
-   
-   size = get_mipmapped_size(width, height, bpp, 0, mipmaps,
-                             DDS_COMPRESS_NONE);
-   tmp = g_malloc(size);
-   generate_mipmaps(tmp, src, width, height, bpp, 0, mipmaps, filter,
-                    gamma_correct, gamma);
-   
-   if(bpp == 4 && format == DDS_COMPRESS_BC1)
-      dxt1_alpha = 1;
-
    if(bpp == 1)
    {
       /* grayscale promoted to BGRA */
       
       size = get_mipmapped_size(width, height, 4, 0, mipmaps,
                                 DDS_COMPRESS_NONE);
-      tmp2 = g_malloc(size);
+      tmp = g_malloc(size);
       
       for(i = j = 0; j < size; ++i, j += 4)
       {
-         tmp2[j + 0] = tmp[i];
-         tmp2[j + 1] = tmp[i];
-         tmp2[j + 2] = tmp[i];
-         tmp2[j + 3] = 255;
+         tmp[j + 0] = src[i];
+         tmp[j + 1] = src[i];
+         tmp[j + 2] = src[i];
+         tmp[j + 3] = 255;
       }
       
-      g_free(tmp);
-      tmp = tmp2;
       bpp = 4;
    }
    else if(bpp == 2)
@@ -1120,50 +1101,46 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
       
       size = get_mipmapped_size(width, height, 4, 0, mipmaps,
                                 DDS_COMPRESS_NONE);
-      tmp2 = g_malloc(size);
+      tmp = g_malloc(size);
       
       for(i = j = 0; j < size; i += 2, j += 4)
       {
-         tmp2[j + 0] = tmp[i];
-         tmp2[j + 1] = tmp[i];
-         tmp2[j + 2] = tmp[i];
-         tmp2[j + 3] = tmp[i + 1];
+         tmp[j + 0] = src[i];
+         tmp[j + 1] = src[i];
+         tmp[j + 2] = src[i];
+         tmp[j + 3] = src[i + 1];
       }
       
-      g_free(tmp);
-      tmp = tmp2;
       bpp = 4;
    }
    else if(bpp == 3)
    {
       size = get_mipmapped_size(width, height, 4, 0, mipmaps,
                                 DDS_COMPRESS_NONE);
-      tmp2 = g_malloc(size);
+      tmp = g_malloc(size);
       
       for(i = j = 0; j < size; i += 3, j += 4)
       {
-         tmp2[j + 0] = tmp[i + 0];
-         tmp2[j + 1] = tmp[i + 1];
-         tmp2[j + 2] = tmp[i + 2];
-         tmp2[j + 3] = 255;
+         tmp[j + 0] = src[i + 0];
+         tmp[j + 1] = src[i + 1];
+         tmp[j + 2] = src[i + 2];
+         tmp[j + 3] = 255;
       }
       
-      g_free(tmp);
-      tmp = tmp2;
       bpp = 4;
    }
    
    offset = 0;
    w = width;
    h = height;
-   s = tmp;
+   s = tmp ? tmp : src;
 
    for(i = 0; i < mipmaps; ++i)
    {
       switch(format)
       {
          case DDS_COMPRESS_BC1:
-            compress_DXT1(dst + offset, s, w, h, type, dither, dxt1_alpha);
+            compress_DXT1(dst + offset, s, w, h, type, dither, alpha);
             break;
          case DDS_COMPRESS_BC2:
             compress_DXT3(dst + offset, s, w, h, type, dither);
@@ -1190,7 +1167,7 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
       h = MAX(1, h >> 1);
    }
 
-   g_free(tmp);
+   if(tmp) g_free(tmp);
    
    return(1);
 }
