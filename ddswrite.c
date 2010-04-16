@@ -575,7 +575,10 @@ static void convert_pixels(unsigned char *dst, unsigned char *src,
          else
             r = g = b = src[i];
          
-         a = 255;
+         if(format == DDS_FORMAT_A8)
+            a = src[i];
+         else
+            a = 255;
       }
       else if(bpp == 2)
       {
@@ -689,7 +692,10 @@ static void convert_volume_pixels(unsigned char *dst, unsigned char *src,
          else
             r = g = b = src[i];
          
-         a = 255;
+         if(format == DDS_FORMAT_A8)
+            a = src[i];
+         else
+            a = 255;
       }
       else if(bpp == 2)
       {
