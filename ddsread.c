@@ -690,9 +690,9 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
             {
                if(hdr->pixelfmt.amask == 0xc0000000) // handle RGB10A2
                {
-                  pixels[pos + 0] = (pixel >> d->rshift) >> 2;
+                  pixels[pos + 0] = (pixel >> d->bshift) >> 2;
                   pixels[pos + 1] = (pixel >> d->gshift) >> 2;
-                  pixels[pos + 2] = (pixel >> d->bshift) >> 2;
+                  pixels[pos + 2] = (pixel >> d->rshift) >> 2;
                   if(hdr->pixelfmt.flags & DDPF_ALPHAPIXELS)
                      pixels[pos + 3] = (pixel >> d->ashift << (8 - d->abits) & d->amask) * 255 / d->amask;
                }
