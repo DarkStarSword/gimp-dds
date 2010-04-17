@@ -35,6 +35,7 @@
 #include "mipmap.h"
 #include "endian.h"
 #include "imath.h"
+#include "color.h"
 
 static gint save_dialog(gint32 image_id, gint32 drawable);
 static void save_dialog_response(GtkWidget *widget, gint response_id, gpointer data);
@@ -482,36 +483,6 @@ GimpPDBStatusType write_dds(gchar *filename, gint32 image_id, gint32 drawable_id
    return(rc ? GIMP_PDB_SUCCESS : GIMP_PDB_EXECUTION_ERROR);
 }
 
-#define TO_R5G6B5(r, g, b) \
-   (unsigned short)((unsigned short)((((r) >> 3) & 0x1f) << 11) |\
-                    (unsigned short)((((g) >> 2) & 0x3f) <<  5) |\
-                    (unsigned short)((((b) >> 3) & 0x1f)      ))
-#define TO_RGBA4(r, g, b, a) \
-   (unsigned short)((unsigned short)((((a) >> 4) & 0x0f) << 12) |\
-                    (unsigned short)((((r) >> 4) & 0x0f) <<  8) |\
-                    (unsigned short)((((g) >> 4) & 0x0f) <<  4) |\
-                    (unsigned short)((((b) >> 4) & 0x0f)      ))
-#define TO_RGB5A1(r, g, b, a) \
-   (unsigned short)((unsigned short)((((a) >> 7) & 0x01) << 15) |\
-                    (unsigned short)((((r) >> 3) & 0x1f) << 10) |\
-                    (unsigned short)((((g) >> 3) & 0x1f) <<  5) |\
-                    (unsigned short)((((b) >> 3) & 0x1f)      ))
-#define TO_RGB10A2(r, g, b, a) \
-   (unsigned int)((unsigned int)((((a) >> 6) & 0x003) << 30) | \
-                  (unsigned int)((((r) << 2) & 0x3ff) << 20) | \
-                  (unsigned int)((((g) << 2) & 0x3ff) << 10) | \
-                  (unsigned int)((((b) << 2) & 0x3ff)      ))
-#define TO_R3G3B2(r, g, b) \
-   (unsigned char)(((((r) >> 5) & 0x07) << 5) |\
-                   ((((g) >> 5) & 0x07) << 2) |\
-                   ((((b) >> 6) & 0x03)     ))
-
-#define TO_YCOCG_Y(r, g, b)  (((  (r) +      ((g) << 1) +  (b)      ) + 2) >> 2)
-#define TO_YCOCG_CO(r, g, b) ((( ((r) << 1)             - ((b) << 1)) + 2) >> 2)
-#define TO_YCOCG_CG(r, g, b) ((( -(r) +      ((g) << 1) -  (b)      ) + 2) >> 2)
-
-#define TO_LUMINANCE(r, g, b) (((r) * 54 + (g) * 182 + (b) * 20) >> 8)
-
 static void swap_rb(unsigned char *pixels, unsigned int n, int bpp)
 {
    unsigned int i;
@@ -630,38 +601,38 @@ static void convert_pixels(unsigned char *dst, unsigned char *src,
             dst[4 * i + 3] = a;
             break;
          case DDS_FORMAT_R5G6B5:
-            PUTL16(&dst[2 * i], TO_R5G6B5(r, g, b));
+            PUTL16(&dst[2 * i], pack_r5g6b5(r, g, b));
             break;   
          case DDS_FORMAT_RGBA4:
-            PUTL16(&dst[2 * i], TO_RGBA4(r, g, b, a));
+            PUTL16(&dst[2 * i], pack_rgba4(r, g, b, a));
             break;
          case DDS_FORMAT_RGB5A1:
-            PUTL16(&dst[2 * i], TO_RGB5A1(r, g, b, a));
+            PUTL16(&dst[2 * i], pack_rgb5a1(r, g, b, a));
             break;
          case DDS_FORMAT_RGB10A2:
-            PUTL32(&dst[4 * i], TO_RGB10A2(r, g, b, a));
+            PUTL32(&dst[4 * i], pack_rgb10a2(r, g, b, a));
             break;
          case DDS_FORMAT_R3G3B2:
-            dst[i] = TO_R3G3B2(r, g, b);
+            dst[i] = pack_r3g3b2(r, g, b);
             break;
          case DDS_FORMAT_A8:
             dst[i] = a;
             break;
          case DDS_FORMAT_L8:
-            dst[i] = TO_LUMINANCE(r, g, b);
+            dst[i] = rgb_to_luminance(r, g, b);
             break;
          case DDS_FORMAT_L8A8:
-            dst[2 * i + 0] = TO_LUMINANCE(r, g, b);
+            dst[2 * i + 0] = rgb_to_luminance(r, g, b);
             dst[2 * i + 1] = a;
             break;
          case DDS_FORMAT_YCOCG:
          {
-            int co = TO_YCOCG_CO(r, g, b) + 128;
-            int cg = TO_YCOCG_CG(r, g, b) + 128;
+            int co = RGB_to_YCoCg_Co(r, g, b) + 128;
+            int cg = RGB_to_YCoCg_Cg(r, g, b) + 128;
             dst[4 * i + 0] = a;
             dst[4 * i + 1] = MAX(0, MIN(255, cg));
             dst[4 * i + 2] = MAX(0, MIN(255, co));
-            dst[4 * i + 3] = TO_YCOCG_Y(r, g, b);
+            dst[4 * i + 3] = RGB_to_YCoCg_Y(r, g, b);
             break;
          }
          case DDS_FORMAT_AEXP:
