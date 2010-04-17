@@ -352,7 +352,7 @@ static int check_volume(gint32 image_id)
 static int check_mipmap_chain_consitency(gint32 image_id)
 {
    gint *layers, num_layers;
-   GimpDrawable *drawable;
+   GimpDrawable *drawable = NULL;
    GimpImageType type = GIMP_RGB_IMAGE;
    int i, w, h, mipw, miph, mipmaps = 1;
    int max_w = 0, max_h = 0, max_layer = -1;
@@ -696,7 +696,6 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
    unsigned char *palette = NULL;
    int i, x, y, size, fmtsize, offset, colors;
    int compression = dds_write_vals.compression;
-   int dxt1_alpha = 0;
 
    basetype = gimp_image_base_type(image_id);
    type = gimp_drawable_type(drawable_id);
@@ -749,8 +748,6 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
                src[y * (drawable->width * 4) + (x * 4)];
          }
       }
-      
-      compression = DDS_COMPRESS_BC3;
    }
 
    if(compression == DDS_COMPRESS_YCOCG ||
@@ -889,10 +886,7 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
          src = fmtdst;
       }
       
-      if(bpp == 4 && compression == DDS_COMPRESS_BC1)
-         dxt1_alpha = 1;
-      
-      dxt_compress(dst, src, compression, w, h, bpp, mipmaps, dxt1_alpha,
+      dxt_compress(dst, src, compression, w, h, bpp, mipmaps,
                    dds_write_vals.color_type, dds_write_vals.dither);
 
       fwrite(dst, 1, size, fp);

@@ -246,7 +246,13 @@ GimpPDBStatusType read_dds(gchar *filename, gint32 *imageID)
    if(hdr.pixelfmt.flags & DDPF_PALETTEINDEXED8)
    {
       d.palette = g_malloc(256 * 4);
-      fread(d.palette, 1, 256 * 4, fp);
+      if(fread(d.palette, 1, 1024, fp) != 1024)
+      {
+         g_message("Error reading palette.\n");
+         fclose(fp);
+         gimp_image_delete(image);
+         return(GIMP_PDB_EXECUTION_ERROR);
+      }
       for(i = j = 0; i < 768; i += 3, j += 4)
       {
          d.palette[i + 0] = d.palette[j + 0];

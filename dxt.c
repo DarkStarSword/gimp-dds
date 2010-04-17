@@ -1069,13 +1069,14 @@ static void compress_YCoCg(unsigned char *dst, const unsigned char *src,
 
 int dxt_compress(unsigned char *dst, unsigned char *src, int format,
                  unsigned int width, unsigned int height, int bpp,
-                 int mipmaps, int alpha, int type, int dither)
+                 int mipmaps, int type, int dither)
 {
    int i, size, w, h;
    unsigned int offset;
    unsigned char *tmp = NULL;
    int j;
    unsigned char *s;
+   int alpha = (bpp == 4);
    
    if(bpp == 1)
    {
@@ -1146,6 +1147,7 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
             compress_DXT3(dst + offset, s, w, h, type, dither);
             break;
          case DDS_COMPRESS_BC3:
+         case DDS_COMPRESS_BC3N:
          case DDS_COMPRESS_AEXP:
          case DDS_COMPRESS_YCOCG:
             compress_DXT5(dst + offset, s, w, h, type, dither);
