@@ -27,6 +27,7 @@ install: all
 .c.o:
 	$(CC) -c $(CFLAGS) $<
 
+color.o: color.c color.h imath.h
 dds.o: dds.c ddsplugin.h dds.h misc.h
 ddsread.o: ddsread.c ddsplugin.h dds.h dxt.h endian.h
 ddswrite.o: ddswrite.c ddsplugin.h dds.h dxt.h endian.h imath.h mipmap.h
