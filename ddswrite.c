@@ -157,6 +157,7 @@ static string_value_t save_type_strings[] =
 static struct
 {
    int format;
+   DXGI_FORMAT dxgi_format;
    int bpp;
    int alpha;
    unsigned int rmask;
@@ -165,20 +166,20 @@ static struct
    unsigned int amask;
 } format_info[] =
 {
-   {DDS_FORMAT_RGB8,    3, 0, 0x00ff0000, 0x0000ff00, 0x000000ff, 0x00000000},
-   {DDS_FORMAT_RGBA8,   4, 1, 0x00ff0000, 0x0000ff00, 0x000000ff, 0xff000000},
-   {DDS_FORMAT_BGR8,    3, 0, 0x000000ff, 0x0000ff00, 0x00ff0000, 0x00000000},
-   {DDS_FORMAT_ABGR8,   4, 1, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000},
-   {DDS_FORMAT_R5G6B5,  2, 0, 0x0000f800, 0x000007e0, 0x0000001f, 0x00000000},
-   {DDS_FORMAT_RGBA4,   2, 1, 0x00000f00, 0x000000f0, 0x0000000f, 0x0000f000},
-   {DDS_FORMAT_RGB5A1,  2, 1, 0x00007c00, 0x000003e0, 0x0000001f, 0x00008000},
-   {DDS_FORMAT_RGB10A2, 4, 1, 0x000003ff, 0x000ffc00, 0x3ff00000, 0xc0000000},
-   {DDS_FORMAT_R3G3B2,  1, 0, 0x000000e0, 0x0000001c, 0x00000003, 0x00000000},
-   {DDS_FORMAT_A8,      1, 0, 0x00000000, 0x00000000, 0x00000000, 0x000000ff},
-   {DDS_FORMAT_L8,      1, 0, 0x000000ff, 0x000000ff, 0x000000ff, 0x00000000},
-   {DDS_FORMAT_L8A8,    2, 1, 0x000000ff, 0x000000ff, 0x000000ff, 0x0000ff00},
-   {DDS_FORMAT_AEXP,    4, 1, 0x00ff0000, 0x0000ff00, 0x000000ff, 0xff000000},
-   {DDS_FORMAT_YCOCG,   4, 1, 0x00ff0000, 0x0000ff00, 0x000000ff, 0xff000000}
+   {DDS_FORMAT_RGB8,    DXGI_FORMAT_B8G8R8X8_UNORM,    3, 0, 0x00ff0000, 0x0000ff00, 0x000000ff, 0x00000000},
+   {DDS_FORMAT_RGBA8,   DXGI_FORMAT_B8G8R8A8_UNORM,    4, 1, 0x00ff0000, 0x0000ff00, 0x000000ff, 0xff000000},
+   {DDS_FORMAT_BGR8,    DXGI_FORMAT_UNKNOWN,           3, 0, 0x000000ff, 0x0000ff00, 0x00ff0000, 0x00000000},
+   {DDS_FORMAT_ABGR8,   DXGI_FORMAT_R8G8B8A8_UNORM,    4, 1, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000},
+   {DDS_FORMAT_R5G6B5,  DXGI_FORMAT_B5G6R5_UNORM,      2, 0, 0x0000f800, 0x000007e0, 0x0000001f, 0x00000000},
+   {DDS_FORMAT_RGBA4,   DXGI_FORMAT_UNKNOWN,           2, 1, 0x00000f00, 0x000000f0, 0x0000000f, 0x0000f000},
+   {DDS_FORMAT_RGB5A1,  DXGI_FORMAT_B5G5R5A1_UNORM,    2, 1, 0x00007c00, 0x000003e0, 0x0000001f, 0x00008000},
+   {DDS_FORMAT_RGB10A2, DXGI_FORMAT_R10G10B10A2_UNORM, 4, 1, 0x000003ff, 0x000ffc00, 0x3ff00000, 0xc0000000},
+   {DDS_FORMAT_R3G3B2,  DXGI_FORMAT_UNKNOWN,           1, 0, 0x000000e0, 0x0000001c, 0x00000003, 0x00000000},
+   {DDS_FORMAT_A8,      DXGI_FORMAT_A8_UNORM,          1, 0, 0x00000000, 0x00000000, 0x00000000, 0x000000ff},
+   {DDS_FORMAT_L8,      DXGI_FORMAT_R8_UNORM,          1, 0, 0x000000ff, 0x000000ff, 0x000000ff, 0x00000000},
+   {DDS_FORMAT_L8A8,    DXGI_FORMAT_UNKNOWN,           2, 1, 0x000000ff, 0x000000ff, 0x000000ff, 0x0000ff00},
+   {DDS_FORMAT_AEXP,    DXGI_FORMAT_B8G8R8A8_UNORM,    4, 1, 0x00ff0000, 0x0000ff00, 0x000000ff, 0xff000000},
+   {DDS_FORMAT_YCOCG,   DXGI_FORMAT_B8G8R8A8_UNORM,    4, 1, 0x00ff0000, 0x0000ff00, 0x000000ff, 0xff000000}
 };
 
 static int check_cubemap(gint32 image_id)
@@ -418,13 +419,13 @@ GimpPDBStatusType write_dds(gchar *filename, gint32 image_id, gint32 drawable_id
 
    is_cubemap = check_cubemap(image_id);
    is_volume = check_volume(image_id);
-   
-   if(!is_mipmap_chain_valid &&
-      dds_write_vals.mipmaps == DDS_MIPMAP_EXISTING)
-      dds_write_vals.mipmaps = DDS_MIPMAP_NONE;
-   
+      
    if(interactive_dds)
    {
+      if(!is_mipmap_chain_valid &&
+         dds_write_vals.mipmaps == DDS_MIPMAP_EXISTING)
+         dds_write_vals.mipmaps = DDS_MIPMAP_NONE;
+
       if(!save_dialog(image_id, drawable_id))
          return(GIMP_PDB_CANCEL);
    }
@@ -554,130 +555,16 @@ static void alpha_exp(unsigned char *dst, int r, int g, int b, int a)
 }
 
 static void convert_pixels(unsigned char *dst, unsigned char *src,
-                           int format, int w, int h, int bpp,
+                           int format, int w, int h, int d, int bpp,
                            unsigned char *palette, int mipmaps)
 {
    unsigned int i, num_pixels;
    unsigned char r, g, b, a;
    
-   num_pixels = get_mipmapped_size(w, h, 1, 0, mipmaps, DDS_COMPRESS_NONE);
-   
-   for(i = 0; i < num_pixels; ++i)
-   {
-      if(bpp == 1)
-      {
-         if(palette)
-         {
-            r = palette[3 * src[i] + 0];
-            g = palette[3 * src[i] + 1];
-            b = palette[3 * src[i] + 2];
-         }
-         else
-            r = g = b = src[i];
-         
-         if(format == DDS_FORMAT_A8)
-            a = src[i];
-         else
-            a = 255;
-      }
-      else if(bpp == 2)
-      {
-         r = g = b = src[2 * i];
-         a = src[2 * i + 1];
-      }
-      else if(bpp == 3)
-      {
-         b = src[3 * i + 0];
-         g = src[3 * i + 1];
-         r = src[3 * i + 2];
-         a = 255;
-      }
-      else
-      {
-         b = src[4 * i + 0];
-         g = src[4 * i + 1];
-         r = src[4 * i + 2];
-         a = src[4 * i + 3];
-      }
-      
-      switch(format)
-      {
-         case DDS_FORMAT_RGB8:
-            dst[3 * i + 0] = b;
-            dst[3 * i + 1] = g;
-            dst[3 * i + 2] = r;
-            break;
-         case DDS_FORMAT_RGBA8:
-            dst[4 * i + 0] = b;
-            dst[4 * i + 1] = g;
-            dst[4 * i + 2] = r;
-            dst[4 * i + 3] = a;
-            break;
-         case DDS_FORMAT_BGR8:
-            dst[4 * i + 0] = r;
-            dst[4 * i + 1] = g;
-            dst[4 * i + 2] = b;
-            dst[4 * i + 3] = 255;
-            break;
-         case DDS_FORMAT_ABGR8:
-            dst[4 * i + 0] = r;
-            dst[4 * i + 1] = g;
-            dst[4 * i + 2] = b;
-            dst[4 * i + 3] = a;
-            break;
-         case DDS_FORMAT_R5G6B5:
-            PUTL16(&dst[2 * i], TO_R5G6B5(r, g, b));
-            break;   
-         case DDS_FORMAT_RGBA4:
-            PUTL16(&dst[2 * i], TO_RGBA4(r, g, b, a));
-            break;
-         case DDS_FORMAT_RGB5A1:
-            PUTL16(&dst[2 * i], TO_RGB5A1(r, g, b, a));
-            break;
-         case DDS_FORMAT_RGB10A2:
-            PUTL32(&dst[4 * i], TO_RGB10A2(r, g, b, a));
-            break;
-         case DDS_FORMAT_R3G3B2:
-            dst[i] = TO_R3G3B2(r, g, b);
-            break;
-         case DDS_FORMAT_A8:
-            dst[i] = a;
-            break;
-         case DDS_FORMAT_L8:
-            dst[i] = TO_LUMINANCE(r, g, b);
-            break;
-         case DDS_FORMAT_L8A8:
-            dst[2 * i + 0] = TO_LUMINANCE(r, g, b);
-            dst[2 * i + 1] = a;
-            break;
-         case DDS_FORMAT_YCOCG:
-         {
-            int co = TO_YCOCG_CO(r, g, b) + 128;
-            int cg = TO_YCOCG_CG(r, g, b) + 128;
-            dst[4 * i + 0] = a;
-            dst[4 * i + 1] = MAX(0, MIN(255, cg));
-            dst[4 * i + 2] = MAX(0, MIN(255, co));
-            dst[4 * i + 3] = TO_YCOCG_Y(r, g, b);
-            break;
-         }
-         case DDS_FORMAT_AEXP:
-            alpha_exp(&dst[4 * i], r, g, b, a);
-            break;
-         default:
-            break;
-      }
-   }
-}
-
-static void convert_volume_pixels(unsigned char *dst, unsigned char *src,
-                                  int format, int w, int h, int d, int bpp,
-                                  unsigned char *palette, int mipmaps)
-{
-   unsigned int i, num_pixels;
-   unsigned char r, g, b, a;
-   
-   num_pixels = get_volume_mipmapped_size(w, h, d, 1, 0, mipmaps,
-                                          DDS_COMPRESS_NONE);
+   if(d > 0)
+      num_pixels = get_volume_mipmapped_size(w, h, d, 1, 0, mipmaps, DDS_COMPRESS_NONE);
+   else
+      num_pixels = get_mipmapped_size(w, h, 1, 0, mipmaps, DDS_COMPRESS_NONE);
    
    for(i = 0; i < num_pixels; ++i)
    {
@@ -873,7 +760,7 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
       {
          fmtsize = w * h * 4;
          fmtdst = g_malloc(fmtsize);
-         convert_pixels(fmtdst, src, DDS_FORMAT_RGBA8, w, h, bpp,
+         convert_pixels(fmtdst, src, DDS_FORMAT_RGBA8, w, h, 0, bpp,
                         palette, 1);
          g_free(src);
          src = fmtdst;
@@ -901,7 +788,7 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
    {
       fmtsize = w * h * 4;
       fmtdst = g_malloc(fmtsize);
-      convert_pixels(fmtdst, src, DDS_FORMAT_YCOCG, w, h, bpp,
+      convert_pixels(fmtdst, src, DDS_FORMAT_YCOCG, w, h, 0, bpp,
                      palette, 1);
       g_free(src);
       src = fmtdst;
@@ -915,7 +802,7 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
    {
       fmtsize = w * h * 4;
       fmtdst = g_malloc(fmtsize);
-      convert_pixels(fmtdst, src, DDS_FORMAT_AEXP, w, h, bpp,
+      convert_pixels(fmtdst, src, DDS_FORMAT_AEXP, w, h, 0, bpp,
                      palette, 1);
       g_free(src);
       src = fmtdst;
@@ -934,7 +821,7 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
          {
             fmtsize = get_mipmapped_size(w, h, 3, 0, mipmaps, DDS_COMPRESS_NONE);
             fmtdst = g_malloc(fmtsize);
-            convert_pixels(fmtdst, src, DDS_FORMAT_RGB8, w, h, bpp,
+            convert_pixels(fmtdst, src, DDS_FORMAT_RGB8, w, h, 0, bpp,
                            palette, 1);
             g_free(src);
             src = fmtdst;
@@ -964,7 +851,7 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
                                          DDS_COMPRESS_NONE);
             fmtdst = g_malloc(fmtsize);
             
-            convert_pixels(fmtdst, dst, dds_write_vals.format, w, h, bpp,
+            convert_pixels(fmtdst, dst, dds_write_vals.format, w, h, 0, bpp,
                            palette, mipmaps);
             
             g_free(dst);
@@ -988,7 +875,7 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
          if(dds_write_vals.format > DDS_FORMAT_DEFAULT)
          {
             fmtdst = g_malloc(h * w * fmtbpp);
-            convert_pixels(fmtdst, src, dds_write_vals.format, w, h, bpp,
+            convert_pixels(fmtdst, src, dds_write_vals.format, w, h, 0, bpp,
                            palette, 1);
             g_free(src);
             src = fmtdst;
@@ -1009,7 +896,7 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
          fmtsize = get_mipmapped_size(w, h, 3, 0, mipmaps,
                                       DDS_COMPRESS_NONE);
          fmtdst = g_malloc(fmtsize);
-         convert_pixels(fmtdst, src, DDS_FORMAT_RGB8, w, h, bpp,
+         convert_pixels(fmtdst, src, DDS_FORMAT_RGB8, w, h, 0, bpp,
                         palette, mipmaps);
          g_free(src);
          src = fmtdst;
@@ -1103,8 +990,7 @@ static void write_volume_mipmaps(FILE *fp, gint32 image_id, gint32 *layers,
       size = get_volume_mipmapped_size(w, h, d, 3, 0, mipmaps,
                                        DDS_COMPRESS_NONE);
       dst = g_malloc(size);
-      convert_volume_pixels(dst, src, DDS_FORMAT_RGB8, w, h, d, bpp,
-                            palette, 1);
+      convert_pixels(dst, src, DDS_FORMAT_RGB8, w, h, d, bpp, palette, 1);
       g_free(src);
       src = dst;
       bpp = 3;
@@ -1133,8 +1019,8 @@ static void write_volume_mipmaps(FILE *fp, gint32 image_id, gint32 *layers,
                                          dds_write_vals.compression);
       fmtdst = g_malloc(size);
       
-      convert_volume_pixels(fmtdst, dst, dds_write_vals.format, w, h, d, bpp,
-                            palette, mipmaps);
+      convert_pixels(fmtdst, dst, dds_write_vals.format, w, h, d, bpp,
+                     palette, mipmaps);
       g_free(dst);
       dst = fmtdst;
    }
