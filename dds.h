@@ -130,6 +130,11 @@ typedef enum
 #define DDSCAPS2_CUBEMAP_NEGATIVEY 0x00002000
 #define DDSCAPS2_CUBEMAP_POSITIVEZ 0x00004000
 #define DDSCAPS2_CUBEMAP_NEGATIVEZ 0x00008000
+#define DDSCAPS2_CUBEMAP_ALL_FACES \
+   (DDSCAPS2_CUBEMAP_POSITIVEX | DDSCAPS2_CUBEMAP_NEGATIVEX | \
+    DDSCAPS2_CUBEMAP_POSITIVEY | DDSCAPS2_CUBEMAP_NEGATIVEY | \
+    DDSCAPS2_CUBEMAP_POSITIVEZ | DDSCAPS2_CUBEMAP_NEGATIVEZ)
+
 #define DDSCAPS2_VOLUME            0x00200000
 
 #define D3D10_RESOURCE_MISC_TEXTURECUBE    0x04
@@ -138,7 +143,7 @@ typedef enum
 #define D3D10_RESOURCE_DIMENSION_TEXTURE2D 3
 #define D3D10_RESOURCE_DIMENSION_TEXTURE3D 4
 
-typedef struct __attribute__((packed))
+typedef struct
 {
    unsigned int size;
    unsigned int flags;
@@ -150,14 +155,14 @@ typedef struct __attribute__((packed))
    unsigned int amask;
 } dds_pixel_format_t;
 
-typedef struct __attribute__((packed))
+typedef struct
 {
    unsigned int caps1;
    unsigned int caps2;
    unsigned int reserved[2];
 } dds_caps_t;
 
-typedef struct __attribute__((packed))
+typedef struct
 {
    char magic[4];
    unsigned int size;
@@ -167,7 +172,17 @@ typedef struct __attribute__((packed))
    unsigned int pitch_or_linsize;
    unsigned int depth;
    unsigned int num_mipmaps;
-   unsigned char reserved[4 * 11];
+   union
+   {
+      struct
+      {
+         unsigned int magic1;   // FOURCC "GIMP"
+         unsigned int magic2;   // FOURCC " DDS"
+         unsigned int version;
+         unsigned int extra_fourcc;
+      } gimp_dds_special;
+      unsigned char pad[4 * 11];
+   } reserved;
    dds_pixel_format_t pixelfmt;
    dds_caps_t caps;
    unsigned int reserved2;
@@ -277,7 +292,7 @@ typedef enum DXGI_FORMAT {
    DXGI_FORMAT_FORCE_UINT                   = 0xffffffffUL 
 } DXGI_FORMAT;
 
-typedef struct __attribute__((packed))
+typedef struct
 {
    DXGI_FORMAT dxgiFormat;
    unsigned int resourceDimension;

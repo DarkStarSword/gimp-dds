@@ -1271,16 +1271,24 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    
    memset(hdr, 0, DDS_HEADERSIZE);
    
-   memcpy(hdr, "DDS ", 4);
-   PUTL32(hdr + 4, 124);
-   PUTL32(hdr + 12, h);
-   PUTL32(hdr + 16, w);
-   PUTL32(hdr + 76, 32);
-   PUTL32(hdr + 88, fmtbpp << 3);
+   PUTL32(hdr,       FOURCC('D','D','S',' '));
+   PUTL32(hdr + 4,   124);
+   PUTL32(hdr + 12,  h);
+   PUTL32(hdr + 16,  w);
+   PUTL32(hdr + 76,  32);
+   PUTL32(hdr + 88,  fmtbpp << 3);
    PUTL32(hdr + 92,  rmask);
    PUTL32(hdr + 96,  gmask);
    PUTL32(hdr + 100, bmask);
    PUTL32(hdr + 104, amask);
+   
+   /*
+    put some information in the reserved area to identify the origin
+    of the image
+   */
+   PUTL32(hdr + 32,  FOURCC('G','I','M','P'));
+   PUTL32(hdr + 36,  FOURCC(' ','D','D','S'));
+   PUTL32(hdr + 40,  DDS_PLUGIN_VERSION);
    
    flags = DDSD_CAPS | DDSD_PIXELFORMAT | DDSD_WIDTH | DDSD_HEIGHT;
      
@@ -1300,13 +1308,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    if(dds_write_vals.savetype == DDS_SAVE_CUBEMAP && is_cubemap)
    {
       caps |= DDSCAPS_COMPLEX;
-      caps2 |= (DDSCAPS2_CUBEMAP |
-                DDSCAPS2_CUBEMAP_POSITIVEX |
-                DDSCAPS2_CUBEMAP_NEGATIVEX |
-                DDSCAPS2_CUBEMAP_POSITIVEY |
-                DDSCAPS2_CUBEMAP_NEGATIVEY |
-                DDSCAPS2_CUBEMAP_POSITIVEZ |
-                DDSCAPS2_CUBEMAP_NEGATIVEZ);
+      caps2 |= (DDSCAPS2_CUBEMAP | DDSCAPS2_CUBEMAP_ALL_FACES);
    }
    else if(dds_write_vals.savetype == DDS_SAVE_VOLUMEMAP && is_volume)
    {
@@ -1316,7 +1318,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
       caps2 |= DDSCAPS2_VOLUME;
    }
    
-   PUTL32(hdr + 28, num_mipmaps);
+   PUTL32(hdr + 28,  num_mipmaps);   
    PUTL32(hdr + 108, caps);
    PUTL32(hdr + 112, caps2);
    
@@ -1357,6 +1359,20 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
       PUTL32(hdr + 8, flags);
       PUTL32(hdr + 20, w * fmtbpp);
       PUTL32(hdr + 80, pflags);
+      
+      /*
+       write extra fourcc info - this is special to GIMP DDS. When the image
+       is read by the plugin, we can detect the added information to decode
+       the pixels
+      */
+      if(dds_write_vals.format == DDS_FORMAT_AEXP)
+      {
+         PUTL32(hdr + 44, FOURCC('A','E','X','P'));
+      }
+      else if(dds_write_vals.format == DDS_FORMAT_YCOCG)
+      {
+         PUTL32(hdr + 44, FOURCC('Y','C','G','1'));
+      }
    }
    else
    {
@@ -1390,6 +1406,24 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
          size *= 16;
 
       PUTL32(hdr + 20, size);
+      
+      /*
+       write extra fourcc info - this is special to GIMP DDS. When the image
+       is read by the plugin, we can detect the added information to decode
+       the pixels
+      */
+      if(dds_write_vals.compression == DDS_COMPRESS_AEXP)
+      {
+         PUTL32(hdr + 44, FOURCC('A','E','X','P'));
+      }
+      else if(dds_write_vals.compression == DDS_COMPRESS_YCOCG)
+      {
+         PUTL32(hdr + 44, FOURCC('Y','C','G','1'));
+      }
+      else if(dds_write_vals.compression == DDS_COMPRESS_YCOCGS)
+      {
+         PUTL32(hdr + 44, FOURCC('Y','C','G','2'));
+      }
    }
 
    fwrite(hdr, DDS_HEADERSIZE, 1, fp);

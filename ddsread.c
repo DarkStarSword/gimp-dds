@@ -41,6 +41,7 @@
 #include "dds.h"
 #include "dxt.h"
 #include "endian.h"
+#include "misc.h"
 
 typedef struct
 {
@@ -435,6 +436,16 @@ static int read_header(dds_header_t *hdr, FILE *fp)
    hdr->caps.caps1 = GETL32(buf + 108);
    hdr->caps.caps2 = GETL32(buf + 112);
    
+   /* GIMP-DDS special info */
+   if(GETL32(buf + 32) == FOURCC('G','I','M','P') &&
+      GETL32(buf + 36) == FOURCC(' ','D','D','S'))
+   {
+      hdr->reserved.gimp_dds_special.magic1 = GETL32(buf + 32);
+      hdr->reserved.gimp_dds_special.magic2 = GETL32(buf + 36);
+      hdr->reserved.gimp_dds_special.version = GETL32(buf + 40);
+      hdr->reserved.gimp_dds_special.extra_fourcc = GETL32(buf + 44);
+   }
+   
    return(1);
 }
 
@@ -458,6 +469,8 @@ static int read_header_dx10(dds_header_dx10_t *hdr, FILE *fp)
 
 static int validate_header(dds_header_t *hdr)
 {
+   unsigned int fourcc;
+   
    if(memcmp(hdr->magic, "DDS ", 4))
    {
       g_message("Invalid DDS file.\n");
@@ -480,12 +493,14 @@ static int validate_header(dds_header_t *hdr)
       return(0);
    }
 */   
+   fourcc = GETL32(hdr->pixelfmt.fourcc);
+
    if((hdr->pixelfmt.flags & DDPF_FOURCC) &&
-      memcmp(hdr->pixelfmt.fourcc, "DXT1", 4) &&
-      memcmp(hdr->pixelfmt.fourcc, "DXT3", 4) &&
-      memcmp(hdr->pixelfmt.fourcc, "DXT5", 4) &&
-      memcmp(hdr->pixelfmt.fourcc, "ATI1", 4) &&
-      memcmp(hdr->pixelfmt.fourcc, "ATI2", 4))
+      fourcc != FOURCC('D','X','T','1') &&
+      fourcc != FOURCC('D','X','T','3') &&
+      fourcc != FOURCC('D','X','T','5') &&
+      fourcc != FOURCC('A','T','I','1') &&
+      fourcc != FOURCC('A','T','I','2'))
    {
       g_message("Invalid compression format.\n"
                 "Only DXT1, DXT3, DXT5, ATI1N and ATI2N formats are supported.\n");
@@ -525,13 +540,13 @@ static int validate_header(dds_header_t *hdr)
       !(hdr->pixelfmt.flags & DDPF_LUMINANCE))
    {
       g_message("Unknown pixel format!  Taking a guess, expect trouble!");
-      switch(GETL32(hdr->pixelfmt.fourcc))
+      switch(fourcc)
       {
-         case FOURCC('D', 'X', 'T', '1'):
-         case FOURCC('D', 'X', 'T', '3'):
-         case FOURCC('D', 'X', 'T', '5'):
-         case FOURCC('A', 'T', 'I', '1'):
-         case FOURCC('A', 'T', 'I', '2'):
+         case FOURCC('D','X','T','1'):
+         case FOURCC('D','X','T','3'):
+         case FOURCC('D','X','T','5'):
+         case FOURCC('A','T','I','1'):
+         case FOURCC('A','T','I','2'):
             hdr->pixelfmt.flags |= DDPF_FOURCC;
             break;
          default:
@@ -633,11 +648,11 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
       
       switch(GETL32(hdr->pixelfmt.fourcc))
       {
-         case FOURCC('D', 'X', 'T', '1'): format = DDS_COMPRESS_BC1; break;
-         case FOURCC('D', 'X', 'T', '3'): format = DDS_COMPRESS_BC2; break;
-         case FOURCC('D', 'X', 'T', '5'): format = DDS_COMPRESS_BC3; break;
-         case FOURCC('A', 'T', 'I', '1'): format = DDS_COMPRESS_BC4; break;
-         case FOURCC('A', 'T', 'I', '2'): format = DDS_COMPRESS_BC5; break;
+         case FOURCC('D','X','T','1'): format = DDS_COMPRESS_BC1; break;
+         case FOURCC('D','X','T','3'): format = DDS_COMPRESS_BC2; break;
+         case FOURCC('D','X','T','5'): format = DDS_COMPRESS_BC3; break;
+         case FOURCC('A','T','I','1'): format = DDS_COMPRESS_BC4; break;
+         case FOURCC('A','T','I','2'): format = DDS_COMPRESS_BC5; break;
       }
 
       size = w * h;
@@ -826,6 +841,26 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
       g_free(dst);
    }
    
+   /* gimp dds specific.  decode encoded images */
+   if(hdr->reserved.gimp_dds_special.magic1 == FOURCC('G','I','M','P') &&
+      hdr->reserved.gimp_dds_special.magic2 == FOURCC(' ','D','D','S'))
+   {
+      switch(hdr->reserved.gimp_dds_special.extra_fourcc)
+      {
+         case FOURCC('A','E','X','P'):
+            decode_alpha_exp_image(drawable->drawable_id);
+            break;
+         case FOURCC('Y','C','G','1'):
+            decode_ycocg_image(drawable->drawable_id);
+            break;
+         case FOURCC('Y','C','G','2'):
+            decode_ycocg_scaled_image(drawable->drawable_id);
+            break;
+         default:
+            break;
+      }
+   }
+
    gimp_drawable_flush(drawable);
    gimp_drawable_detach(drawable);
    

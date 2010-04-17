@@ -23,6 +23,15 @@
 #ifndef __DDSPLUGIN_H
 #define __DDSPLUGIN_H
 
+#define DDS_PLUGIN_VERSION_MAJOR     2
+#define DDS_PLUGIN_VERSION_MINOR     0
+#define DDS_PLUGIN_VERSION_REVISION  10
+
+#define DDS_PLUGIN_VERSION  \
+   ((unsigned int)(DDS_PLUGIN_VERSION_MAJOR << 16) | \
+    (unsigned int)(DDS_PLUGIN_VERSION_MINOR <<  8) | \
+    (unsigned int)(DDS_PLUGIN_VERSION_REVISION))
+
 typedef struct
 {
 	int compression;
