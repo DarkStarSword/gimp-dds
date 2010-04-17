@@ -589,10 +589,9 @@ static void convert_pixels(unsigned char *dst, unsigned char *src,
             dst[4 * i + 3] = a;
             break;
          case DDS_FORMAT_BGR8:
-            dst[4 * i + 0] = r;
-            dst[4 * i + 1] = g;
-            dst[4 * i + 2] = b;
-            dst[4 * i + 3] = 255;
+            dst[3 * i + 0] = r;
+            dst[3 * i + 1] = g;
+            dst[3 * i + 2] = b;
             break;
          case DDS_FORMAT_ABGR8:
             dst[4 * i + 0] = r;
@@ -758,9 +757,6 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
       g_free(src);
       src = fmtdst;
       bpp = 4;
-      
-      if(compression == DDS_COMPRESS_YCOCG)
-         compression = DDS_COMPRESS_BC3;
    }
    
    if(compression == DDS_COMPRESS_AEXP)
@@ -772,8 +768,6 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
       g_free(src);
       src = fmtdst;
       bpp = 4;
-      
-      compression = DDS_COMPRESS_BC3;
    }
    
    if(compression == DDS_COMPRESS_NONE)

@@ -1146,6 +1146,8 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
             compress_DXT3(dst + offset, s, w, h, type, dither);
             break;
          case DDS_COMPRESS_BC3:
+         case DDS_COMPRESS_AEXP:
+         case DDS_COMPRESS_YCOCG:
             compress_DXT5(dst + offset, s, w, h, type, dither);
             break;
          case DDS_COMPRESS_BC4:
