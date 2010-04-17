@@ -29,20 +29,16 @@
 int linear_to_sRGB(int c);
 int sRGB_to_linear(int c);
 
-/* YCoCg encoding/decoding */
-static inline int RGB_to_YCoCg_Y (int r, int g, int b)
+/* YCoCg encoding */
+static inline void RGB_to_YCoCg(unsigned char *dst, int r, int g, int b)
 {
-   return(((r + (g << 1) + b) + 2) >> 2);
-}
-
-static inline int RGB_to_YCoCg_Co(int r, int g, int b)
-{
-   return((((r << 1) - (b << 1)) + 2) >> 2);
-}
-
-static inline int RGB_to_YCoCg_Cg(int r, int g, int b)
-{
-   return(((-r + (g << 1) - b) + 2) >> 2);
+   int y  = ((r +     (g << 1) + b) + 2) >> 2;
+   int co = ((((r << 1) - (b << 1)) + 2) >> 2) + 128;
+   int cg = (((-r +   (g << 1) - b) + 2) >> 2) + 128;
+   
+   dst[0] = (cg > 255 ? 255 : (cg < 0 ? 0 : cg));
+   dst[1] = (co > 255 ? 255 : (co < 0 ? 0 : co));
+   dst[2] = (y  > 255 ? 255 : (y  < 0 ? 0 :  y));
 }
 
 /* other color conversions */

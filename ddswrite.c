@@ -626,15 +626,9 @@ static void convert_pixels(unsigned char *dst, unsigned char *src,
             dst[2 * i + 1] = a;
             break;
          case DDS_FORMAT_YCOCG:
-         {
-            int co = RGB_to_YCoCg_Co(r, g, b) + 128;
-            int cg = RGB_to_YCoCg_Cg(r, g, b) + 128;
-            dst[4 * i + 0] = a;
-            dst[4 * i + 1] = MAX(0, MIN(255, cg));
-            dst[4 * i + 2] = MAX(0, MIN(255, co));
-            dst[4 * i + 3] = RGB_to_YCoCg_Y(r, g, b);
+            dst[4 * i] = a;
+            RGB_to_YCoCg(&dst[4 * i + 1], r, g, b);
             break;
-         }
          case DDS_FORMAT_AEXP:
             alpha_exp(&dst[4 * i], r, g, b, a);
             break;
