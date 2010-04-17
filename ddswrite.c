@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #include <gtk/gtk.h>
 
@@ -511,18 +512,23 @@ static void alpha_exp(unsigned char *dst, int r, int g, int b, int a)
       dst[0] = b;
       dst[1] = g;
       dst[2] = r;
-      dst[3] = a;
+      dst[3] = 255;
       return;
    }
    
    ar /= aa;
    ag /= aa;
    ab /= aa;
+   
+   r = (int)floorf(255.0f * ar + 0.5f);
+   g = (int)floorf(255.0f * ag + 0.5f);
+   b = (int)floorf(255.0f * ab + 0.5f);
+   a = (int)floorf(255.0f * aa + 0.5f);
 
-   dst[0] = (int)(ab * 255);
-   dst[1] = (int)(ag * 255);
-   dst[2] = (int)(ar * 255);
-   dst[3] = (int)(aa * a);
+   dst[0] = MAX(0, MIN(255, b));
+   dst[1] = MAX(0, MIN(255, g));
+   dst[2] = MAX(0, MIN(255, r));
+   dst[3] = MAX(0, MIN(255, a));
 }
 
 static void convert_pixels(unsigned char *dst, unsigned char *src,
