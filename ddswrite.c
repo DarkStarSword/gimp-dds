@@ -111,20 +111,20 @@ static string_value_t compression_strings[] =
 static string_value_t format_strings[] =
 {
    {DDS_FORMAT_DEFAULT, "Default"},
-   {DDS_FORMAT_RGB8, "RGB8"},
-   {DDS_FORMAT_RGBA8, "RGBA8"},
-   {DDS_FORMAT_BGR8, "BGR8"},
-   {DDS_FORMAT_ABGR8, "ABGR8"},
-   {DDS_FORMAT_R5G6B5, "R5G6B5"},
-   {DDS_FORMAT_RGBA4, "RGBA4"},
-   {DDS_FORMAT_RGB5A1, "RGB5A1"},
+   {DDS_FORMAT_RGB8,    "RGB8"},
+   {DDS_FORMAT_RGBA8,   "RGBA8"},
+   {DDS_FORMAT_BGR8,    "BGR8"},
+   {DDS_FORMAT_ABGR8,   "ABGR8"},
+   {DDS_FORMAT_R5G6B5,  "R5G6B5"},
+   {DDS_FORMAT_RGBA4,   "RGBA4"},
+   {DDS_FORMAT_RGB5A1,  "RGB5A1"},
    {DDS_FORMAT_RGB10A2, "RGB10A2"},
-   {DDS_FORMAT_R3G3B2, "R3G3B2"},
-   {DDS_FORMAT_A8, "A8"},
-   {DDS_FORMAT_L8, "L8"},
-   {DDS_FORMAT_L8A8, "L8A8"},
-   {DDS_FORMAT_AEXP, "AExp"},
-   {DDS_FORMAT_YCOCG, "YCoCg"},
+   {DDS_FORMAT_R3G3B2,  "R3G3B2"},
+   {DDS_FORMAT_A8,      "A8"},
+   {DDS_FORMAT_L8,      "L8"},
+   {DDS_FORMAT_L8A8,    "L8A8"},
+   {DDS_FORMAT_AEXP,    "AExp"},
+   {DDS_FORMAT_YCOCG,   "YCoCg"},
    {-1, 0}
 };
 

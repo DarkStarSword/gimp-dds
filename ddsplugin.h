@@ -51,6 +51,7 @@ typedef struct
 {
    int show_dialog;
    int mipmaps;
+   int decode_images;
 } DDSReadVals;
 
 extern DDSWriteVals dds_write_vals;

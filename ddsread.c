@@ -848,7 +848,8 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
    }
    
    /* gimp dds specific.  decode encoded images */
-   if(hdr->reserved.gimp_dds_special.magic1 == FOURCC('G','I','M','P') &&
+   if(dds_read_vals.decode_images &&
+      hdr->reserved.gimp_dds_special.magic1 == FOURCC('G','I','M','P') &&
       hdr->reserved.gimp_dds_special.magic2 == FOURCC(' ','D','D','S'))
    {
       switch(hdr->reserved.gimp_dds_special.extra_fourcc)
@@ -968,6 +969,13 @@ static int load_dialog(void)
    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check), dds_read_vals.mipmaps);
    gtk_signal_connect(GTK_OBJECT(check), "clicked",
                       GTK_SIGNAL_FUNC(toggle_clicked), &dds_read_vals.mipmaps);
+   gtk_box_pack_start(GTK_BOX(vbox), check, 1, 1, 0);
+   gtk_widget_show(check);
+   
+   check = gtk_check_button_new_with_label("Automatically decode YCoCg/AExp images when detected");
+   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check), dds_read_vals.decode_images);
+   gtk_signal_connect(GTK_OBJECT(check), "clicked",
+                      GTK_SIGNAL_FUNC(toggle_clicked), &dds_read_vals.decode_images);
    gtk_box_pack_start(GTK_BOX(vbox), check, 1, 1, 0);
    gtk_widget_show(check);
 

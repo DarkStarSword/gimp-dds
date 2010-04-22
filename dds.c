@@ -57,7 +57,7 @@ DDSWriteVals dds_write_vals =
 
 DDSReadVals dds_read_vals =
 {
-   1, 1
+   1, 1, 1
 };
 
 static GimpParamDef load_args[] =
@@ -65,7 +65,8 @@ static GimpParamDef load_args[] =
    {GIMP_PDB_INT32, "run_mode", "Interactive, non-interactive"},
    {GIMP_PDB_STRING, "filename", "The name of the file to load"},
    {GIMP_PDB_STRING, "raw_filename", "The name entered"},
-   {GIMP_PDB_INT32, "load_mipmaps", "Load mipmaps if present"}
+   {GIMP_PDB_INT32, "load_mipmaps", "Load mipmaps if present"},
+   {GIMP_PDB_INT32, "decode_images", "Decode YCoCg/AExp images when detected"}
 };
 static GimpParamDef load_return_vals[] =
 {
