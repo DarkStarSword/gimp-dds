@@ -411,6 +411,31 @@ static int check_mipmap_chain_consitency(gint32 image_id)
    return(mipmaps == num_layers);
 }
 
+static gint32 get_mipmap0_drawable_id(gint32 image_id)
+{
+   gint *layers, num_layers;
+   GimpDrawable *drawable = NULL;
+   int i, max_w = 0, max_h = 0;
+   gint32 max_layer_id = -1;
+
+   layers = gimp_image_get_layers(image_id, &num_layers);
+   
+   /* find largest layer */
+   for(i = 0; i < num_layers; ++i)
+   {
+      drawable = gimp_drawable_get(layers[i]);
+      if((drawable->width * drawable->height) > (max_w * max_h))
+      {
+         max_w = drawable->width;
+         max_h = drawable->height;
+         max_layer_id = drawable->drawable_id;
+      }
+      gimp_drawable_detach(drawable);
+   }
+
+   return(max_layer_id);
+}
+
 GimpPDBStatusType write_dds(gchar *filename, gint32 image_id, gint32 drawable_id)
 {
    FILE *fp;
@@ -421,13 +446,22 @@ GimpPDBStatusType write_dds(gchar *filename, gint32 image_id, gint32 drawable_id
 
    is_cubemap = check_cubemap(image_id);
    is_volume = check_volume(image_id);
-      
+
+   /*
+    a valid mipmap chain was detected, and user wants to save with
+    existing mipmaps.  Override the drawable_id passed and find the
+    drawable_id of the top level (largest) mipmap layer.
+   */
+   if(is_mipmap_chain_valid &&
+      dds_write_vals.mipmaps == DDS_MIPMAP_EXISTING)
+      drawable_id = get_mipmap0_drawable_id(image_id);
+   
    if(interactive_dds)
    {
       if(!is_mipmap_chain_valid &&
          dds_write_vals.mipmaps == DDS_MIPMAP_EXISTING)
          dds_write_vals.mipmaps = DDS_MIPMAP_NONE;
-
+      
       if(!save_dialog(image_id, drawable_id))
          return(GIMP_PDB_CANCEL);
    }
