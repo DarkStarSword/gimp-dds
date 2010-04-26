@@ -28,6 +28,6 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
                  int mipmaps, int type, int dither);
 int dxt_decompress(unsigned char *dst, unsigned char *src, int format,
                    unsigned int size, unsigned int width, unsigned int height,
-                   int bpp);
+                   int bpp, int normals);
 
 #endif

@@ -80,7 +80,7 @@ static GimpParamDef save_args[] =
    {GIMP_PDB_DRAWABLE, "drawable", "Drawable to save"},
    {GIMP_PDB_STRING, "filename", "The name of the file to save the image as"},
    {GIMP_PDB_STRING, "raw_filename", "The name entered"},
-   {GIMP_PDB_INT32, "compression_format", "Compression format (0 = None, 1 = BC1/DXT1, 2 = BC2/DXT3, 3 = BC3/DXT5, 4 = BC3n/DXT5n, 5 = BC4/ATI1N, 6 = BC5/ATI2N, 7 = Alpha Exponent (DXT5), 8 = YCoCg (DXT5), 9 = YCoCg scaled (DXT5))"},
+   {GIMP_PDB_INT32, "compression_format", "Compression format (0 = None, 1 = BC1/DXT1, 2 = BC2/DXT3, 3 = BC3/DXT5, 4 = BC3n/DXT5nm, 5 = BC4/ATI1N, 6 = BC5/ATI2N, 7 = RXGB (DXT5), 8 = Alpha Exponent (DXT5), 9 = YCoCg (DXT5), 10 = YCoCg scaled (DXT5))"},
    {GIMP_PDB_INT32, "mipmaps", "How to handle mipmaps (0 = No mipmaps, 1 = Generate mipmaps, 2 = Use existing mipmaps (layers)"},
    {GIMP_PDB_INT32, "savetype", "How to save the image (0 = selected layer, 1 = cube map, 2 = volume map"},
    {GIMP_PDB_INT32, "format", "Custom pixel format (0 = default, 1 = R5G6B5, 2 = RGBA4, 3 = RGB5A1, 4 = RGB10A2)"},

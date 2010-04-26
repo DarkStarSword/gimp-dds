@@ -42,6 +42,7 @@
 #include "dxt.h"
 #include "endian.h"
 #include "misc.h"
+#include "imath.h"
 
 typedef struct
 {
@@ -149,7 +150,7 @@ GimpPDBStatusType read_dds(gchar *filename, gint32 *imageID)
    {
       if(hdr.pixelfmt.flags & DDPF_FOURCC)
       {      
-         if(hdr.pixelfmt.fourcc[0] == 'D')
+         if(hdr.pixelfmt.fourcc[1] == 'X')
             hdr.pixelfmt.flags |= DDPF_ALPHAPIXELS;
       }
    
@@ -444,7 +445,7 @@ static int read_header(dds_header_t *hdr, FILE *fp)
    
    /* GIMP-DDS special info */
    if(GETL32(buf + 32) == FOURCC('G','I','M','P') &&
-      GETL32(buf + 36) == FOURCC(' ','D','D','S'))
+      GETL32(buf + 36) == FOURCC('-','D','D','S'))
    {
       hdr->reserved.gimp_dds_special.magic1 = GETL32(buf + 32);
       hdr->reserved.gimp_dds_special.magic2 = GETL32(buf + 36);
@@ -505,6 +506,7 @@ static int validate_header(dds_header_t *hdr)
       fourcc != FOURCC('D','X','T','1') &&
       fourcc != FOURCC('D','X','T','3') &&
       fourcc != FOURCC('D','X','T','5') &&
+      fourcc != FOURCC('R','X','G','B') &&
       fourcc != FOURCC('A','T','I','1') &&
       fourcc != FOURCC('A','T','I','2'))
    {
@@ -551,6 +553,7 @@ static int validate_header(dds_header_t *hdr)
          case FOURCC('D','X','T','1'):
          case FOURCC('D','X','T','3'):
          case FOURCC('D','X','T','5'):
+         case FOURCC('R','X','G','B'):
          case FOURCC('A','T','I','1'):
          case FOURCC('A','T','I','2'):
             hdr->pixelfmt.flags |= DDPF_FOURCC;
@@ -657,6 +660,7 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
          case FOURCC('D','X','T','1'): format = DDS_COMPRESS_BC1; break;
          case FOURCC('D','X','T','3'): format = DDS_COMPRESS_BC2; break;
          case FOURCC('D','X','T','5'): format = DDS_COMPRESS_BC3; break;
+         case FOURCC('R','X','G','B'): format = DDS_COMPRESS_BC3; break;
          case FOURCC('A','T','I','1'): format = DDS_COMPRESS_BC4; break;
          case FOURCC('A','T','I','2'): format = DDS_COMPRESS_BC5; break;
       }
@@ -817,13 +821,14 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
       
       if(d->gimp_bpp == 4)
       {
-        for(y = 0; y < height; ++y)
+         for(y = 0; y < height; ++y)
             for(x = 0; x < width; ++x)
-               dst[y * (width * 4) + x + 3] = 255;
+               dst[y * (width * 4) + (x * 4) + 3] = 255;
       }
          
-      dxt_decompress(dst, buf, format, size, width, height, d->gimp_bpp);
-      
+      dxt_decompress(dst, buf, format, size, width, height, d->gimp_bpp,
+                     hdr->pixelfmt.flags & DDPF_NORMAL);
+                  
       z = 0;
       for(y = 0, n = 0; y < height; ++y, ++n)
       {
@@ -850,7 +855,7 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
    /* gimp dds specific.  decode encoded images */
    if(dds_read_vals.decode_images &&
       hdr->reserved.gimp_dds_special.magic1 == FOURCC('G','I','M','P') &&
-      hdr->reserved.gimp_dds_special.magic2 == FOURCC(' ','D','D','S'))
+      hdr->reserved.gimp_dds_special.magic2 == FOURCC('-','D','D','S'))
    {
       switch(hdr->reserved.gimp_dds_special.extra_fourcc)
       {

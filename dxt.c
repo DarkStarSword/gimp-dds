@@ -1148,6 +1148,7 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
             break;
          case DDS_COMPRESS_BC3:
          case DDS_COMPRESS_BC3N:
+         case DDS_COMPRESS_RXGB:
          case DDS_COMPRESS_AEXP:
          case DDS_COMPRESS_YCOCG:
             compress_DXT5(dst + offset, s, w, h, type, dither);
@@ -1176,12 +1177,12 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
    return(1);
 }
 
-static void decode_color_block(unsigned char *dst, unsigned char *src,
-                               int w, int h, int rowbytes, int format)
+static void decode_color_block(unsigned char *block, unsigned char *src,
+                               int format)
 {
    int i, x, y;
+   unsigned char *d = block;
    unsigned int indexes, idx;
-   unsigned char *d;
    unsigned char colors[4][3];
    unsigned short c0, c1;
    
@@ -1206,11 +1207,10 @@ static void decode_color_block(unsigned char *dst, unsigned char *src,
    }
    
    src += 4;
-   for(y = 0; y < h; ++y)
+   for(y = 0; y < 4; ++y)
    {
-      d = dst + (y * rowbytes);
       indexes = src[y];
-      for(x = 0; x < w; ++x)
+      for(x = 0; x < 4; ++x)
       {
          idx = indexes & 0x03;
          d[0] = colors[idx][2];
@@ -1224,18 +1224,16 @@ static void decode_color_block(unsigned char *dst, unsigned char *src,
    }
 }
 
-static void decode_alpha_block_DXT3(unsigned char *dst, unsigned char *src,
-                                    int w, int h, int rowbytes)
+static void decode_alpha_block_DXT3(unsigned char *block, unsigned char *src)
 {
    int x, y;
-   unsigned char *d;
+   unsigned char *d = block;
    unsigned int bits;
    
-   for(y = 0; y < h; ++y)
+   for(y = 0; y < 4; ++y)
    {
-      d = dst + (y * rowbytes);
       bits = GETL16(&src[2 * y]);
-      for(x = 0; x < w; ++x)
+      for(x = 0; x < 4; ++x)
       {
          d[0] = (bits & 0x0f) * 17;
          bits >>= 4;
@@ -1244,19 +1242,17 @@ static void decode_alpha_block_DXT3(unsigned char *dst, unsigned char *src,
    }
 }
 
-static void decode_alpha_block_DXT5(unsigned char *dst, unsigned char *src,
-                                    int w, int h, int bpp, int rowbytes)
+static void decode_alpha_block_DXT5(unsigned char *block, unsigned char *src, int w)
 {
    int x, y, code;
-   unsigned char *d;
+   unsigned char *d = block;
    unsigned char a0 = src[0];
    unsigned char a1 = src[1];
    unsigned long long bits = GETL64(src) >> 16;
    
-   for(y = 0; y < h; ++y)
+   for(y = 0; y < 4; ++y)
    {
-      d = dst + (y * rowbytes);
-      for(x = 0; x < w; ++x)
+      for(x = 0; x < 4; ++x)
       {
          code = ((unsigned int)bits) & 0x07;
          if(code == 0)
@@ -1270,18 +1266,82 @@ static void decode_alpha_block_DXT5(unsigned char *dst, unsigned char *src,
          else
             d[0] = ((6 - code) * a0 + (code - 1) * a1) / 5;
          bits >>= 3;
-         d += bpp;
+         d += 4;
       }
       if(w < 4) bits >>= (3 * (4 - w));
    }
 }
 
+static void make_normal(unsigned char *dst, unsigned char x, unsigned char y)
+{
+   float nx = 2.0f * ((float)x / 255.0f) - 1.0f;
+   float ny = 2.0f * ((float)y / 255.0f) - 1.0f;
+   float nz = 0.0f;
+   float d = 1.0f - nx * nx + ny * ny;
+   int z;
+   
+   if(d > 0) nz = sqrtf(d);
+   
+   z = (int)(255.0f * (nz + 1) / 2.0f);
+   z = MAX(0, MIN(255, z));
+   
+   dst[0] = x;
+   dst[1] = y;
+   dst[2] = z;
+}
+
+static void normalize_block(unsigned char *block, int format)
+{
+   int x, y, tmp;
+   
+   for(y = 0; y < 4; ++y)
+   {
+      for(x = 0; x < 4; ++x)
+      {
+         if(format == DDS_COMPRESS_BC3)
+         {
+            tmp = block[y * 16 + (x * 4)];
+            make_normal(&block[y * 16 + (x * 4)],
+                        block[y * 16 + (x * 4) + 3],
+                        block[y * 16 + (x * 4) + 1]);
+            block[y * 16 + (x * 4) + 3] = tmp;
+         }
+         else if(format == DDS_COMPRESS_BC5)
+         {
+            make_normal(&block[y * 16 + (x * 4)],
+                        block[y * 16 + (x * 4)],
+                        block[y * 16 + (x * 4) + 1]);
+         }
+      }
+   }
+}
+
+static void put_block(unsigned char *dst, unsigned char *block,
+                      unsigned int bx, unsigned int by,
+                      unsigned int width, unsigned height,
+                      int bpp)
+{
+   int x, y, i;
+   unsigned char *d;
+   
+   for(y = 0; y < 4; ++y)
+   {
+      d = dst + ((y + by) * width + bx) * bpp;
+      for(x = 0; x < 4; ++x)
+      {
+         for(i = 0; i < bpp; ++ i)
+            *d++ = block[y * 16 + (x * 4) + i];
+      }
+   }
+}
+
 int dxt_decompress(unsigned char *dst, unsigned char *src, int format,
                    unsigned int size, unsigned int width, unsigned int height,
-                   int bpp)
+                   int bpp, int normals)
 {
-   unsigned char *d, *s;
-   unsigned int x, y, sx, sy;
+   unsigned char *s;
+   unsigned int i, x, y, sx, sy;
+   unsigned char block[16 * 4];
    
    if(!(IS_MUL4(width) && IS_MUL4(height)))
       return(0);
@@ -1295,37 +1355,45 @@ int dxt_decompress(unsigned char *dst, unsigned char *src, int format,
    {
       for(x = 0; x < width; x += 4)
       {
-         d = dst + (y * width + x) * bpp;
+         memset(block, 0, 16 * 4);
+         for(i = 0; i < 16 * 4; i += 4)
+            block[i + 3] = 255;
+         
          if(format == DDS_COMPRESS_BC1)
          {
-            decode_color_block(d, s, sx, sy, width * bpp, format);
+            decode_color_block(block, s, format);
             s += 8;
          }
          else if(format == DDS_COMPRESS_BC2)
          {
-            decode_alpha_block_DXT3(d + 3, s, sx, sy, width * bpp);
+            decode_alpha_block_DXT3(block + 3, s);
             s += 8;
-            decode_color_block(d, s, sx, sy, width * bpp, format);
+            decode_color_block(block, s, format);
             s += 8;
          }
          else if(format == DDS_COMPRESS_BC3)
          {
-            decode_alpha_block_DXT5(d + 3, s, sx, sy, bpp, width * bpp);
+            decode_alpha_block_DXT5(block + 3, s, width);
             s += 8;
-            decode_color_block(d, s, sx, sy, width * bpp, format);
+            decode_color_block(block, s, format);
             s += 8;
          }
          else if(format == DDS_COMPRESS_BC4)
          {
-            decode_alpha_block_DXT5(d, s, sx, sy, bpp, width * bpp);
+            decode_alpha_block_DXT5(block, s, width);
             s += 8;
          }
          else if(format == DDS_COMPRESS_BC5)
          {
-            decode_alpha_block_DXT5(d, s + 8, sx, sy, bpp, width * bpp);
-            decode_alpha_block_DXT5(d + 1, s, sx, sy, bpp, width * bpp);
+            decode_alpha_block_DXT5(block, s + 8, width);
+            decode_alpha_block_DXT5(block + 1, s, width);
             s += 16;
          }
+         
+         if(normals)
+            normalize_block(block, format);
+         
+         put_block(dst, block, x, y, width, height, bpp);
       }
    }
    

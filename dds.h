@@ -38,6 +38,7 @@ typedef enum
    DDS_COMPRESS_BC3N,       /* DXT5n */
    DDS_COMPRESS_BC4,        /* ATI1  */
    DDS_COMPRESS_BC5,        /* ATI2  */
+   DDS_COMPRESS_RXGB,       /* DXT5  */
    DDS_COMPRESS_AEXP,       /* DXT5  */
    DDS_COMPRESS_YCOCG,      /* DXT5  */
    DDS_COMPRESS_YCOCGS,     /* DXT5  */
@@ -118,6 +119,7 @@ typedef enum
 #define DDPF_PALETTEINDEXED8       0x00000020
 #define DDPF_RGB                   0x00000040
 #define DDPF_LUMINANCE             0x00020000
+#define DDPF_NORMAL                0x80000000  // nvidia specific
 
 #define DDSCAPS_COMPLEX            0x00000008
 #define DDSCAPS_TEXTURE            0x00001000
@@ -177,7 +179,7 @@ typedef struct
       struct
       {
          unsigned int magic1;   // FOURCC "GIMP"
-         unsigned int magic2;   // FOURCC " DDS"
+         unsigned int magic2;   // FOURCC "-DDS"
          unsigned int version;
          unsigned int extra_fourcc;
       } gimp_dds_special;

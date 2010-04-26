@@ -85,7 +85,6 @@ static GtkWidget *dither_chk;
 static GtkWidget *mipmap_filter_opt;
 static GtkWidget *gamma_chk;
 static GtkWidget *gamma_spin;
-static GtkWidget *mipmap_old = NULL;
 
 typedef struct string_value_s
 {
@@ -102,6 +101,7 @@ static string_value_t compression_strings[] =
    {DDS_COMPRESS_BC3N,   "BC3nm / DXT5nm"},
    {DDS_COMPRESS_BC4,    "BC4 / ATI1 (3Dc+)"},
    {DDS_COMPRESS_BC5,    "BC5 / ATI2 (3Dc)"},
+   {DDS_COMPRESS_RXGB,   "RXGB (DXT5)"},
    {DDS_COMPRESS_AEXP,   "Alpha Exponent (DXT5)"},
    {DDS_COMPRESS_YCOCG,  "YCoCg (DXT5)"},
    {DDS_COMPRESS_YCOCGS, "YCoCg scaled (DXT5)"},
@@ -125,6 +125,14 @@ static string_value_t format_strings[] =
    {DDS_FORMAT_L8A8,    "L8A8"},
    {DDS_FORMAT_AEXP,    "AExp"},
    {DDS_FORMAT_YCOCG,   "YCoCg"},
+   {-1, 0}
+};
+
+static string_value_t mipmap_strings[] =
+{
+   {DDS_MIPMAP_NONE,     "No mipmaps"},
+   {DDS_MIPMAP_GENERATE, "Generate mipmaps"},
+   {DDS_MIPMAP_EXISTING, "Use existing mipmaps"},
    {-1, 0}
 };
 
@@ -449,8 +457,8 @@ GimpPDBStatusType write_dds(gchar *filename, gint32 image_id, gint32 drawable_id
 
    /*
     a valid mipmap chain was detected, and user wants to save with
-    existing mipmaps.  Override the drawable_id passed and find the
-    drawable_id of the top level (largest) mipmap layer.
+    existing mipmaps.  Override the drawable_id passed (selected layer)
+    and find the drawable_id of the top level (largest) mipmap layer.
    */
    if(is_mipmap_chain_valid &&
       dds_write_vals.mipmaps == DDS_MIPMAP_EXISTING)
@@ -728,7 +736,7 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
    GimpImageType basetype, type;
    unsigned char *src, *dst, *fmtdst, *tmp;
    unsigned char *palette = NULL;
-   int i, x, y, size, fmtsize, offset, colors;
+   int i, c, x, y, size, fmtsize, offset, colors;
    int compression = dds_write_vals.compression;
 
    basetype = gimp_image_base_type(image_id);
@@ -754,6 +762,8 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
       }
    }
 
+   /* we want and assume BGRA ordered pixels for bpp >= 3 from here and
+      onwards */
    if(bpp >= 3)
       swap_rb(src, w * h, bpp);
 
@@ -777,13 +787,39 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
             /* set alpha to red (x) */
             src[y * (drawable->width * 4) + (x * 4) + 3] =
                src[y * (drawable->width * 4) + (x * 4) + 2];
-            /* set red to blue (z) */
-            src[y * (drawable->width * 4) + (x * 4) + 2] =
-               src[y * (drawable->width * 4) + (x * 4)];
+            /* set red to 1 */
+            src[y * (drawable->width * 4) + (x * 4) + 2] = 255;
          }
       }
    }
 
+   /* RXGB (Doom3) */
+   if(compression == DDS_COMPRESS_RXGB)
+   {
+      if(bpp != 4)
+      {
+         fmtsize = w * h * 4;
+         fmtdst = g_malloc(fmtsize);
+         convert_pixels(fmtdst, src, DDS_FORMAT_RGBA8, w, h, 0, bpp,
+                        palette, 1);
+         g_free(src);
+         src = fmtdst;
+         bpp = 4;
+      }
+      
+      for(y = 0; y < drawable->height; ++y)
+      {
+         for(x = 0; x < drawable->width; ++x)
+         {
+            /* swap red and alpha */
+            c = src[y * (drawable->width * 4) + (x * 4) + 3];
+            src[y * (drawable->width * 4) + (x * 4) + 3] =
+               src[y * (drawable->width * 4) + (x * 4) + 2];
+            src[y * (drawable->width * 4) + (x * 4) + 2] = c;
+         }
+      }
+   }
+   
    if(compression == DDS_COMPRESS_YCOCG ||
       compression == DDS_COMPRESS_YCOCGS) /* convert to YCoCG */
    {
@@ -973,6 +1009,8 @@ static void write_volume_mipmaps(FILE *fp, gint32 image_id, gint32 *layers,
       bpp = 1;
    }
 
+   /* we want and assume BGRA ordered pixels for bpp >= 3 from here and
+      onwards */
    if(bpp >= 3)
       swap_rb(src, w * h * d, bpp);
 
@@ -1166,7 +1204,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
     of the image
    */
    PUTL32(hdr + 32,  FOURCC('G','I','M','P'));
-   PUTL32(hdr + 36,  FOURCC(' ','D','D','S'));
+   PUTL32(hdr + 36,  FOURCC('-','D','D','S'));
    PUTL32(hdr + 40,  DDS_PLUGIN_VERSION);
    
    flags = DDSD_CAPS | DDSD_PIXELFORMAT | DDSD_WIDTH | DDSD_HEIGHT;
@@ -1256,8 +1294,8 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    else
    {
       flags |= DDSD_LINEARSIZE;
-      PUTL32(hdr + 8, flags);
-      PUTL32(hdr + 80, DDPF_FOURCC);
+      pflags = DDPF_FOURCC;
+
       switch(dds_write_vals.compression)
       {
          case DDS_COMPRESS_BC1:
@@ -1270,11 +1308,20 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
          case DDS_COMPRESS_YCOCGS:
          case DDS_COMPRESS_AEXP:
             fourcc = FOURCC('D','X','T','5'); break;
+         case DDS_COMPRESS_RXGB:
+            fourcc = FOURCC('R','X','G','B'); break;
          case DDS_COMPRESS_BC4:
             fourcc = FOURCC('A','T','I','1'); break;
          case DDS_COMPRESS_BC5:
             fourcc = FOURCC('A','T','I','2'); break;
       }
+      
+      if((dds_write_vals.compression == DDS_COMPRESS_BC3N) ||
+         (dds_write_vals.compression == DDS_COMPRESS_RXGB))
+         pflags |= DDPF_NORMAL;
+      
+      PUTL32(hdr + 8,  flags);
+      PUTL32(hdr + 80, pflags);
       PUTL32(hdr + 84, fourcc);
 
       size = ((w + 3) >> 2) * ((h + 3) >> 2);
@@ -1475,15 +1522,15 @@ static void compression_selected(GtkWidget *widget, gpointer data)
 
    gtk_widget_set_sensitive(format_opt, dds_write_vals.compression == DDS_COMPRESS_NONE);
    gtk_widget_set_sensitive(color_type_opt,
-                            dds_write_vals.compression != DDS_COMPRESS_NONE &&
-                            dds_write_vals.compression != DDS_COMPRESS_BC4 &&
-                            dds_write_vals.compression != DDS_COMPRESS_BC5 &&
-                            dds_write_vals.compression != DDS_COMPRESS_YCOCGS);
+                            (dds_write_vals.compression != DDS_COMPRESS_NONE) &&
+                            (dds_write_vals.compression != DDS_COMPRESS_BC4) &&
+                            (dds_write_vals.compression != DDS_COMPRESS_BC5) &&
+                            (dds_write_vals.compression != DDS_COMPRESS_YCOCGS));
    gtk_widget_set_sensitive(dither_chk,
-                            dds_write_vals.compression != DDS_COMPRESS_NONE &&
-                            dds_write_vals.compression != DDS_COMPRESS_BC4 &&
-                            dds_write_vals.compression != DDS_COMPRESS_BC5 &&
-                            dds_write_vals.compression != DDS_COMPRESS_YCOCGS);
+                            (dds_write_vals.compression != DDS_COMPRESS_NONE) &&
+                            (dds_write_vals.compression != DDS_COMPRESS_BC4) &&
+                            (dds_write_vals.compression != DDS_COMPRESS_BC5) &&
+                            (dds_write_vals.compression != DDS_COMPRESS_YCOCGS));
 }
 
 static void savetype_selected(GtkWidget *widget, gpointer data)
@@ -1515,53 +1562,24 @@ static void savetype_selected(GtkWidget *widget, gpointer data)
    }
 }
 
+static void mipmaps_selected(GtkWidget *widget, gpointer data)
+{
+   GtkTreeIter iter;
+   GtkTreeModel *model;
+   model = gtk_combo_box_get_model(GTK_COMBO_BOX(widget));
+   gtk_combo_box_get_active_iter(GTK_COMBO_BOX(widget), &iter);
+   gtk_tree_model_get(model, &iter, COMBO_VALUE,
+                      &dds_write_vals.mipmaps, -1);
+
+   gtk_widget_set_sensitive(mipmap_filter_opt, dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE);
+   gtk_widget_set_sensitive(gamma_chk, dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE);
+   gtk_widget_set_sensitive(gamma_spin, (dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE) && dds_write_vals.gamma_correct);
+}
+
 static void toggle_clicked(GtkWidget *widget, gpointer data)
 {
    int *flag = (int *)data;
    (*flag) = !(*flag);
-}
-
-static void mipmaps_clicked(GtkWidget *widget, gpointer data)
-{
-   int old = dds_write_vals.mipmaps;
-   
-   if(!gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget)))
-   {
-      mipmap_old = widget;
-      return;
-   }
-   
-   dds_write_vals.mipmaps = (int)data;
-   
-   if(dds_write_vals.mipmaps == DDS_MIPMAP_EXISTING)
-   {
-      if(!is_mipmap_chain_valid)
-      {
-         const gchar *message = "An inconsistent mipmap chain was discovered in this image!\n"
-                                "This mipmap option cannot be used.\n"
-                                "To use this option, your image layers must form a consistent\n"
-                                "mipmap chain from the largest sized layer to the smallest.\n"
-                                "Layer ordering is not important, but each layer in the chain\n"
-                                "should be 1/4 the size of it's predecessor.\n"
-                                "For example: 128x128 -> 64x64 -> 32x32 ..\n"
-                                "With non-power-of-two or odd number dimensioned images, this can be difficult to determine.";
-         GtkWindow *parent = GTK_WINDOW(gtk_widget_get_toplevel(widget));
-         GtkWidget *dlg = gtk_message_dialog_new(parent,
-                                                 GTK_DIALOG_DESTROY_WITH_PARENT,
-                                                 GTK_MESSAGE_ERROR,
-                                                 GTK_BUTTONS_CLOSE,
-                                                 "%s", message);
-         gtk_dialog_run(GTK_DIALOG(dlg));
-         gtk_widget_destroy(dlg);
-         dds_write_vals.mipmaps = old;
-         if(mipmap_old != NULL)
-            gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(mipmap_old), 1);
-      }
-   }
-   
-   gtk_widget_set_sensitive(mipmap_filter_opt, dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE);
-   gtk_widget_set_sensitive(gamma_chk, dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE);
-   gtk_widget_set_sensitive(gamma_spin, (dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE) && dds_write_vals.gamma_correct);
 }
 
 static void transindex_clicked(GtkWidget *widget, gpointer data)
@@ -1605,15 +1623,13 @@ static void gamma_changed(GtkWidget *widget, gpointer data)
 static gint save_dialog(gint32 image_id, gint32 drawable_id)
 {
    GtkWidget *dlg;
-   GtkWidget *vbox, *vbox2, *hbox;
+   GtkWidget *vbox, *hbox;
    GtkWidget *table;
    GtkWidget *label;
    GtkWidget *opt;
    GtkWidget *check;
    GtkWidget *spin;
    GtkWidget *expander;
-   GtkWidget *frame;
-   GtkWidget *radio;
    GimpImageType type, basetype;
    int w, h;
    
@@ -1650,7 +1666,7 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    gtk_box_pack_start(GTK_BOX(GTK_DIALOG(dlg)->vbox), vbox, 1, 1, 0);
    gtk_widget_show(vbox);
    
-   table = gtk_table_new(3, 2, 0);
+   table = gtk_table_new(4, 2, 0);
    gtk_widget_show(table);
    gtk_box_pack_start(GTK_BOX(vbox), table, 1, 1, 0);
    gtk_table_set_row_spacings(GTK_TABLE(table), 8);
@@ -1662,7 +1678,6 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
                     (GtkAttachOptions)(GTK_FILL),
                     (GtkAttachOptions)(0), 0, 0);
    gtk_misc_set_alignment(GTK_MISC(label), 0, 0.5);
-   
 
    opt = string_value_combo_new(compression_strings,
                                 dds_write_vals.compression);
@@ -1718,6 +1733,28 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
 
    gtk_widget_set_sensitive(opt, is_cubemap || is_volume);
    
+   label = gtk_label_new("Mipmaps:");
+   gtk_widget_show(label);
+   gtk_table_attach(GTK_TABLE(table), label, 0, 1, 3, 4,
+                    (GtkAttachOptions)(GTK_FILL),
+                    (GtkAttachOptions)(0), 0, 0);
+   gtk_misc_set_alignment(GTK_MISC(label), 0, 0.5);
+
+   opt = string_value_combo_new(mipmap_strings,
+                                dds_write_vals.mipmaps);
+   gtk_widget_show(opt);
+   gtk_table_attach(GTK_TABLE(table), opt, 1, 2, 3, 4,
+                    (GtkAttachOptions)(GTK_EXPAND | GTK_FILL),
+                    (GtkAttachOptions)(GTK_EXPAND), 0, 0);
+   
+   gtk_signal_connect(GTK_OBJECT(opt), "changed",
+                      GTK_SIGNAL_FUNC(mipmaps_selected), 0);
+
+   string_value_combo_set_item_sensitive(opt, DDS_MIPMAP_EXISTING,
+                                         !(is_volume || is_cubemap) &&
+                                         is_mipmap_chain_valid);
+
+   
    hbox = gtk_hbox_new(0, 8);
    gtk_box_pack_start(GTK_BOX(vbox), hbox, 1, 1, 0);
    gtk_widget_show(hbox);
@@ -1753,44 +1790,6 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
       gtk_spin_button_set_value(GTK_SPIN_BUTTON(spin), dds_write_vals.transindex);
    }
    
-   frame = gtk_frame_new("Mipmaps");
-   gtk_box_pack_start(GTK_BOX(vbox), frame, 0, 0, 0);
-   gtk_widget_show(frame);
-   
-   vbox2 = gtk_vbox_new(0, 8);
-   gtk_container_set_border_width(GTK_CONTAINER(vbox2), 8);
-   gtk_container_add(GTK_CONTAINER(frame), vbox2);
-   gtk_widget_show(vbox2);
-   
-   radio = gtk_radio_button_new_with_label(NULL, "No mipmaps");
-   gtk_box_pack_start(GTK_BOX(vbox2), radio, 0, 0, 0);
-   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(radio),
-                                dds_write_vals.mipmaps == DDS_MIPMAP_NONE);
-   gtk_signal_connect(GTK_OBJECT(radio), "clicked",
-                      GTK_SIGNAL_FUNC(mipmaps_clicked),
-                      (gpointer)DDS_MIPMAP_NONE);
-   gtk_widget_show(radio);
-   radio = gtk_radio_button_new_with_label_from_widget(GTK_RADIO_BUTTON(radio),
-                                                       "Generate mipmaps");
-   gtk_box_pack_start(GTK_BOX(vbox2), radio, 0, 0, 0);
-   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(radio),
-                                dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE);
-   gtk_signal_connect(GTK_OBJECT(radio), "clicked",
-                      GTK_SIGNAL_FUNC(mipmaps_clicked),
-                      (gpointer)DDS_MIPMAP_GENERATE);
-   gtk_widget_show(radio);
-   radio = gtk_radio_button_new_with_label_from_widget(GTK_RADIO_BUTTON(radio),
-                                                       "Use existing mipmaps");
-   gtk_box_pack_start(GTK_BOX(vbox2), radio, 0, 0, 0);
-   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(radio),
-                                dds_write_vals.mipmaps == DDS_MIPMAP_EXISTING);
-   gtk_signal_connect(GTK_OBJECT(radio), "clicked",
-                      GTK_SIGNAL_FUNC(mipmaps_clicked),
-                      (gpointer)DDS_MIPMAP_EXISTING);
-   gtk_widget_show(radio);   
-   gtk_widget_set_sensitive(radio, !(is_volume || is_cubemap) &&
-                            is_mipmap_chain_valid);
-
    if(is_volume && dds_write_vals.savetype == DDS_SAVE_VOLUMEMAP)
    {
       dds_write_vals.compression = DDS_COMPRESS_NONE;
@@ -1896,15 +1895,15 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    gamma_spin = spin;
    
    gtk_widget_set_sensitive(color_type_opt,
-                            dds_write_vals.compression != DDS_COMPRESS_NONE &&
-                            dds_write_vals.compression != DDS_COMPRESS_BC4 &&
-                            dds_write_vals.compression != DDS_COMPRESS_BC5 &&
-                            dds_write_vals.compression != DDS_COMPRESS_YCOCGS);
+                            (dds_write_vals.compression != DDS_COMPRESS_NONE) &&
+                            (dds_write_vals.compression != DDS_COMPRESS_BC4) &&
+                            (dds_write_vals.compression != DDS_COMPRESS_BC5) &&
+                            (dds_write_vals.compression != DDS_COMPRESS_YCOCGS));
    gtk_widget_set_sensitive(dither_chk,
-                            dds_write_vals.compression != DDS_COMPRESS_NONE &&
-                            dds_write_vals.compression != DDS_COMPRESS_BC4 &&
-                            dds_write_vals.compression != DDS_COMPRESS_BC5 &&
-                            dds_write_vals.compression != DDS_COMPRESS_YCOCGS);
+                            (dds_write_vals.compression != DDS_COMPRESS_NONE) &&
+                            (dds_write_vals.compression != DDS_COMPRESS_BC4) &&
+                            (dds_write_vals.compression != DDS_COMPRESS_BC5) &&
+                            (dds_write_vals.compression != DDS_COMPRESS_YCOCGS));
    gtk_widget_set_sensitive(mipmap_filter_opt, dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE);
    gtk_widget_set_sensitive(gamma_chk, dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE);
    gtk_widget_set_sensitive(gamma_spin, (dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE) && dds_write_vals.gamma_correct);
