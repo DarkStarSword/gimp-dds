@@ -754,7 +754,7 @@ static void encode_color_block(unsigned char *dst,
    unsigned char dblock[64], color[4][3];
    unsigned short min16, max16;
    unsigned int v, mn, mx, mask;
-   int i, block_has_alpha = 0;
+   int i, block_has_alpha = 0, rematch = 1;
 
    /* find min/max colors, determine if alpha values present in block
     * (for DXT1-alpha)
@@ -797,17 +797,20 @@ static void encode_color_block(unsigned char *dst,
                mask = 0;
          
             /* refine */
-            refine_block(dither ? dblock : block, &max16, &min16, mask);
+            rematch = refine_block(dither ? dblock : block, &max16, &min16, mask);
             break;
       }
       
-      if(max16 != min16)
+      if(rematch)
       {
-         eval_colors(color, max16, min16);
-         mask = match_colors_block(block, color, dither != 0);
+         if(max16 != min16)
+         {
+            eval_colors(color, max16, min16);
+            mask = match_colors_block(block, color, dither != 0);
+         }
+         else
+            mask = 0;
       }
-      else
-         mask = 0;
    }
    else /* constant color */
    {
