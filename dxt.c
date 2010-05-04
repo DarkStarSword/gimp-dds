@@ -177,8 +177,12 @@ static unsigned int match_colors_block(const unsigned char *block,
    int dirg = color[0][1] - color[1][1];
    int dirr = color[0][2] - color[1][2];
    int dots[16], stops[4];
-   int c0pt, halfpt, c3pt, dot;
+   int c0pt, halfpt, c3pt, dot, bits;
    int i;
+   const int remap[8] =
+   {
+      0 << 30, 2 << 30, 0 << 30, 2 << 30, 3 << 30, 3 << 30, 1 << 30, 1 << 30
+   };
    
    for(i = 0; i < 16; ++i)
       dots[i] = block[4 * i] * dirb + block[4 * i + 1] * dirg + block[4 * i + 2] * dirr;
@@ -203,15 +207,14 @@ static unsigned int match_colors_block(const unsigned char *block,
    if(!dither)
    {
       /* the version without dithering is straight-forward */
-      for(i = 15; i >= 0; --i)
+      for(i = 0; i < 16; ++i)
       {
-         mask <<= 2;
          dot = dots[i];
-  
-         if(dot < halfpt)
-            mask |= (dot < c0pt) ? 1 : 3;
-         else
-            mask |= (dot < c3pt) ? 2 : 0;
+         bits = ((dot < halfpt) ? 4 : 0) |
+                ((dot < c0pt  ) ? 2 : 0) |
+                ((dot < c3pt  ) ? 1 : 0);
+         mask >>= 2;
+         mask |= remap[bits];
       }
    }
    else
