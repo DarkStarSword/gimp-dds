@@ -186,9 +186,19 @@ static unsigned int match_colors_block(const unsigned char *block,
    for(i = 0; i < 4; ++i)
       stops[i] = color[i][0] * dirb + color[i][1] * dirg + color[i][2] * dirr;
    
-   c0pt = (stops[1] + stops[3]) >> 1;
+   /*
+    * think of the colors as arranged on a line; project point onto that line, then choose
+    * next color out of available ones. we compute the crossover points for "best color in top
+    * half"/"best in bottom half" and then the same inside that subinterval.
+    *
+    * relying on this 1d approximation isn't always optimal in terms of euclidean distance,
+    * but it's very close and a lot faster.
+    * http://cbloomrants.blogspot.com/2008/12/12-08-08-dxtc-summary.html
+    */
+
+   c0pt   = (stops[1] + stops[3]) >> 1;
    halfpt = (stops[3] + stops[2]) >> 1;
-   c3pt = (stops[2] + stops[0]) >> 1;
+   c3pt   = (stops[2] + stops[0]) >> 1;
    
    if(!dither)
    {
@@ -311,7 +321,7 @@ static void optimize_colors_block(const unsigned char *block,
    int i, c, r, g, b, dot, iter;
    int muv, mnv, mxv, mnd, mxd;
    int cov[6];
-   unsigned char *bp, mnc[3], mxc[3];
+   unsigned char *bp, *mnc, *mxc;
    float covf[6], vfr, vfg, vfb, magn;
    float fr, fg, fb;
    
@@ -377,9 +387,10 @@ static void optimize_colors_block(const unsigned char *block,
    
    if(magn < 4.0) /* too small, default to luminance */
    {
-      r = 148;
-      g = 300;
-      b = 58;
+      /* JPEG YCbCr luma coefs, scaled by 1000 */
+      r = 299;
+      g = 587;
+      b = 114;
    }
    else
    {
@@ -400,18 +411,26 @@ static void optimize_colors_block(const unsigned char *block,
       if(dot < mnd)
       {
          mnd = dot;
-         memcpy(mnc, &block[4 * i], 3);
+         mnc = (unsigned char *)block + 4 * i;
       }
       if(dot > mxd)
       {
          mxd = dot;
-         memcpy(mxc, &block[4 * i], 3);
+         mxc = (unsigned char *)block + 4 * i;
       }
    }
 
    /* reduce to 16-bit colors */
    *max16 = pack_rgb565(mxc);
    *min16 = pack_rgb565(mnc);
+}
+
+static int sclamp(float y, int p0, int p1)
+{
+   int x = (int)y;
+   if(x < p0) return(p0);
+   if(x > p1) return(p1);
+   return(x);
 }
 
 /* The refinement function (Clever code, part 2)
@@ -425,7 +444,8 @@ static int refine_block(const unsigned char *block,
    static const int w1tab[4] = {3, 0, 2, 1};
    static const int prods[4] = {0x090000, 0x000900, 0x040102, 0x010402};
    /* ^ Some magic to save a lot of multiplies in the accumulating loop... */
-   
+   /* (precomputed products of weights for least squares system, accumulated inside one 32-bit register) */
+
    int akku = 0;
    int At1_r, At1_g, At1_b;
    int At2_r, At2_g, At2_b;
@@ -433,8 +453,7 @@ static int refine_block(const unsigned char *block,
    int i, step, w1, r, g, b;
    int xx, yy, xy;
    float frb, fg;
-   unsigned short v, oldmin, oldmax;
-   int s;
+   unsigned short oldmin, oldmax;
 
    oldmin = *min16;
    oldmax = *max16;
@@ -491,33 +510,13 @@ static int refine_block(const unsigned char *block,
    fg = frb * 63.0f / 31.0f;
    
    /* solve */
-   s = (int)((At1_r * yy - At2_r * xy) * frb + 0.5f);
-   if(s < 0) s = 0;
-   if(s > 31) s = 31;
-   v = s << 11;
-   s = (int)((At1_g * yy - At2_g * xy) * fg + 0.5f);
-   if(s < 0) s = 0;
-   if(s > 63) s = 63;
-   v |= s << 5;
-   s = (int)((At1_b * yy - At2_b * xy) * frb + 0.5f);
-   if(s < 0) s = 0;
-   if(s > 31) s = 31;
-   v |= s;
-   *max16 = v;
-   
-   s = (int)((At2_r * xx - At1_r * xy) * frb + 0.5f);
-   if(s < 0) s = 0;
-   if(s > 31) s = 31;
-   v = s << 11;
-   s = (int)((At2_g * xx - At1_g * xy) * fg + 0.5f);
-   if(s < 0) s = 0;
-   if(s > 63) s = 63;
-   v |= s << 5;
-   s = (int)((At2_b * xx - At1_b * xy) * frb + 0.5f);
-   if(s < 0) s = 0;
-   if(s > 31) s = 31;
-   v |= s;
-   *min16 = v;
+   *max16  = sclamp((At1_r * yy - At2_r * xy) * frb + 0.5f, 0, 31) << 11;
+   *max16 |= sclamp((At1_g * yy - At2_g * xy) * fg  + 0.5f, 0, 63) << 5;
+   *max16 |= sclamp((At1_b * yy - At2_b * xy) * frb + 0.5f, 0, 31) << 0;
+
+   *min16  = sclamp((At2_r * xx - At1_r * xy) * frb + 0.5f, 0, 31) << 11;
+   *min16 |= sclamp((At2_g * xx - At1_g * xy) * fg  + 0.5f, 0, 63) << 5;
+   *min16 |= sclamp((At2_b * xx - At1_b * xy) * frb + 0.5f, 0, 31) << 0;
 
    return(oldmin != *min16 || oldmax != *max16);
 }
@@ -753,7 +752,7 @@ static void encode_color_block(unsigned char *dst,
 {
    unsigned char dblock[64], color[4][3];
    unsigned short min16, max16;
-   unsigned int v, mn, mx, mask;
+   unsigned int v, mn, mx, mask, lastmask;
    int i, block_has_alpha = 0, rematch = 1;
 
    /* find min/max colors, determine if alpha values present in block
@@ -797,7 +796,27 @@ static void encode_color_block(unsigned char *dst,
                mask = 0;
          
             /* refine */
-            rematch = refine_block(dither ? dblock : block, &max16, &min16, mask);
+            for(i = 0; i < 2; ++i)
+            {
+               lastmask = mask;
+               
+               if(refine_block(dither ? dblock : block, &max16, &min16, mask))
+               {
+                  if(max16 != min16)
+                  {
+                     eval_colors(color, max16, min16);
+                     mask = match_colors_block(block, color, dither != 0);
+                  }
+                  else
+                     mask = 0;
+               }
+               
+               if(mask == lastmask)
+                  break;
+            }
+            
+            rematch = 0;
+            
             break;
       }
       
@@ -886,26 +905,32 @@ static void encode_alpha_block_DXT5(unsigned char *dst,
    *dst++ = mx;
    *dst++ = mn;
    
-   /* determine bias and emit indices */
+   /*
+    * determine bias and emit indices
+    * given the choice of mx/mn, these indices are optimal:
+    * http://fgiesen.wordpress.com/2009/12/15/dxt5-alpha-block-index-determination/
+    */
    dist = mx - mn;
-   bias = mn * 7 - (dist >> 1);
    dist4 = dist * 4;
    dist2 = dist * 2;
+   bias = (dist < 8) ? (dist - 1) : (dist / 2 + 2);
+   bias -= mn * 7;
    bits = 0;
    mask = 0;
    
    for(i = 0; i < 16; ++i)
    {
-      a = block[4 * i] * 7 - bias;
+      a = block[4 * i] * 7 + bias;
       
-      /* select index (hooray for bit magic) */
-      t = (dist4 - a) >> 31; idx =  t & 4; a -= dist4 & t;
-      t = (dist2 - a) >> 31; idx += t & 2; a -= dist2 & t;
-      t = (dist  - a) >> 31; idx += t & 1;
+      /* select index. this is a "linear scale" lerp factor between 0 (val=min) and 7 (val=max). */
+      t = (a >= dist4) ? -1 : 0; idx =  t & 4; a -= dist4 & t;
+      t = (a >= dist2) ? -1 : 0; idx += t & 2; a -= dist2 & t;
+      idx += (a >= dist);
       
+      /* turn linear scale into DXT index (0/1 are extremal pts) */
       idx = -idx & 7;
       idx ^= (2 > idx);
-      
+
       /* write index */
       mask |= idx << bits;
       if((bits += 3) >= 8)
