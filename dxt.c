@@ -96,11 +96,12 @@ static void unpack_rgb565(unsigned char *dst, unsigned short v)
    dst[2] = (r << 3) | (r >> 2);
 }
 
-static void lerp_rgb(unsigned char *dst, unsigned char *a, unsigned char *b, int f)
+/* linear interpolation at 1/3 point between a and b */
+static void lerp_rgb13(unsigned char *dst, unsigned char *a, unsigned char *b)
 {
-   dst[0] = blerp(a[0], b[0], f);
-   dst[1] = blerp(a[1], b[1], f);
-   dst[2] = blerp(a[2], b[2], f);
+   dst[0] = blerp(a[0], b[0], 0x55);
+   dst[1] = blerp(a[1], b[1], 0x55);
+   dst[2] = blerp(a[2], b[2], 0x55);
 }
 
 static int color_distance(const unsigned char *c0,
@@ -736,8 +737,8 @@ static void eval_colors(unsigned char color[4][3],
    unpack_rgb565(color[1], c1);
    if(c0 > c1)
    {
-      lerp_rgb(color[2], color[0], color[1], 0x55);
-      lerp_rgb(color[3], color[0], color[1], 0xaa);
+      lerp_rgb13(color[2], color[0], color[1]);
+      lerp_rgb13(color[3], color[1], color[0]);
    }
    else
    {
@@ -1060,8 +1061,8 @@ static void compress_YCoCg(unsigned char *dst, const unsigned char *src,
          inset_bbox_YCoCg(mincolor, maxcolor);
          select_diagonal_YCoCg(block, mincolor, maxcolor);
          
-         lerp_rgb(&colors[2][0], maxcolor, mincolor, 0x55);
-         lerp_rgb(&colors[3][0], maxcolor, mincolor, 0xaa);
+         lerp_rgb13(&colors[2][0], maxcolor, mincolor);
+         lerp_rgb13(&colors[3][0], mincolor, maxcolor);
          
          mask = 0;
          
@@ -1225,8 +1226,8 @@ static void decode_color_block(unsigned char *block, unsigned char *src,
    
    if((c0 > c1) || (format == DDS_COMPRESS_BC3))
    {
-      lerp_rgb(colors[2], colors[0], colors[1], 0x55);
-      lerp_rgb(colors[3], colors[0], colors[1], 0xaa);
+      lerp_rgb13(colors[2], colors[0], colors[1]);
+      lerp_rgb13(colors[3], colors[1], colors[0]);
    }
    else
    {
