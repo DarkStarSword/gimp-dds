@@ -102,6 +102,19 @@ static void lerp_rgb13(unsigned char *dst, unsigned char *a, unsigned char *b)
    dst[0] = blerp(a[0], b[0], 0x55);
    dst[1] = blerp(a[1], b[1], 0x55);
    dst[2] = blerp(a[2], b[2], 0x55);
+   
+   /*
+    * according to the S3TC/DX10 specs, this is the correct way to do the
+    * interpolation (with no rounding bias)
+    *
+    * dst = (2 * a + b) / 3;
+    *
+    * TODO: Find a smart way to handle this.  Straight-forward for the compressor
+    *       (advanced option in the save dialog to disable the rounding bias used
+    *       in the above code), but more tricky to handle with the decompressor
+    *       from a user's standpoint (if we are decompressing an image that was
+    *       not compressed with this plugin, which option do you choose?).
+    */
 }
 
 static int color_distance(const unsigned char *c0,
