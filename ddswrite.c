@@ -674,7 +674,7 @@ static void convert_pixels(unsigned char *dst, unsigned char *src,
             break;
          case DDS_FORMAT_YCOCG:
             dst[4 * i] = a;
-            RGB_to_YCoCg(&dst[4 * i + 1], r, g, b);
+            RGB_to_YCoCg(&dst[4 * i], r, g, b);
             break;
          case DDS_FORMAT_AEXP:
             alpha_exp(&dst[4 * i], r, g, b, a);

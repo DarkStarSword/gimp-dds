@@ -36,15 +36,17 @@ static inline void RGB_to_YCoCg(unsigned char *dst, int r, int g, int b)
    int co = ((((r << 1) - (b << 1)) + 2) >> 2) + 128;
    int cg = (((-r +   (g << 1) - b) + 2) >> 2) + 128;
    
-   dst[0] = (cg > 255 ? 255 : (cg < 0 ? 0 : cg));
-   dst[1] = (co > 255 ? 255 : (co < 0 ? 0 : co));
-   dst[2] = (y  > 255 ? 255 : (y  < 0 ? 0 :  y));
+   dst[0] = 255;
+   dst[1] = (cg > 255 ? 255 : (cg < 0 ? 0 : cg));
+   dst[2] = (co > 255 ? 255 : (co < 0 ? 0 : co));
+   dst[3] = (y  > 255 ? 255 : (y  < 0 ? 0 :  y));
 }
 
 /* other color conversions */
 
 static inline int rgb_to_luminance(int r, int g, int b)
 {
+   /* ITU-R BT.709 luma coefficents, scaled by 255 */
    return((r * 54 + g * 182 + b * 20) >> 8);
 }
 

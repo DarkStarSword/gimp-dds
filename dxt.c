@@ -127,6 +127,7 @@ static int color_distance(const unsigned char *c0,
 
 static int luminance(const unsigned char *c)
 {
+   /* ITU-R BT.709 luma coefficents, scaled by 255 */
    return((c[2] * 54 + c[1] * 182 + c[0] * 20) >> 8);
 }
 
@@ -404,10 +405,16 @@ static void optimize_colors_block(const unsigned char *block,
    
    if(magn < 4.0) /* too small, default to luminance */
    {
+      /* ITU-R BT.709 luma coefficents, scaled by 1000 */
+      r = 213;
+      g = 715;
+      b = 72;
       /* JPEG YCbCr luma coefs, scaled by 1000 */
+      /*
       r = 299;
       g = 587;
       b = 114;
+      */
    }
    else
    {
