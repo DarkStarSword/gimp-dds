@@ -339,14 +339,14 @@ static void optimize_colors_block(const unsigned char *block,
    int i, c, r, g, b, dot, iter;
    int muv, mnv, mxv, mnd, mxd;
    int cov[6];
-   unsigned char *bp, *mnc, *mxc;
+   const unsigned char *bp, *mnc, *mxc;
    float covf[6], vfr, vfg, vfb, magn;
    float fr, fg, fb;
    
    /* determine color distribution */
    for(c = 0; c < 3; ++c)
    {
-      bp = (unsigned char *)block + c;
+      bp = block + c;
       
       muv = mnv = mxv = bp[0];
       for(i = 4; i < 64; i += 4)
@@ -435,12 +435,12 @@ static void optimize_colors_block(const unsigned char *block,
       if(dot < mnd)
       {
          mnd = dot;
-         mnc = (unsigned char *)block + 4 * i;
+         mnc = block + 4 * i;
       }
       if(dot > mxd)
       {
          mxd = dot;
-         mxc = (unsigned char *)block + 4 * i;
+         mxc = block + 4 * i;
       }
    }
 
@@ -551,7 +551,8 @@ static void get_min_max_colors_distance(const unsigned char *block,
                                         unsigned short *min16)
 {
    int i, j, dist, maxdist = -1;
-   unsigned short c0 = 0, c1 = 0;
+   const unsigned char *p0 = block, *p1 = block;
+   unsigned short c0, c1;
    
    for(i = 0; i < 64 - 4; i += 4)
    {
@@ -561,11 +562,14 @@ static void get_min_max_colors_distance(const unsigned char *block,
          if(dist > maxdist)
          {
             maxdist = dist;
-            c0 = pack_rgb565(block + i);
-            c1 = pack_rgb565(block + j);
+            p0 = block + i;
+            p1 = block + j;
          }
       }
    }
+
+   c0 = pack_rgb565(p0);
+   c1 = pack_rgb565(p1);
    
    *max16 = MAX(c0, c1);
    *min16 = MIN(c0, c1);
@@ -577,7 +581,7 @@ static void get_min_max_colors_luminance(const unsigned char *block,
                                          unsigned short *min16)
 {
    int i, lum, minlum = 0x7fffffff, maxlum = -0x7fffffff;
-   unsigned char mn[3], mx[3];
+   const unsigned char *mn = block, *mx = block;
    
    for(i = 0; i < 16; ++i)
    {
@@ -585,12 +589,12 @@ static void get_min_max_colors_luminance(const unsigned char *block,
       if(lum > maxlum)
       {
          maxlum = lum;
-         memcpy(mx, &block[4 * i], 3);
+         mx = block + 4 * i;
       }
       if(lum < minlum)
       {
          minlum = lum;
-         memcpy(mn, &block[4 * i], 3);
+         mn = block + 4 * i;
       }
    }
    
