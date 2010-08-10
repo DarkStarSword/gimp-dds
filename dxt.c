@@ -801,9 +801,9 @@ static void inset_bbox_DXT1a(unsigned char *cmax, unsigned char *cmin)
 {
    int inset[3];
    
-   inset[0] = (((int)cmax[0] - cmin[0]) >> 4) - 8;
-   inset[1] = (((int)cmax[1] - cmin[1]) >> 4) - 8;
-   inset[2] = (((int)cmax[2] - cmin[2]) >> 4) - 8;
+   inset[0] = ((int)cmax[0] - cmin[0]) >> 4;
+   inset[1] = ((int)cmax[1] - cmin[1]) >> 4;
+   inset[2] = ((int)cmax[2] - cmin[2]) >> 4;
    
    cmax[0] = MAX(0, MIN(255, (int)cmax[0] - inset[0]));
    cmax[1] = MAX(0, MIN(255, (int)cmax[1] - inset[1]));
