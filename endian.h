@@ -39,6 +39,11 @@
     ((unsigned int)(buf)[2] << 16) | \
     ((unsigned int)(buf)[3] << 24))
 
+#define GETL24(buf) \
+   (((unsigned int)(buf)[0]      ) | \
+    ((unsigned int)(buf)[1] <<  8) | \
+    ((unsigned int)(buf)[2] << 16))
+   
 #define GETL16(buf) \
    (((unsigned short)(buf)[0]     ) | \
     ((unsigned short)(buf)[1] << 8))

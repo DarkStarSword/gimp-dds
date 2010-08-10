@@ -299,36 +299,6 @@ static unsigned int match_colors_block(const unsigned char *block,
    return(mask);
 }
 
-/* Special case color matching for DXT1 color blocks with non-opaque
- * alpha values.  Simple distance based color matching.  This is my 
- * little hack, Fabian had no need for DXT1-alpha :)
- */
-static unsigned int match_colors_block_DXT1alpha(const unsigned char *block,
-                                                 unsigned char color[4][3])
-{
-   int i, d0, d1, d2, idx;
-   unsigned int mask = 0;
-
-   for(i = 15; i >= 0; --i)
-   {
-      mask <<= 2;
-      d0 = color_distance(&block[4 * i], color[0]);
-      d1 = color_distance(&block[4 * i], color[1]);
-      d2 = color_distance(&block[4 * i], color[2]);
-      if(block[4 * i + 3] < 128)
-         idx = 3;
-      else if(d0 < d1 && d0 < d2)
-         idx = 0;
-      else if(d1 < d2)
-         idx = 1;
-      else
-         idx = 2;
-      mask |= idx;
-   }
-   
-   return(mask);
-}
-
 /* The color optimization function. (Clever code, part 1) */
 static void optimize_colors_block(const unsigned char *block,
                                   unsigned short *max16, unsigned short *min16)
@@ -754,6 +724,122 @@ static void select_diagonal_YCoCg(const unsigned char *block,
    maxcolor[1] = c1;
 }
 
+/* BEGIN DXT1a stuff ... */
+static void get_min_max_colors_bbox_DXT1a(const unsigned char *block,
+                                          unsigned char *cmax,
+                                          unsigned char *cmin)
+{
+   int i;
+   unsigned char mx[3], mn[3];
+   
+   mn[0] = mn[1] = mn[2] = 255;
+   mx[0] = mx[1] = mx[2] = 0;
+   
+   for(i = 0; i < 16; ++i)
+   {
+      if(block[4 * i + 3] < 128) continue;
+      
+      if(block[4 * i + 0] < mn[0]) mn[0] = block[4 * i + 0];
+      if(block[4 * i + 1] < mn[1]) mn[1] = block[4 * i + 1];
+      if(block[4 * i + 2] < mn[2]) mn[2] = block[4 * i + 2];
+      if(block[4 * i + 0] > mx[0]) mx[0] = block[4 * i + 0];
+      if(block[4 * i + 1] > mx[1]) mx[1] = block[4 * i + 1];
+      if(block[4 * i + 2] > mx[2]) mx[2] = block[4 * i + 2];
+   }
+   
+   for(i = 0; i < 3; ++i)
+   {
+      cmax[i] = mx[i];
+      cmin[i] = mn[i];
+   }
+}
+
+static void select_diagonal_DXT1a(const unsigned char *block,
+                                  unsigned char *cmax,
+                                  unsigned char *cmin)
+{
+   int center[3], t[3];
+   int covariance[2] = {0, 0};
+   int i, x0, y0, x1, y1;
+   
+   center[0] = (cmax[0] + cmin[0] + 1) >> 1;
+   center[1] = (cmax[1] + cmin[1] + 1) >> 1;
+   center[2] = (cmax[2] + cmin[2] + 1) >> 1;
+   
+   for(i = 0; i < 16; ++i)
+   {
+      if(block[4 * i + 3] < 128) continue;
+      
+      t[0] = (int)block[4 * i + 0] - center[0];
+      t[1] = (int)block[4 * i + 1] - center[1];
+      t[2] = (int)block[4 * i + 2] - center[2];
+      covariance[0] += t[0] * t[2];
+      covariance[1] += t[1] * t[2];
+   }
+   
+   x0 = cmax[0];
+   y0 = cmax[1];
+   x1 = cmin[0];
+   y1 = cmin[1];
+   
+   if(covariance[0] < 0)
+   {
+      x0 ^= x1; x1 ^= x0; x0 ^= x1;
+   }
+   if(covariance[1] < 0)
+   {
+      y0 ^= y1; y1 ^= y0; y0 ^= y1;
+   }
+   
+   cmax[0] = MAX(0, MIN(255, x0));
+   cmax[1] = MAX(0, MIN(255, y0));
+   cmin[0] = MAX(0, MIN(255, x1));
+   cmin[1] = MAX(0, MIN(255, y1));
+}
+
+static void inset_bbox_DXT1a(unsigned char *cmax, unsigned char *cmin)
+{
+   int inset[3];
+   
+   inset[0] = (((int)cmax[0] - cmin[0]) >> 4) - 8;
+   inset[1] = (((int)cmax[1] - cmin[1]) >> 4) - 8;
+   inset[2] = (((int)cmax[2] - cmin[2]) >> 4) - 8;
+   
+   cmax[0] = MAX(0, MIN(255, (int)cmax[0] - inset[0]));
+   cmax[1] = MAX(0, MIN(255, (int)cmax[1] - inset[1]));
+   cmax[2] = MAX(0, MIN(255, (int)cmax[2] - inset[2]));
+   cmin[0] = MAX(0, MIN(255, (int)cmin[0] + inset[0]));
+   cmin[1] = MAX(0, MIN(255, (int)cmin[1] + inset[1]));
+   cmin[2] = MAX(0, MIN(255, (int)cmin[2] + inset[2]));
+}
+
+static unsigned int match_colors_block_DXT1a(const unsigned char *block,
+                                             unsigned char color[4][3])
+{
+   int i, d0, d1, d2, idx;
+   unsigned int mask = 0;
+
+   for(i = 15; i >= 0; --i)
+   {
+      mask <<= 2;
+      d0 = color_distance(&block[4 * i], color[0]);
+      d1 = color_distance(&block[4 * i], color[1]);
+      d2 = color_distance(&block[4 * i], color[2]);
+      if(block[4 * i + 3] < 128)
+         idx = 3;
+      else if(d0 < d1 && d0 < d2)
+         idx = 0;
+      else if(d1 < d2)
+         idx = 1;
+      else
+         idx = 2;
+      mask |= idx;
+   }
+   
+   return(mask);
+}
+/* END DXT1a stuff ... */
+
 static void eval_colors(unsigned char color[4][3],
                         unsigned short c0, unsigned short c1)
 {
@@ -778,29 +864,60 @@ static void encode_color_block(unsigned char *dst,
                                const unsigned char *block,
                                int type, int dither, int dxt1_alpha)
 {
-   unsigned char dblock[64], color[4][3];
+   unsigned char dblock[64], color[4][3], cmax[3], cmin[3];
    unsigned short min16, max16;
-   unsigned int v, mn, mx, mask, lastmask;
-   int i, block_has_alpha = 0, rematch = 1;
+   unsigned int v, mn, mx, mask, lastmask, alphamask;
+   int i, rematch = 1, single_color = 0;
 
-   /* find min/max colors, determine if alpha values present in block
-    * (for DXT1-alpha)
-    */
-   mn = mx = GETL32(block);
+   /* find min/max colors, compute alpha mask (for DXT1a) */
+   mn = mx = GETL24(block);
+   alphamask = 0;
    for(i = 0; i < 16; ++i)
    {
-      block_has_alpha = block_has_alpha || (block[4 * i + 3] < 255);
-      v = GETL32(&block[4 * i]);
+      if(block[4 * i + 3] < 128)
+         alphamask |= (3 << (2 * i));
+      v = GETL24(&block[4 * i]);
       mx = MAX(mx, v);
       mn = MIN(mn, v);
    }
    
-   if(mn != mx) /* block is not a solid color, continue with compression */
-   {
-      /* compute dithered block for PCA if desired */
-      if(dither)
-         dither_block(dblock, block);
+   single_color = (mn == mx);
+
+   /* compute dithered block for PCA if desired */
+   if(dither)
+      dither_block(dblock, block);
       
+   if(single_color)
+   {
+      max16 = (omatch5[block[2]][0] << 11) |
+              (omatch6[block[1]][0] <<  5) |
+              (omatch5[block[0]][0]      );
+      min16 = (omatch5[block[2]][1] << 11) |
+              (omatch6[block[1]][1] <<  5) |
+              (omatch5[block[0]][1]      );
+      mask = 0xaaaaaaaa;
+      if(dxt1_alpha)
+         mask |= alphamask;
+   }
+   else if(dxt1_alpha && alphamask) /* DXT1 + alpha, and non-opaque pixels found in block */
+   {
+      get_min_max_colors_bbox_DXT1a(block, cmax, cmin);
+      select_diagonal_DXT1a(block, cmax, cmin);
+      inset_bbox_DXT1a(cmax, cmin);
+      
+      max16 = pack_rgb565(cmax);
+      min16 = pack_rgb565(cmin);
+      
+      if(max16 > min16)
+      {
+         max16 ^= min16; min16 ^= max16; max16 ^= min16;
+      }
+      
+      eval_colors(color, max16, min16);
+      mask = match_colors_block_DXT1a(block, color);
+   }
+   else /* not a special-case block, compress as normal */
+   {
       switch(type)
       {
          case DDS_COLOR_DISTANCE:
@@ -858,35 +975,14 @@ static void encode_color_block(unsigned char *dst,
          else
             mask = 0;
       }
-   }
-   else /* constant color */
-   {
-      mask = 0xaaaaaaaa;
-      max16 = (omatch5[block[2]][0] << 11) |
-              (omatch6[block[1]][0] <<  5) |
-              (omatch5[block[0]][0]      );
-      min16 = (omatch5[block[2]][1] << 11) |
-              (omatch6[block[1]][1] <<  5) |
-              (omatch5[block[0]][1]      );
-   }
-   
-   /* HACK! for DXT1 blocks which have non-opaque pixels */
-   if(dxt1_alpha && block_has_alpha)
-   {
-      if(max16 > min16)
+
+      if(max16 < min16)
       {
          max16 ^= min16; min16 ^= max16; max16 ^= min16;
+         mask ^= 0x55555555;
       }
-      eval_colors(color, max16, min16);
-      mask = match_colors_block_DXT1alpha(block, color);
    }
-   
-   if(max16 < min16 && !(dxt1_alpha && block_has_alpha))
-   {
-      max16 ^= min16; min16 ^= max16; max16 ^= min16;
-      mask ^= 0x55555555;
-   }
-      
+            
    PUTL16(&dst[0], max16);
    PUTL16(&dst[2], min16);
    PUTL32(&dst[4], mask);
@@ -980,7 +1076,7 @@ static void compress_DXT1(unsigned char *dst, const unsigned char *src,
    {
       for(x = 0; x < w; x += 4)
       {
-         extract_block(src, x, y, w, h, block); 
+         extract_block(src, x, y, w, h, block);
          encode_color_block(dst, block, type, dither, alpha);
          dst += 8;
       }
