@@ -299,6 +299,32 @@ static unsigned int match_colors_block(const unsigned char *block,
    return(mask);
 }
 
+static unsigned int match_colors_block_DXT1a(const unsigned char *block,
+                                             unsigned char color[4][3])
+{
+   int i, d0, d1, d2, idx;
+   unsigned int mask = 0;
+
+   for(i = 15; i >= 0; --i)
+   {
+      mask <<= 2;
+      d0 = color_distance(&block[4 * i], color[0]);
+      d1 = color_distance(&block[4 * i], color[1]);
+      d2 = color_distance(&block[4 * i], color[2]);
+      if(block[4 * i + 3] < 128)
+         idx = 3;
+      else if(d0 < d1 && d0 < d2)
+         idx = 0;
+      else if(d1 < d2)
+         idx = 1;
+      else
+         idx = 2;
+      mask |= idx;
+   }
+   
+   return(mask);
+}
+
 /* The color optimization function. (Clever code, part 1) */
 static void optimize_colors_block(const unsigned char *block,
                                   unsigned short *max16, unsigned short *min16)
@@ -572,21 +598,20 @@ static void get_min_max_colors_luminance(const unsigned char *block,
    *min16 = pack_rgb565(mn);
 }
 
-#define INSET_SHIFT  4
-
-/* Find min-max colors using the inset bounding box method */
-static void get_min_max_colors_inset_bbox(const unsigned char *block,
-                                          unsigned short *max16,
-                                          unsigned short *min16)
+static void get_min_max_colors_bbox(const unsigned char *block,
+                                    unsigned char *cmax, unsigned char *cmin,
+                                    int alpha)
 {
    int i;
-   unsigned char inset[3], mx[3], mn[3];
+   unsigned char mx[3], mn[3];
    
    mn[0] = mn[1] = mn[2] = 255;
    mx[0] = mx[1] = mx[2] = 0;
    
    for(i = 0; i < 16; ++i)
    {
+      if(alpha && block[4 * i + 3] < 128) continue;
+      
       if(block[4 * i + 0] < mn[0]) mn[0] = block[4 * i + 0];
       if(block[4 * i + 1] < mn[1]) mn[1] = block[4 * i + 1];
       if(block[4 * i + 2] < mn[2]) mn[2] = block[4 * i + 2];
@@ -594,21 +619,73 @@ static void get_min_max_colors_inset_bbox(const unsigned char *block,
       if(block[4 * i + 1] > mx[1]) mx[1] = block[4 * i + 1];
       if(block[4 * i + 2] > mx[2]) mx[2] = block[4 * i + 2];
    }
-  
-   inset[0] = (mx[0] - mn[0]) >> INSET_SHIFT;
-   inset[1] = (mx[1] - mn[1]) >> INSET_SHIFT;
-   inset[2] = (mx[2] - mn[2]) >> INSET_SHIFT;
    
-   mn[0] = (mn[0] + inset[0] <= 255) ? mn[0] + inset[0] : 255;
-   mn[1] = (mn[1] + inset[1] <= 255) ? mn[1] + inset[1] : 255;
-   mn[2] = (mn[2] + inset[2] <= 255) ? mn[2] + inset[2] : 255;
+   for(i = 0; i < 3; ++i)
+   {
+      cmax[i] = mx[i];
+      cmin[i] = mn[i];
+   }
+}
+
+static void select_diagonal(const unsigned char *block,
+                            unsigned char *cmax, unsigned char *cmin,
+                            int alpha)
+{
+   int center[3], t[3];
+   int covariance[2] = {0, 0};
+   int i, x0, y0, x1, y1;
    
-   mx[0] = (mx[0] >= inset[0]) ? mx[0] - inset[0] : 0;
-   mx[1] = (mx[1] >= inset[1]) ? mx[1] - inset[1] : 0;
-   mx[2] = (mx[2] >= inset[2]) ? mx[2] - inset[2] : 0;
+   center[0] = (cmax[0] + cmin[0] + 1) >> 1;
+   center[1] = (cmax[1] + cmin[1] + 1) >> 1;
+   center[2] = (cmax[2] + cmin[2] + 1) >> 1;
    
-   *min16 = pack_rgb565(mn);
-   *max16 = pack_rgb565(mx);
+   for(i = 0; i < 16; ++i)
+   {
+      if(alpha && block[4 * i + 3] < 128) continue;
+      
+      t[0] = (int)block[4 * i + 0] - center[0];
+      t[1] = (int)block[4 * i + 1] - center[1];
+      t[2] = (int)block[4 * i + 2] - center[2];
+      covariance[0] += t[0] * t[2];
+      covariance[1] += t[1] * t[2];
+   }
+   
+   x0 = cmax[0];
+   y0 = cmax[1];
+   x1 = cmin[0];
+   y1 = cmin[1];
+   
+   if(covariance[0] < 0)
+   {
+      x0 ^= x1; x1 ^= x0; x0 ^= x1;
+   }
+   if(covariance[1] < 0)
+   {
+      y0 ^= y1; y1 ^= y0; y0 ^= y1;
+   }
+   
+   cmax[0] = MAX(0, MIN(255, x0));
+   cmax[1] = MAX(0, MIN(255, y0));
+   cmin[0] = MAX(0, MIN(255, x1));
+   cmin[1] = MAX(0, MIN(255, y1));
+}
+
+#define INSET_SHIFT  4
+
+static void inset_bbox(unsigned char *cmax, unsigned char *cmin)
+{
+   int inset[3];
+   
+   inset[0] = ((int)cmax[0] - cmin[0]) >> INSET_SHIFT;
+   inset[1] = ((int)cmax[1] - cmin[1]) >> INSET_SHIFT;
+   inset[2] = ((int)cmax[2] - cmin[2]) >> INSET_SHIFT;
+   
+   cmax[0] = MAX(0, MIN(255, (int)cmax[0] - inset[0]));
+   cmax[1] = MAX(0, MIN(255, (int)cmax[1] - inset[1]));
+   cmax[2] = MAX(0, MIN(255, (int)cmax[2] - inset[2]));
+   cmin[0] = MAX(0, MIN(255, (int)cmin[0] + inset[0]));
+   cmin[1] = MAX(0, MIN(255, (int)cmin[1] + inset[1]));
+   cmin[2] = MAX(0, MIN(255, (int)cmin[2] + inset[2]));
 }
 
 static void get_min_max_YCoCg(const unsigned char *block,
@@ -724,122 +801,6 @@ static void select_diagonal_YCoCg(const unsigned char *block,
    maxcolor[1] = c1;
 }
 
-/* BEGIN DXT1a stuff ... */
-static void get_min_max_colors_bbox_DXT1a(const unsigned char *block,
-                                          unsigned char *cmax,
-                                          unsigned char *cmin)
-{
-   int i;
-   unsigned char mx[3], mn[3];
-   
-   mn[0] = mn[1] = mn[2] = 255;
-   mx[0] = mx[1] = mx[2] = 0;
-   
-   for(i = 0; i < 16; ++i)
-   {
-      if(block[4 * i + 3] < 128) continue;
-      
-      if(block[4 * i + 0] < mn[0]) mn[0] = block[4 * i + 0];
-      if(block[4 * i + 1] < mn[1]) mn[1] = block[4 * i + 1];
-      if(block[4 * i + 2] < mn[2]) mn[2] = block[4 * i + 2];
-      if(block[4 * i + 0] > mx[0]) mx[0] = block[4 * i + 0];
-      if(block[4 * i + 1] > mx[1]) mx[1] = block[4 * i + 1];
-      if(block[4 * i + 2] > mx[2]) mx[2] = block[4 * i + 2];
-   }
-   
-   for(i = 0; i < 3; ++i)
-   {
-      cmax[i] = mx[i];
-      cmin[i] = mn[i];
-   }
-}
-
-static void select_diagonal_DXT1a(const unsigned char *block,
-                                  unsigned char *cmax,
-                                  unsigned char *cmin)
-{
-   int center[3], t[3];
-   int covariance[2] = {0, 0};
-   int i, x0, y0, x1, y1;
-   
-   center[0] = (cmax[0] + cmin[0] + 1) >> 1;
-   center[1] = (cmax[1] + cmin[1] + 1) >> 1;
-   center[2] = (cmax[2] + cmin[2] + 1) >> 1;
-   
-   for(i = 0; i < 16; ++i)
-   {
-      if(block[4 * i + 3] < 128) continue;
-      
-      t[0] = (int)block[4 * i + 0] - center[0];
-      t[1] = (int)block[4 * i + 1] - center[1];
-      t[2] = (int)block[4 * i + 2] - center[2];
-      covariance[0] += t[0] * t[2];
-      covariance[1] += t[1] * t[2];
-   }
-   
-   x0 = cmax[0];
-   y0 = cmax[1];
-   x1 = cmin[0];
-   y1 = cmin[1];
-   
-   if(covariance[0] < 0)
-   {
-      x0 ^= x1; x1 ^= x0; x0 ^= x1;
-   }
-   if(covariance[1] < 0)
-   {
-      y0 ^= y1; y1 ^= y0; y0 ^= y1;
-   }
-   
-   cmax[0] = MAX(0, MIN(255, x0));
-   cmax[1] = MAX(0, MIN(255, y0));
-   cmin[0] = MAX(0, MIN(255, x1));
-   cmin[1] = MAX(0, MIN(255, y1));
-}
-
-static void inset_bbox_DXT1a(unsigned char *cmax, unsigned char *cmin)
-{
-   int inset[3];
-   
-   inset[0] = ((int)cmax[0] - cmin[0]) >> 4;
-   inset[1] = ((int)cmax[1] - cmin[1]) >> 4;
-   inset[2] = ((int)cmax[2] - cmin[2]) >> 4;
-   
-   cmax[0] = MAX(0, MIN(255, (int)cmax[0] - inset[0]));
-   cmax[1] = MAX(0, MIN(255, (int)cmax[1] - inset[1]));
-   cmax[2] = MAX(0, MIN(255, (int)cmax[2] - inset[2]));
-   cmin[0] = MAX(0, MIN(255, (int)cmin[0] + inset[0]));
-   cmin[1] = MAX(0, MIN(255, (int)cmin[1] + inset[1]));
-   cmin[2] = MAX(0, MIN(255, (int)cmin[2] + inset[2]));
-}
-
-static unsigned int match_colors_block_DXT1a(const unsigned char *block,
-                                             unsigned char color[4][3])
-{
-   int i, d0, d1, d2, idx;
-   unsigned int mask = 0;
-
-   for(i = 15; i >= 0; --i)
-   {
-      mask <<= 2;
-      d0 = color_distance(&block[4 * i], color[0]);
-      d1 = color_distance(&block[4 * i], color[1]);
-      d2 = color_distance(&block[4 * i], color[2]);
-      if(block[4 * i + 3] < 128)
-         idx = 3;
-      else if(d0 < d1 && d0 < d2)
-         idx = 0;
-      else if(d1 < d2)
-         idx = 1;
-      else
-         idx = 2;
-      mask |= idx;
-   }
-   
-   return(mask);
-}
-/* END DXT1a stuff ... */
-
 static void eval_colors(unsigned char color[4][3],
                         unsigned short c0, unsigned short c1)
 {
@@ -901,9 +862,9 @@ static void encode_color_block(unsigned char *dst,
    }
    else if(dxt1_alpha && alphamask) /* DXT1 + alpha, and non-opaque pixels found in block */
    {
-      get_min_max_colors_bbox_DXT1a(block, cmax, cmin);
-      select_diagonal_DXT1a(block, cmax, cmin);
-      inset_bbox_DXT1a(cmax, cmin);
+      get_min_max_colors_bbox(dither ? dblock : block, cmax, cmin, 1);
+      select_diagonal(dither ? dblock : block, cmax, cmin, 1);
+      inset_bbox(cmax, cmin);
       
       max16 = pack_rgb565(cmax);
       min16 = pack_rgb565(cmin);
@@ -927,7 +888,11 @@ static void encode_color_block(unsigned char *dst,
             get_min_max_colors_luminance(dither ? dblock : block, &max16, &min16);
             break;
          case DDS_COLOR_INSET_BBOX:
-            get_min_max_colors_inset_bbox(dither ? dblock : block, &max16, &min16);
+            get_min_max_colors_bbox(dither ? dblock : block, cmax, cmin, 0);
+            select_diagonal(dither ? dblock : block, cmax, cmin, 0);
+            inset_bbox(cmax, cmin);
+            max16 = pack_rgb565(cmax);
+            min16 = pack_rgb565(cmin);
             break;
          default:
             /* pca + map along principal axis */
