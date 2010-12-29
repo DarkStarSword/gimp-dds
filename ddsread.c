@@ -392,6 +392,13 @@ GimpPDBStatusType read_dds(gchar *filename, gint32 *imageID)
    fclose(fp);
 
    layers = gimp_image_get_layers(image, &layer_count);
+   
+   if(layers == NULL || layer_count == 0)
+   {
+      g_message("Oops!  NULL image read!  Please report this!");
+      return(GIMP_PDB_EXECUTION_ERROR);
+   }
+   
    gimp_image_set_active_layer(image, layers[0]);
    
    *imageID = image;
