@@ -290,103 +290,96 @@ GimpPDBStatusType read_dds(gchar *filename, gint32 *imageID)
          gimp_image_delete(image);
          return(GIMP_PDB_EXECUTION_ERROR);
       }
+      if(!load_mipmaps(fp, &hdr, &d, image, "", &l, pixels, buf))
+      {
+         fclose(fp);
+         gimp_image_delete(image);
+         return(GIMP_PDB_EXECUTION_ERROR);
+      }
    }
-
-   if(hdr.caps.caps1 & DDSCAPS_COMPLEX)
+   else if(hdr.caps.caps2 & DDSCAPS2_CUBEMAP)
    {
-      if(hdr.caps.caps2 & DDSCAPS2_CUBEMAP)
+      if((hdr.caps.caps2 & DDSCAPS2_CUBEMAP_POSITIVEX) &&
+         !load_face(fp, &hdr, &d, image, "(positive x)", &l, pixels, buf))
       {
-         if((hdr.caps.caps2 & DDSCAPS2_CUBEMAP_POSITIVEX) &&
-            !load_face(fp, &hdr, &d, image, "(positive x)", &l, pixels, buf))
-         {
-            fclose(fp);
-            gimp_image_delete(image);
-            return(GIMP_PDB_EXECUTION_ERROR);
-         }
-         if((hdr.caps.caps2 & DDSCAPS2_CUBEMAP_NEGATIVEX) &&
-            !load_face(fp, &hdr, &d, image, "(negative x)", &l, pixels, buf))
-         {
-            fclose(fp);
-            gimp_image_delete(image);
-            return(GIMP_PDB_EXECUTION_ERROR);
-         }
-         if((hdr.caps.caps2 & DDSCAPS2_CUBEMAP_POSITIVEY) &&
-            !load_face(fp, &hdr, &d, image, "(positive y)", &l, pixels, buf))
-         {
-            fclose(fp);
-            gimp_image_delete(image);
-            return(GIMP_PDB_EXECUTION_ERROR);
-         }
-         if((hdr.caps.caps2 & DDSCAPS2_CUBEMAP_NEGATIVEY) &&
-            !load_face(fp, &hdr, &d, image, "(negative y)", &l, pixels, buf))
-         {
-            fclose(fp);
-            gimp_image_delete(image);
-            return(GIMP_PDB_EXECUTION_ERROR);
-         }
-         if((hdr.caps.caps2 & DDSCAPS2_CUBEMAP_POSITIVEZ) &&
-            !load_face(fp, &hdr, &d, image, "(positive z)", &l, pixels, buf))
-         {
-            fclose(fp);
-            gimp_image_delete(image);
-            return(GIMP_PDB_EXECUTION_ERROR);
-         }
-         if((hdr.caps.caps2 & DDSCAPS2_CUBEMAP_NEGATIVEZ) &&
-            !load_face(fp, &hdr, &d, image, "(negative z)", &l, pixels, buf))
-         {
-            fclose(fp);
-            gimp_image_delete(image);
-            return(GIMP_PDB_EXECUTION_ERROR);
-         }
+         fclose(fp);
+         gimp_image_delete(image);
+         return(GIMP_PDB_EXECUTION_ERROR);
       }
-      else if((hdr.caps.caps2 & DDSCAPS2_VOLUME) &&
-              (hdr.flags & DDSD_DEPTH))
+      if((hdr.caps.caps2 & DDSCAPS2_CUBEMAP_NEGATIVEX) &&
+         !load_face(fp, &hdr, &d, image, "(negative x)", &l, pixels, buf))
       {
-         unsigned int i, level;
-         char *plane;
-         for(i = 0; i < hdr.depth; ++i)
+         fclose(fp);
+         gimp_image_delete(image);
+         return(GIMP_PDB_EXECUTION_ERROR);
+      }
+      if((hdr.caps.caps2 & DDSCAPS2_CUBEMAP_POSITIVEY) &&
+         !load_face(fp, &hdr, &d, image, "(positive y)", &l, pixels, buf))
+      {
+         fclose(fp);
+         gimp_image_delete(image);
+         return(GIMP_PDB_EXECUTION_ERROR);
+      }
+      if((hdr.caps.caps2 & DDSCAPS2_CUBEMAP_NEGATIVEY) &&
+         !load_face(fp, &hdr, &d, image, "(negative y)", &l, pixels, buf))
+      {
+         fclose(fp);
+         gimp_image_delete(image);
+         return(GIMP_PDB_EXECUTION_ERROR);
+      }
+      if((hdr.caps.caps2 & DDSCAPS2_CUBEMAP_POSITIVEZ) &&
+         !load_face(fp, &hdr, &d, image, "(positive z)", &l, pixels, buf))
+      {
+         fclose(fp);
+         gimp_image_delete(image);
+         return(GIMP_PDB_EXECUTION_ERROR);
+      }
+      if((hdr.caps.caps2 & DDSCAPS2_CUBEMAP_NEGATIVEZ) &&
+         !load_face(fp, &hdr, &d, image, "(negative z)", &l, pixels, buf))
+      {
+         fclose(fp);
+         gimp_image_delete(image);
+         return(GIMP_PDB_EXECUTION_ERROR);
+      }
+   }
+   else if((hdr.caps.caps2 & DDSCAPS2_VOLUME) &&
+            (hdr.flags & DDSD_DEPTH))
+   {
+      unsigned int i, level;
+      char *plane;
+      for(i = 0; i < hdr.depth; ++i)
+      {
+         plane = g_strdup_printf("(z = %d)", i);
+         if(!load_layer(fp, &hdr, &d, image, 0, plane, &l, pixels, buf))
          {
-            plane = g_strdup_printf("(z = %d)", i);
-            if(!load_layer(fp, &hdr, &d, image, 0, plane, &l, pixels, buf))
-            {
-               g_free(plane);
-               fclose(fp);
-               gimp_image_delete(image);
-               return(GIMP_PDB_EXECUTION_ERROR);
-            }
             g_free(plane);
-         }
-
-         if((hdr.flags & DDSD_MIPMAPCOUNT) &&
-            (hdr.caps.caps1 & DDSCAPS_MIPMAP) &&
-            (dds_read_vals.mipmaps != 0))
-         {
-            for(level = 1; level < hdr.num_mipmaps; ++level)
-            {
-               int n = hdr.depth >> level;
-               if(n < 1) n = 1;
-               for(i = 0; i < n; ++i)
-               {
-                  plane = g_strdup_printf("(z = %d)", i);
-                  if(!load_layer(fp, &hdr, &d, image, level, plane, &l, pixels, buf))
-                  {
-                     g_free(plane);
-                     fclose(fp);
-                     gimp_image_delete(image);
-                     return(GIMP_PDB_EXECUTION_ERROR);
-                  }
-                  g_free(plane);
-               }
-            }
-         }
-      }
-      else if(dds_read_vals.mipmaps)
-      {
-         if(!load_mipmaps(fp, &hdr, &d, image, "", &l, pixels, buf))
-         {
             fclose(fp);
             gimp_image_delete(image);
             return(GIMP_PDB_EXECUTION_ERROR);
+         }
+         g_free(plane);
+      }
+
+      if((hdr.flags & DDSD_MIPMAPCOUNT) &&
+         (hdr.caps.caps1 & DDSCAPS_MIPMAP) &&
+         (dds_read_vals.mipmaps != 0))
+      {
+         for(level = 1; level < hdr.num_mipmaps; ++level)
+         {
+            int n = hdr.depth >> level;
+            if(n < 1) n = 1;
+            for(i = 0; i < n; ++i)
+            {
+               plane = g_strdup_printf("(z = %d)", i);
+               if(!load_layer(fp, &hdr, &d, image, level, plane, &l, pixels, buf))
+               {
+                  g_free(plane);
+                  fclose(fp);
+                  gimp_image_delete(image);
+                  return(GIMP_PDB_EXECUTION_ERROR);
+               }
+               g_free(plane);
+            }
          }
       }
    }
@@ -886,7 +879,8 @@ static int load_mipmaps(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
    unsigned int level;
    
    if((hdr->flags & DDSD_MIPMAPCOUNT) &&
-      (hdr->caps.caps1 & DDSCAPS_MIPMAP))
+      (hdr->caps.caps1 & DDSCAPS_MIPMAP) &&
+      (dds_read_vals.mipmaps != 0))
    {
       for(level = 1; level < hdr->num_mipmaps; ++level)
       {
