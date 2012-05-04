@@ -16,7 +16,7 @@ TARGET=dds$(EXT)
 SRCS=color.c dds.c ddsread.c ddswrite.c dxt.c mipmap.c misc.c
 OBJS=$(SRCS:.c=.o)
 
-LIBS=$(shell pkg-config --libs gtk+-2.0 gimp-2.0 gimpui-2.0)
+LIBS=$(shell pkg-config --libs gtk+-2.0 gimp-2.0 gimpui-2.0) -lm
 
 all: $(TARGET)
 
