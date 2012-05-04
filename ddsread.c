@@ -86,20 +86,20 @@ GimpPDBStatusType read_dds(gchar *filename, gint32 *imageID)
    gint *layers, layer_count;
    GimpImageBaseType type;
    int i, j;
-   
+
    if(interactive_dds && dds_read_vals.show_dialog)
    {
       if(!load_dialog())
          return(GIMP_PDB_CANCEL);
    }
-   
+
    fp = fopen(filename, "rb");
    if(fp == 0)
    {
       g_message("Error opening file.\n");
       return(GIMP_PDB_EXECUTION_ERROR);
    }
-   
+
    if(interactive_dds)
    {
       if(strrchr(filename, '/'))
@@ -109,7 +109,7 @@ GimpPDBStatusType read_dds(gchar *filename, gint32 *imageID)
       gimp_progress_init(tmp);
       g_free(tmp);
    }
-   
+
    read_header(&hdr, fp);
    if(!validate_header(&hdr))
    {
@@ -117,7 +117,7 @@ GimpPDBStatusType read_dds(gchar *filename, gint32 *imageID)
       g_message("Invalid DDS header!\n");
       return(GIMP_PDB_EXECUTION_ERROR);
    }
-   
+
    /* a lot of DDS images out there don't have this for some reason -_- */
    if(hdr.pitch_or_linsize == 0)
    {
@@ -135,25 +135,25 @@ GimpPDBStatusType read_dds(gchar *filename, gint32 *imageID)
             (hdr.pixelfmt.bpp >> 3);
       }
    }
-   
+
    if(GETL32(hdr.pixelfmt.fourcc) == FOURCC('D', 'X', '1', '0'))
    {
       read_header_dx10(&dx10hdr, fp);
-      
+
       /* TODO: Support DX10 DDS extensions */
-      
+
       fclose(fp);
       g_message("DX10 images not yet supported!\n");
-      return(GIMP_PDB_EXECUTION_ERROR);      
+      return(GIMP_PDB_EXECUTION_ERROR);
    }
    else
    {
       if(hdr.pixelfmt.flags & DDPF_FOURCC)
-      {      
+      {
          if(hdr.pixelfmt.fourcc[1] == 'X')
             hdr.pixelfmt.flags |= DDPF_ALPHAPIXELS;
       }
-   
+
       if(hdr.pixelfmt.flags & DDPF_FOURCC)
       {
          switch(GETL32(hdr.pixelfmt.fourcc))
@@ -166,7 +166,7 @@ GimpPDBStatusType read_dds(gchar *filename, gint32 *imageID)
                d.bpp = d.gimp_bpp = 3;
                type = GIMP_RGB;
                break;
-            default: 
+            default:
                d.bpp = d.gimp_bpp = 4;
                type = GIMP_RGB;
                break;
@@ -175,7 +175,7 @@ GimpPDBStatusType read_dds(gchar *filename, gint32 *imageID)
       else
       {
          d.bpp = hdr.pixelfmt.bpp >> 3;
-         
+
          if(d.bpp == 2)
          {
             if(hdr.pixelfmt.amask == 0xf000) // RGBA4
@@ -194,7 +194,7 @@ GimpPDBStatusType read_dds(gchar *filename, gint32 *imageID)
                   d.gimp_bpp = 4;
                else
                   d.gimp_bpp = 3;
-               
+
                type = GIMP_RGB;
             }
             else //L16
@@ -232,18 +232,18 @@ GimpPDBStatusType read_dds(gchar *filename, gint32 *imageID)
          }
       }
    }
-   
+
    image = gimp_image_new(hdr.width, hdr.height, type);
-   
+
    if(image == -1)
    {
       g_message("Can't allocate new image.\n");
       fclose(fp);
       return(GIMP_PDB_EXECUTION_ERROR);
    }
-   
+
    gimp_image_set_filename(image, filename);
-   
+
    if(hdr.pixelfmt.flags & DDPF_PALETTEINDEXED8)
    {
       d.palette = g_malloc(256 * 4);
@@ -262,12 +262,12 @@ GimpPDBStatusType read_dds(gchar *filename, gint32 *imageID)
       }
       gimp_image_set_colormap(image, d.palette, 256);
    }
-   
+
    d.tile_height = gimp_tile_height();
-   
+
    pixels = g_new(guchar, d.tile_height * hdr.width * d.gimp_bpp);
    buf = g_malloc(hdr.pitch_or_linsize);
-   
+
    d.rshift = color_shift(hdr.pixelfmt.rmask);
    d.gshift = color_shift(hdr.pixelfmt.gmask);
    d.bshift = color_shift(hdr.pixelfmt.bmask);
@@ -280,7 +280,7 @@ GimpPDBStatusType read_dds(gchar *filename, gint32 *imageID)
    d.gmask = hdr.pixelfmt.gmask >> d.gshift << (8 - d.gbits);
    d.bmask = hdr.pixelfmt.bmask >> d.bshift << (8 - d.bbits);
    d.amask = hdr.pixelfmt.amask >> d.ashift << (8 - d.abits);
-   
+
    if(!(hdr.caps.caps2 & DDSCAPS2_CUBEMAP) &&
       !(hdr.caps.caps2 & DDSCAPS2_VOLUME))
    {
@@ -392,34 +392,34 @@ GimpPDBStatusType read_dds(gchar *filename, gint32 *imageID)
    fclose(fp);
 
    layers = gimp_image_get_layers(image, &layer_count);
-   
+
    if(layers == NULL || layer_count == 0)
    {
       g_message("Oops!  NULL image read!  Please report this!");
       return(GIMP_PDB_EXECUTION_ERROR);
    }
-   
+
    gimp_image_set_active_layer(image, layers[0]);
-   
+
    *imageID = image;
-               
+
    return(GIMP_PDB_SUCCESS);
 }
 
 static int read_header(dds_header_t *hdr, FILE *fp)
 {
    unsigned char buf[DDS_HEADERSIZE];
-   
+
    memset(hdr, 0, sizeof(dds_header_t));
-   
+
    if(fread(buf, 1, DDS_HEADERSIZE, fp) != DDS_HEADERSIZE)
       return(0);
-   
+
    hdr->magic[0] = buf[0];
    hdr->magic[1] = buf[1];
    hdr->magic[2] = buf[2];
    hdr->magic[3] = buf[3];
-   
+
    hdr->size = GETL32(buf + 4);
    hdr->flags = GETL32(buf + 8);
    hdr->height = GETL32(buf + 12);
@@ -427,7 +427,7 @@ static int read_header(dds_header_t *hdr, FILE *fp)
    hdr->pitch_or_linsize = GETL32(buf + 20);
    hdr->depth = GETL32(buf + 24);
    hdr->num_mipmaps = GETL32(buf + 28);
-   
+
    hdr->pixelfmt.size = GETL32(buf + 76);
    hdr->pixelfmt.flags = GETL32(buf + 80);
    hdr->pixelfmt.fourcc[0] = buf[84];
@@ -439,10 +439,10 @@ static int read_header(dds_header_t *hdr, FILE *fp)
    hdr->pixelfmt.gmask = GETL32(buf + 96);
    hdr->pixelfmt.bmask = GETL32(buf + 100);
    hdr->pixelfmt.amask = GETL32(buf + 104);
-   
+
    hdr->caps.caps1 = GETL32(buf + 108);
    hdr->caps.caps2 = GETL32(buf + 112);
-   
+
    /* GIMP-DDS special info */
    if(GETL32(buf + 32) == FOURCC('G','I','M','P') &&
       GETL32(buf + 36) == FOURCC('-','D','D','S'))
@@ -452,38 +452,38 @@ static int read_header(dds_header_t *hdr, FILE *fp)
       hdr->reserved.gimp_dds_special.version = GETL32(buf + 40);
       hdr->reserved.gimp_dds_special.extra_fourcc = GETL32(buf + 44);
    }
-   
+
    return(1);
 }
 
 static int read_header_dx10(dds_header_dx10_t *hdr, FILE *fp)
 {
    char buf[DDS_HEADERSIZE_DX10];
-   
+
    memset(hdr, 0, sizeof(dds_header_dx10_t));
-   
+
    if(fread(buf, 1, DDS_HEADERSIZE_DX10, fp) != DDS_HEADERSIZE_DX10)
       return(0);
-   
+
    hdr->dxgiFormat = GETL32(buf);
    hdr->resourceDimension = GETL32(buf + 4);
    hdr->miscFlag = GETL32(buf + 8);
    hdr->arraySize = GETL32(buf + 12);
    hdr->reserved = GETL32(buf + 16);
-   
+
    return(1);
 }
 
 static int validate_header(dds_header_t *hdr)
 {
    unsigned int fourcc;
-   
+
    if(memcmp(hdr->magic, "DDS ", 4))
    {
       g_message("Invalid DDS file.\n");
       return(0);
    }
-   
+
    if((hdr->flags & DDSD_PITCH) == (hdr->flags & DDSD_LINEARSIZE))
    {
       //g_message("Warning: DDSD_PITCH or DDSD_LINEARSIZE is not set.\n");
@@ -492,14 +492,14 @@ static int validate_header(dds_header_t *hdr)
       else
          hdr->flags |= DDSD_PITCH;
    }
-/*   
+/*
    if((hdr->pixelfmt.flags & DDPF_FOURCC) ==
       (hdr->pixelfmt.flags & DDPF_RGB))
    {
       g_message("Invalid pixel format.\n");
       return(0);
    }
-*/   
+*/
    fourcc = GETL32(hdr->pixelfmt.fourcc);
 
    if((hdr->pixelfmt.flags & DDPF_FOURCC) &&
@@ -514,7 +514,7 @@ static int validate_header(dds_header_t *hdr)
                 "Only DXT1, DXT3, DXT5, ATI1N and ATI2N formats are supported.\n");
       return(0);
    }
-   
+
    if(hdr->pixelfmt.flags & DDPF_RGB)
    {
       if((hdr->pixelfmt.bpp !=  8) &&
@@ -534,14 +534,14 @@ static int validate_header(dds_header_t *hdr)
          g_message("Invalid BPP.\n");
          return(0);
       }
-      
+
       hdr->pixelfmt.flags |= DDPF_RGB;
    }
    else if(hdr->pixelfmt.flags & DDPF_PALETTEINDEXED8)
    {
       hdr->pixelfmt.flags |= DDPF_RGB;
    }
-   
+
    if(!(hdr->pixelfmt.flags & DDPF_RGB) &&
       !(hdr->pixelfmt.flags & DDPF_ALPHA) &&
       !(hdr->pixelfmt.flags & DDPF_FOURCC) &&
@@ -579,7 +579,7 @@ static int validate_header(dds_header_t *hdr)
             break;
       }
    }
-   
+
    return(1);
 }
 
@@ -608,7 +608,7 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
       if(width < 1) width = 1;
       if(height < 1) height = 1;
    }
-   
+
    switch(d->bpp)
    {
       case 1:
@@ -634,27 +634,32 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
       case 3: type = GIMP_RGB_IMAGE;   break;
       case 4: type = GIMP_RGBA_IMAGE;  break;
    }
-   
+
    layer_name = (level) ? g_strdup_printf("mipmap %d %s", level, prefix) :
                           g_strdup_printf("main surface %s", prefix);
-   
+
    layer = gimp_layer_new(image, layer_name, width, height, type, 100,
                           GIMP_NORMAL_MODE);
    g_free(layer_name);
-   
+
+#if GIMP_CHECK_VERSION(2, 8, 0)
+   gimp_image_insert_layer(image, layer, 0, *l);
+#else
    gimp_image_add_layer(image, layer, *l);
+#endif
+   
    if((*l)++) gimp_drawable_set_visible(layer, FALSE);
-   
+
    drawable = gimp_drawable_get(layer);
-   
+
    gimp_pixel_rgn_init(&pixel_region, drawable, 0, 0, drawable->width,
                        drawable->height, TRUE, FALSE);
-   
+
    if(hdr->pixelfmt.flags & DDPF_FOURCC)
    {
       unsigned int w = (width  + 3) >> 2;
       unsigned int h = (height + 3) >> 2;
-      
+
       switch(GETL32(hdr->pixelfmt.fourcc))
       {
          case FOURCC('D','X','T','1'): format = DDS_COMPRESS_BC1; break;
@@ -671,14 +676,14 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
       else
          size *= 16;
    }
-   
+
    if((hdr->flags & DDSD_LINEARSIZE) &&
       !fread(buf, size, 1, fp))
    {
       g_message("Unexpected EOF.\n");
       return(0);
    }
-   
+
    if(hdr->pixelfmt.flags & DDPF_RGB || hdr->pixelfmt.flags & DDPF_ALPHA)
    {
       z = 0;
@@ -699,14 +704,14 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
             g_message("Unexpected EOF.\n");
             return(0);
          }
-         
+
          if(!(hdr->flags & DDSD_LINEARSIZE)) z = 0;
-         
+
          for(x = 0; x < drawable->width; ++x)
          {
             unsigned int pixel = buf[z];
             unsigned int pos = (n * drawable->width + x) * d->gimp_bpp;
-            
+
             if(d->bpp > 1) pixel += ((unsigned int)buf[z + 1] <<  8);
             if(d->bpp > 2) pixel += ((unsigned int)buf[z + 2] << 16);
             if(d->bpp > 3) pixel += ((unsigned int)buf[z + 3] << 24);
@@ -802,14 +807,14 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
             z += d->bpp;
          }
       }
-      
+
       gimp_pixel_rgn_set_rect(&pixel_region, pixels, 0, y - n,
                               drawable->width, n);
    }
    else if(hdr->pixelfmt.flags & DDPF_FOURCC)
    {
       unsigned char *dst;
-      
+
       if(!(hdr->flags & DDSD_LINEARSIZE))
       {
          g_message("Image marked as compressed, but DDSD_LINEARSIZE is not set.\n");
@@ -818,17 +823,17 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
 
       dst = g_malloc(width * height * d->gimp_bpp);
       memset(dst, 0, width * height * d->gimp_bpp);
-      
+
       if(d->gimp_bpp == 4)
       {
          for(y = 0; y < height; ++y)
             for(x = 0; x < width; ++x)
                dst[y * (width * 4) + (x * 4) + 3] = 255;
       }
-         
+
       dxt_decompress(dst, buf, format, size, width, height, d->gimp_bpp,
                      hdr->pixelfmt.flags & DDPF_NORMAL);
-                  
+
       z = 0;
       for(y = 0, n = 0; y < height; ++y, ++n)
       {
@@ -840,18 +845,18 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
             if(interactive_dds)
                gimp_progress_update((double)y / (double)hdr->height);
          }
-         
+
          memcpy(pixels + n * drawable->width * d->gimp_bpp,
                 dst + y * drawable->width * d->gimp_bpp,
                 width * d->gimp_bpp);
       }
-      
+
       gimp_pixel_rgn_set_rect(&pixel_region, pixels, 0, y - n,
                               drawable->width, n);
-      
+
       g_free(dst);
    }
-   
+
    /* gimp dds specific.  decode encoded images */
    if(dds_read_vals.decode_images &&
       hdr->reserved.gimp_dds_special.magic1 == FOURCC('G','I','M','P') &&
@@ -875,7 +880,7 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
 
    gimp_drawable_flush(drawable);
    gimp_drawable_detach(drawable);
-   
+
    return(1);
 }
 
@@ -884,7 +889,7 @@ static int load_mipmaps(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
                         guchar *pixels, unsigned char *buf)
 {
    unsigned int level;
-   
+
    if((hdr->flags & DDSD_MIPMAPCOUNT) &&
       (hdr->caps.caps1 & DDSCAPS_MIPMAP) &&
       (dds_read_vals.mipmaps != 0))
@@ -910,7 +915,7 @@ static int load_face(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
 static unsigned char color_bits(unsigned int mask)
 {
    unsigned char i = 0;
-   
+
    while(mask)
    {
       if(mask & 1) ++i;
@@ -922,7 +927,7 @@ static unsigned char color_bits(unsigned int mask)
 static unsigned char color_shift(unsigned int mask)
 {
    unsigned char i = 0;
-   
+
    if(!mask) return(0);
    while(!((mask >> i) & 1)) ++i;
    return(i);
@@ -952,7 +957,7 @@ static int load_dialog(void)
    GtkWidget *dlg;
    GtkWidget *vbox;
    GtkWidget *check;
-   
+
    dlg = gimp_dialog_new("Load DDS", "dds", NULL, GTK_WIN_POS_MOUSE,
                          gimp_standard_help_func, LOAD_PROC,
                          GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
@@ -965,19 +970,19 @@ static int load_dialog(void)
    gtk_signal_connect(GTK_OBJECT(dlg), "destroy",
                       GTK_SIGNAL_FUNC(gtk_main_quit),
                       0);
-   
+
    vbox = gtk_vbox_new(0, 8);
    gtk_container_set_border_width(GTK_CONTAINER(vbox), 8);
    gtk_box_pack_start(GTK_BOX(GTK_DIALOG(dlg)->vbox), vbox, 1, 1, 0);
    gtk_widget_show(vbox);
-   
+
    check = gtk_check_button_new_with_label("Load mipmaps");
    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check), dds_read_vals.mipmaps);
    gtk_signal_connect(GTK_OBJECT(check), "clicked",
                       GTK_SIGNAL_FUNC(toggle_clicked), &dds_read_vals.mipmaps);
    gtk_box_pack_start(GTK_BOX(vbox), check, 1, 1, 0);
    gtk_widget_show(check);
-   
+
    check = gtk_check_button_new_with_label("Automatically decode YCoCg/AExp images when detected");
    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check), dds_read_vals.decode_images);
    gtk_signal_connect(GTK_OBJECT(check), "clicked",
@@ -991,12 +996,12 @@ static int load_dialog(void)
                       GTK_SIGNAL_FUNC(toggle_clicked), &dds_read_vals.show_dialog);
    gtk_box_pack_start(GTK_BOX(vbox), check, 1, 1, 0);
    gtk_widget_show(check);
-   
+
    gtk_widget_show(dlg);
-   
+
    runme = 0;
-   
+
    gtk_main();
-   
+
    return(runme);
 }

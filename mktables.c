@@ -22,7 +22,9 @@ static void prepare_opt_table(unsigned char *tab,
          {
             minE = expand[mn];
             maxE = expand[mx];
-            e = abs(maxE + mul8bit(minE - maxE, 0x55) - i);
+            e = abs(maxE + mul8bit(minE - maxE, 0x55) - i) * 100;
+            
+            e += abs(maxE - minE) * 3;
             
             if(e < bestE)
             {
