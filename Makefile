@@ -5,7 +5,7 @@ CC=gcc
 CFLAGS=-pipe -g -O2 -Wall $(shell pkg-config --cflags gtk+-2.0 gimp-2.0)
 
 OS=$(shell uname -s)
-ifeq ($(OS), Linux)
+ifeq (,$(findstring Windows,$(OS)))
 EXT=
 else
 EXT=.exe
