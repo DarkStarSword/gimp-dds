@@ -1,7 +1,7 @@
 /*
 	DDS GIMP plugin
 
-	Copyright (C) 2004-2010 Shawn Kirst <skirst@insightbb.com>,
+	Copyright (C) 2004-2012 Shawn Kirst <skirst@gmail.com>,
    with parts (C) 2003 Arne Reuter <homepage@arnereuter.de> where specified.
 
 	This program is free software; you can redistribute it and/or
