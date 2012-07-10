@@ -38,8 +38,7 @@
 #include "endian.h"
 #include "mipmap.h"
 #include "imath.h"
-
-#include "dxt_tables.h"
+#include "squish.h"
 
 /* extract 4x4 BGRA block */
 static void extract_block(const unsigned char *src, int x, int y,
@@ -117,577 +116,6 @@ static void lerp_rgb13(unsigned char *dst, unsigned char *a, unsigned char *b)
     */
 }
 
-static int color_distance(const unsigned char *c0,
-                          const unsigned char *c1)
-{
-   return(((c0[0] - c1[0]) * (c0[0] - c1[0])) +
-          ((c0[1] - c1[1]) * (c0[1] - c1[1])) +
-          ((c0[2] - c1[2]) * (c0[2] - c1[2])));
-}
-
-static int luminance(const unsigned char *c)
-{
-   /* ITU-R BT.709 luma coefficents, scaled by 255 */
-   return((c[2] * 54 + c[1] * 182 + c[0] * 20) >> 8);
-}
-
-/* Block dithering function.  Simply dithers a block to 565 RGB.
- * (Floyd-Steinberg)
- */
-static void dither_block(unsigned char *dst, const unsigned char *block)
-{
-   int err[8], *ep1 = err, *ep2 = err + 4, *tmp;
-   int c, y;
-   unsigned char *bp, *dp;
-   const unsigned char *quant;
-
-   /* process channels seperately */
-   for(c = 0; c < 3; ++c)
-   {
-      bp = (unsigned char *)block;
-      dp = dst;
-      quant = (c == 1) ? quantG + 8 : quantRB + 8;
-
-      bp += c;
-      dp += c;
-
-      memset(err, 0, sizeof(err));
-
-      for(y = 0; y < 4; ++y)
-      {
-         /* pixel 0 */
-         dp[ 0] = quant[bp[ 0] + ((3 * ep2[1] + 5 * ep2[0]) >> 4)];
-         ep1[0] = bp[ 0] - dp[ 0];
-
-         /* pixel 1 */
-         dp[ 4] = quant[bp[ 4] + ((7 * ep1[0] + 3 * ep2[2] + 5 * ep2[1] + ep2[0]) >> 4)];
-         ep1[1] = bp[ 4] - dp[ 4];
-
-         /* pixel 2 */
-         dp[ 8] = quant[bp[ 8] + ((7 * ep1[1] + 3 * ep2[3] + 5 * ep2[2] + ep2[1]) >> 4)];
-         ep1[2] = bp[ 8] - dp[ 8];
-
-         /* pixel 3 */
-         dp[12] = quant[bp[12] + ((7 * ep1[2] + 5 * ep2[3] + ep2[2]) >> 4)];
-         ep1[3] = bp[12] - dp[12];
-
-         /* advance to next line */
-         tmp = ep1;
-         ep1 = ep2;
-         ep2 = tmp;
-
-         bp += 16;
-         dp += 16;
-      }
-   }
-}
-
-/* Color matching function */
-static unsigned int match_colors_block(const unsigned char *block,
-                                       unsigned char color[4][3],
-                                       int dither)
-{
-   unsigned int mask = 0;
-   int dirb = color[0][0] - color[1][0];
-   int dirg = color[0][1] - color[1][1];
-   int dirr = color[0][2] - color[1][2];
-   int dots[16], stops[4];
-   int c0pt, halfpt, c3pt, dot, bits;
-   int i;
-   const int remap[8] =
-   {
-      0 << 30, 2 << 30, 0 << 30, 2 << 30, 3 << 30, 3 << 30, 1 << 30, 1 << 30
-   };
-
-   for(i = 0; i < 16; ++i)
-      dots[i] = block[4 * i] * dirb + block[4 * i + 1] * dirg + block[4 * i + 2] * dirr;
-
-   for(i = 0; i < 4; ++i)
-      stops[i] = color[i][0] * dirb + color[i][1] * dirg + color[i][2] * dirr;
-
-   /*
-    * think of the colors as arranged on a line; project point onto that line, then choose
-    * next color out of available ones. we compute the crossover points for "best color in top
-    * half"/"best in bottom half" and then the same inside that subinterval.
-    *
-    * relying on this 1d approximation isn't always optimal in terms of euclidean distance,
-    * but it's very close and a lot faster.
-    * http://cbloomrants.blogspot.com/2008/12/12-08-08-dxtc-summary.html
-    */
-
-   c0pt   = (stops[1] + stops[3]) >> 1;
-   halfpt = (stops[3] + stops[2]) >> 1;
-   c3pt   = (stops[2] + stops[0]) >> 1;
-
-   if(!dither)
-   {
-      /* the version without dithering is straight-forward */
-      for(i = 0; i < 16; ++i)
-      {
-         dot = dots[i];
-         bits = ((dot < halfpt) ? 4 : 0) |
-                ((dot < c0pt  ) ? 2 : 0) |
-                ((dot < c3pt  ) ? 1 : 0);
-         mask >>= 2;
-         mask |= remap[bits];
-      }
-   }
-   else
-   {
-      /* with floyd-steinberg dithering (see above) */
-      int err[8], *ep1 = err, *ep2 = err + 4, *tmp;
-      int *dp = dots, y, lmask, step;
-
-      c0pt <<= 4;
-      halfpt <<= 4;
-      c3pt <<= 4;
-
-      memset(err, 0, sizeof(err));
-
-      for(y = 0; y < 4; ++y)
-      {
-         /* pixel 0 */
-         dot = (dp[0] << 4) + (3 * ep2[1] + 5 * ep2[0]);
-         if(dot < halfpt)
-            step = (dot < c0pt) ? 1 : 3;
-         else
-            step = (dot < c3pt) ? 2 : 0;
-
-         ep1[0] = dp[0] - stops[step];
-         lmask = step;
-
-         /* pixel 1 */
-         dot = (dp[1] << 4) + (7 * ep1[0] + 3 * ep2[2] + 5 * ep2[1] + ep2[0]);
-         if(dot < halfpt)
-            step = (dot < c0pt) ? 1 : 3;
-         else
-            step = (dot < c3pt) ? 2 : 0;
-
-         ep1[1] = dp[1] - stops[step];
-         lmask |= step << 2;
-
-         /* pixel 2 */
-         dot = (dp[2] << 4) + (7 * ep1[1] + 3 * ep2[3] + 5 * ep2[2] + ep2[1]);
-         if(dot < halfpt)
-            step = (dot < c0pt) ? 1 : 3;
-         else
-            step = (dot < c3pt) ? 2 : 0;
-
-         ep1[2] = dp[2] - stops[step];
-         lmask |= step << 4;
-
-         /* pixel 3 */
-         dot = (dp[3] << 4) + (7 * ep1[2] + 5 * ep2[3] + ep2[2]);
-         if(dot < halfpt)
-            step = (dot < c0pt) ? 1 : 3;
-         else
-            step = (dot < c3pt) ? 2 : 0;
-
-         ep1[3] = dp[3] - stops[step];
-         lmask |= step << 6;
-
-         /* advance to next line */
-         tmp = ep1;
-         ep1 = ep2;
-         ep2 = tmp;
-
-         dp += 4;
-         mask |= lmask << (y * 8);
-      }
-   }
-
-   return(mask);
-}
-
-static unsigned int match_colors_block_DXT1a(const unsigned char *block,
-                                             unsigned char color[4][3])
-{
-   int i, d0, d1, d2, idx;
-   unsigned int mask = 0;
-
-   for(i = 15; i >= 0; --i)
-   {
-      mask <<= 2;
-      d0 = color_distance(&block[4 * i], color[0]);
-      d1 = color_distance(&block[4 * i], color[1]);
-      d2 = color_distance(&block[4 * i], color[2]);
-      if(block[4 * i + 3] < 128)
-         idx = 3;
-      else if(d0 < d1 && d0 < d2)
-         idx = 0;
-      else if(d1 < d2)
-         idx = 1;
-      else
-         idx = 2;
-      mask |= idx;
-   }
-
-   return(mask);
-}
-
-/* The color optimization function. (Clever code, part 1) */
-static void optimize_colors_block(const unsigned char *block,
-                                  unsigned short *max16, unsigned short *min16)
-{
-   static const int niterpow = 4;
-
-   int mu[3], mn[3], mx[3];
-   int i, c, r, g, b, dot, iter;
-   int muv, mnv, mxv, mnd, mxd;
-   int cov[6];
-   const unsigned char *bp, *mnc = block, *mxc = block;
-   float covf[6], vfr, vfg, vfb, magn;
-   float fr, fg, fb;
-
-   /* determine color distribution */
-   for(c = 0; c < 3; ++c)
-   {
-      bp = block + c;
-
-      muv = mnv = mxv = bp[0];
-      for(i = 4; i < 64; i += 4)
-      {
-         muv += bp[i];
-         if(mnv > bp[i]) mnv = bp[i];
-         if(mxv < bp[i]) mxv = bp[i];
-      }
-
-      mu[c] = (muv + 8) >> 4;
-      mn[c] = mnv;
-      mx[c] = mxv;
-   }
-
-   memset(cov, 0, sizeof(cov));
-
-   /* determine covariance matrix */
-   for(i = 0; i < 16; ++i)
-   {
-      b = block[4 * i + 0] - mu[0];
-      g = block[4 * i + 1] - mu[1];
-      r = block[4 * i + 2] - mu[2];
-
-      cov[0] += r * r;
-      cov[1] += r * g;
-      cov[2] += r * b;
-      cov[3] += g * g;
-      cov[4] += g * b;
-      cov[5] += b * b;
-   }
-
-   /* convert covariance matrix to float, find principal axis via power iter */
-   for(i = 0; i < 6; ++i)
-      covf[i] = cov[i] / 255.0f;
-
-   vfb = mx[0] - mn[0];
-   vfg = mx[1] - mn[1];
-   vfr = mx[2] - mn[2];
-
-   for(iter = 0; iter < niterpow; ++iter)
-   {
-      fr = vfr * covf[0] + vfg * covf[1] + vfb * covf[2];
-      fg = vfr * covf[1] + vfg * covf[3] + vfb * covf[4];
-      fb = vfr * covf[2] + vfg * covf[4] + vfb * covf[5];
-
-      vfr = fr;
-      vfg = fg;
-      vfb = fb;
-   }
-
-   vfr = fabsf(vfr);
-   vfg = fabsf(vfg);
-   vfb = fabsf(vfb);
-
-   magn = MAX(MAX(vfr, vfg), vfb);
-
-   if(magn < 4.0) /* too small, default to luminance */
-   {
-      /* ITU-R BT.709 luma coefficents, scaled by 1000 */
-      r = 213;
-      g = 715;
-      b = 72;
-      /* JPEG YCbCr luma coefs, scaled by 1000 */
-      /*
-      r = 299;
-      g = 587;
-      b = 114;
-      */
-   }
-   else
-   {
-      magn = 512.0f / magn;
-      r = (int)(vfr * magn);
-      g = (int)(vfg * magn);
-      b = (int)(vfb * magn);
-   }
-
-   /* pick colors at extreme points */
-   mnd =  0x7fffffff;
-   mxd = -0x7fffffff;
-
-   for(i = 0; i < 16; ++i)
-   {
-      dot = block[4 * i] * b + block[4 * i + 1] * g + block[4 * i + 2] * r;
-
-      if(dot < mnd)
-      {
-         mnd = dot;
-         mnc = block + 4 * i;
-      }
-      if(dot > mxd)
-      {
-         mxd = dot;
-         mxc = block + 4 * i;
-      }
-   }
-
-   /* reduce to 16-bit colors */
-   *max16 = pack_rgb565(mxc);
-   *min16 = pack_rgb565(mnc);
-}
-
-static int sclamp(float y, int p0, int p1)
-{
-   int x = (int)y;
-   if(x < p0) return(p0);
-   if(x > p1) return(p1);
-   return(x);
-}
-
-/* The refinement function (Clever code, part 2)
- * Tries to optimize colors to suit block contents better.
- * (By solving a least squares system via normal equations + Cramer's rule)
- */
-static int refine_block(const unsigned char *block,
-                        unsigned short *max16, unsigned short *min16,
-                        unsigned int mask)
-{
-   static const int w1tab[4] = {3, 0, 2, 1};
-   static const int prods[4] = {0x090000, 0x000900, 0x040102, 0x010402};
-   /* ^ Some magic to save a lot of multiplies in the accumulating loop... */
-   /* (precomputed products of weights for least squares system, accumulated inside one 32-bit register) */
-
-   int akku = 0;
-   int At1_r, At1_g, At1_b;
-   int At2_r, At2_g, At2_b;
-   unsigned int cm = mask;
-   int i, step, w1, r, g, b;
-   int xx, yy, xy;
-   float frb, fg;
-   unsigned short oldmin, oldmax;
-
-   oldmin = *min16;
-   oldmax = *max16;
-   if((mask ^ (mask << 2)) < 4) /* all pixels have the same index */
-   {
-      /* degenerate system, use optimal single-color match for average color */
-      r = g = b = 8;
-      for(i = 0; i < 16; ++i)
-      {
-         r += block[4 * i + 2];
-         g += block[4 * i + 1];
-         b += block[4 * i + 0];
-      }
-
-      r >>= 4;
-      g >>= 4;
-      b >>= 4;
-
-      *max16 = (omatch5[r][0] << 11) | (omatch6[g][0] << 5) | omatch5[b][0];
-      *min16 = (omatch5[r][1] << 11) | (omatch6[g][1] << 5) | omatch5[b][1];
-      return(*min16 != oldmin || *max16 != oldmax);
-   }
-
-   At1_r = At1_g = At1_b = 0;
-   At2_r = At2_g = At2_b = 0;
-
-   for(i = 0; i < 16; ++i, cm >>= 2)
-   {
-      step = cm & 3;
-      w1 = w1tab[step];
-      r = block[4 * i + 2];
-      g = block[4 * i + 1];
-      b = block[4 * i + 0];
-
-      akku  += prods[step];
-      At1_r += w1 * r;
-      At1_g += w1 * g;
-      At1_b += w1 * b;
-      At2_r += r;
-      At2_g += g;
-      At2_b += b;
-   }
-
-   At2_r = 3 * At2_r - At1_r;
-   At2_g = 3 * At2_g - At1_g;
-   At2_b = 3 * At2_b - At1_b;
-
-   /* extract solutions and decide solvability */
-   xx = akku >> 16;
-   yy = (akku >> 8) & 0xff;
-   xy = (akku >> 0) & 0xff;
-
-   frb = 3.0f * 31.0f / 255.0f / (xx * yy - xy * xy);
-   fg = frb * 63.0f / 31.0f;
-
-   /* solve */
-   *max16  = sclamp((At1_r * yy - At2_r * xy) * frb + 0.5f, 0, 31) << 11;
-   *max16 |= sclamp((At1_g * yy - At2_g * xy) * fg  + 0.5f, 0, 63) << 5;
-   *max16 |= sclamp((At1_b * yy - At2_b * xy) * frb + 0.5f, 0, 31) << 0;
-
-   *min16  = sclamp((At2_r * xx - At1_r * xy) * frb + 0.5f, 0, 31) << 11;
-   *min16 |= sclamp((At2_g * xx - At1_g * xy) * fg  + 0.5f, 0, 63) << 5;
-   *min16 |= sclamp((At2_b * xx - At1_b * xy) * frb + 0.5f, 0, 31) << 0;
-
-   return(oldmin != *min16 || oldmax != *max16);
-}
-
-/* Find min/max colors by distance */
-static void get_min_max_colors_distance(const unsigned char *block,
-                                        unsigned short *max16,
-                                        unsigned short *min16)
-{
-   int i, j, dist, maxdist = -1;
-   const unsigned char *p0 = block, *p1 = block;
-   unsigned short c0, c1;
-
-   for(i = 0; i < 64 - 4; i += 4)
-   {
-      for(j = i + 4; j < 64; j += 4)
-      {
-         dist = color_distance(&block[i], &block[j]);
-         if(dist > maxdist)
-         {
-            maxdist = dist;
-            p0 = block + i;
-            p1 = block + j;
-         }
-      }
-   }
-
-   c0 = pack_rgb565(p0);
-   c1 = pack_rgb565(p1);
-
-   *max16 = MAX(c0, c1);
-   *min16 = MIN(c0, c1);
-}
-
-/* Find min-max colors by luminance */
-static void get_min_max_colors_luminance(const unsigned char *block,
-                                         unsigned short *max16,
-                                         unsigned short *min16)
-{
-   int i, lum, minlum = 0x7fffffff, maxlum = -0x7fffffff;
-   const unsigned char *mn = block, *mx = block;
-
-   for(i = 0; i < 16; ++i)
-   {
-      lum = luminance(&block[4 * i]);
-      if(lum > maxlum)
-      {
-         maxlum = lum;
-         mx = block + 4 * i;
-      }
-      if(lum < minlum)
-      {
-         minlum = lum;
-         mn = block + 4 * i;
-      }
-   }
-
-   *max16 = pack_rgb565(mx);
-   *min16 = pack_rgb565(mn);
-}
-
-static void get_min_max_colors_bbox(const unsigned char *block,
-                                    unsigned char *cmax, unsigned char *cmin,
-                                    int alpha)
-{
-   int i;
-   unsigned char mx[3], mn[3];
-
-   mn[0] = mn[1] = mn[2] = 255;
-   mx[0] = mx[1] = mx[2] = 0;
-
-   for(i = 0; i < 16; ++i)
-   {
-      if(alpha && block[4 * i + 3] < 128) continue;
-
-      if(block[4 * i + 0] < mn[0]) mn[0] = block[4 * i + 0];
-      if(block[4 * i + 1] < mn[1]) mn[1] = block[4 * i + 1];
-      if(block[4 * i + 2] < mn[2]) mn[2] = block[4 * i + 2];
-      if(block[4 * i + 0] > mx[0]) mx[0] = block[4 * i + 0];
-      if(block[4 * i + 1] > mx[1]) mx[1] = block[4 * i + 1];
-      if(block[4 * i + 2] > mx[2]) mx[2] = block[4 * i + 2];
-   }
-
-   for(i = 0; i < 3; ++i)
-   {
-      cmax[i] = mx[i];
-      cmin[i] = mn[i];
-   }
-}
-
-static void select_diagonal(const unsigned char *block,
-                            unsigned char *cmax, unsigned char *cmin,
-                            int alpha)
-{
-   int center[3], t[3];
-   int covariance[2] = {0, 0};
-   int i, x0, y0, x1, y1;
-
-   center[0] = (cmax[0] + cmin[0] + 1) >> 1;
-   center[1] = (cmax[1] + cmin[1] + 1) >> 1;
-   center[2] = (cmax[2] + cmin[2] + 1) >> 1;
-
-   for(i = 0; i < 16; ++i)
-   {
-      if(alpha && block[4 * i + 3] < 128) continue;
-
-      t[0] = (int)block[4 * i + 0] - center[0];
-      t[1] = (int)block[4 * i + 1] - center[1];
-      t[2] = (int)block[4 * i + 2] - center[2];
-      covariance[0] += t[0] * t[2];
-      covariance[1] += t[1] * t[2];
-   }
-
-   x0 = cmax[0];
-   y0 = cmax[1];
-   x1 = cmin[0];
-   y1 = cmin[1];
-
-   if(covariance[0] < 0)
-   {
-      x0 ^= x1; x1 ^= x0; x0 ^= x1;
-   }
-   if(covariance[1] < 0)
-   {
-      y0 ^= y1; y1 ^= y0; y0 ^= y1;
-   }
-
-   cmax[0] = MAX(0, MIN(255, x0));
-   cmax[1] = MAX(0, MIN(255, y0));
-   cmin[0] = MAX(0, MIN(255, x1));
-   cmin[1] = MAX(0, MIN(255, y1));
-}
-
-#define INSET_SHIFT  4
-
-static void inset_bbox(unsigned char *cmax, unsigned char *cmin)
-{
-   int inset[3];
-
-   inset[0] = ((int)cmax[0] - cmin[0]) >> INSET_SHIFT;
-   inset[1] = ((int)cmax[1] - cmin[1]) >> INSET_SHIFT;
-   inset[2] = ((int)cmax[2] - cmin[2]) >> INSET_SHIFT;
-
-   cmax[0] = MAX(0, MIN(255, (int)cmax[0] - inset[0]));
-   cmax[1] = MAX(0, MIN(255, (int)cmax[1] - inset[1]));
-   cmax[2] = MAX(0, MIN(255, (int)cmax[2] - inset[2]));
-   cmin[0] = MAX(0, MIN(255, (int)cmin[0] + inset[0]));
-   cmin[1] = MAX(0, MIN(255, (int)cmin[1] + inset[1]));
-   cmin[2] = MAX(0, MIN(255, (int)cmin[2] + inset[2]));
-}
-
 static void get_min_max_YCoCg(const unsigned char *block,
                               unsigned char *mincolor, unsigned char *maxcolor)
 {
@@ -741,6 +169,8 @@ static void scale_YCoCg(unsigned char *block,
       block[i * 4 + 1] = (block[i * 4 + 1] - 128) * scale + 128;
    }
 }
+
+#define INSET_SHIFT  4
 
 static void inset_bbox_YCoCg(unsigned char *mincolor, unsigned char *maxcolor)
 {
@@ -799,158 +229,6 @@ static void select_diagonal_YCoCg(const unsigned char *block,
 
    mincolor[1] = c0;
    maxcolor[1] = c1;
-}
-
-static void eval_colors(unsigned char color[4][3],
-                        unsigned short c0, unsigned short c1)
-{
-   unpack_rgb565(color[0], c0);
-   unpack_rgb565(color[1], c1);
-   if(c0 > c1)
-   {
-      lerp_rgb13(color[2], color[0], color[1]);
-      lerp_rgb13(color[3], color[1], color[0]);
-   }
-   else
-   {
-      color[2][0] = (color[0][0] + color[1][0]) >> 1;
-      color[2][1] = (color[0][1] + color[1][1]) >> 1;
-      color[2][2] = (color[0][2] + color[1][2]) >> 1;
-
-      color[3][0] = color[3][1] = color[3][2] = 0;
-   }
-}
-
-static void encode_color_block(unsigned char *dst,
-                               const unsigned char *block,
-                               int type, int dither, int dxt1_alpha)
-{
-   unsigned char dblock[64], color[4][3], cmax[3], cmin[3];
-   unsigned short min16, max16;
-   unsigned int v, mn, mx, mask, lastmask, alphamask;
-   int i, rematch = 1, single_color = 0;
-
-   /* find min/max colors, compute alpha mask (for DXT1a) */
-   mn = mx = GETL24(block);
-   alphamask = 0;
-   for(i = 0; i < 16; ++i)
-   {
-      if(block[4 * i + 3] < 128)
-         alphamask |= (3 << (2 * i));
-      v = GETL24(&block[4 * i]);
-      mx = MAX(mx, v);
-      mn = MIN(mn, v);
-   }
-
-   single_color = (mn == mx);
-
-   /* compute dithered block for PCA if desired */
-   if(dither)
-      dither_block(dblock, block);
-
-   if(single_color)
-   {
-      max16 = (omatch5[block[2]][0] << 11) |
-              (omatch6[block[1]][0] <<  5) |
-              (omatch5[block[0]][0]      );
-      min16 = (omatch5[block[2]][1] << 11) |
-              (omatch6[block[1]][1] <<  5) |
-              (omatch5[block[0]][1]      );
-      mask = 0xaaaaaaaa;
-      if(dxt1_alpha)
-         mask |= alphamask;
-   }
-   else if(dxt1_alpha && alphamask) /* DXT1 + alpha, and non-opaque pixels found in block */
-   {
-      get_min_max_colors_bbox(dither ? dblock : block, cmax, cmin, 1);
-      select_diagonal(dither ? dblock : block, cmax, cmin, 1);
-      inset_bbox(cmax, cmin);
-
-      max16 = pack_rgb565(cmax);
-      min16 = pack_rgb565(cmin);
-
-      if(max16 > min16)
-      {
-         max16 ^= min16; min16 ^= max16; max16 ^= min16;
-      }
-
-      eval_colors(color, max16, min16);
-      mask = match_colors_block_DXT1a(block, color);
-   }
-   else /* not a special-case block, compress as normal */
-   {
-      switch(type)
-      {
-         case DDS_COLOR_DISTANCE:
-            get_min_max_colors_distance(dither ? dblock : block, &max16, &min16);
-            break;
-         case DDS_COLOR_LUMINANCE:
-            get_min_max_colors_luminance(dither ? dblock : block, &max16, &min16);
-            break;
-         case DDS_COLOR_INSET_BBOX:
-            get_min_max_colors_bbox(dither ? dblock : block, cmax, cmin, 0);
-            select_diagonal(dither ? dblock : block, cmax, cmin, 0);
-            inset_bbox(cmax, cmin);
-            max16 = pack_rgb565(cmax);
-            min16 = pack_rgb565(cmin);
-            break;
-         default:
-            /* pca + map along principal axis */
-            optimize_colors_block(dither ? dblock : block, &max16, &min16);
-            if(max16 != min16)
-            {
-               eval_colors(color, max16, min16);
-               mask = match_colors_block(block, color, dither != 0);
-            }
-            else
-               mask = 0;
-
-            /* refine */
-            for(i = 0; i < 2; ++i)
-            {
-               lastmask = mask;
-
-               if(refine_block(dither ? dblock : block, &max16, &min16, mask))
-               {
-                  if(max16 != min16)
-                  {
-                     eval_colors(color, max16, min16);
-                     mask = match_colors_block(block, color, dither != 0);
-                  }
-                  else
-                     mask = 0;
-               }
-
-               if(mask == lastmask)
-                  break;
-            }
-
-            rematch = 0;
-
-            break;
-      }
-
-      if(rematch)
-      {
-         if(max16 != min16)
-         {
-            eval_colors(color, max16, min16);
-            mask = match_colors_block(block, color, dither != 0);
-         }
-         else
-            mask = 0;
-      }
-
-      if(max16 < min16)
-      {
-         max16 ^= min16; min16 ^= max16; max16 ^= min16;
-         mask ^= 0x55555555;
-      }
-   }
-
-   PUTL16(&dst[0], max16);
-   PUTL16(&dst[2], min16);
-   PUTL32(&dst[4], mask);
 }
 
 /* write DXT3 alpha block */
@@ -1032,54 +310,60 @@ static void encode_alpha_block_DXT5(unsigned char *dst,
 }
 
 static void compress_DXT1(unsigned char *dst, const unsigned char *src,
-                          int w, int h, int type, int dither, int alpha)
+                          int w, int h, int flags)
 {
-   unsigned char block[64];
+   unsigned char block[64], *p;
    int x, y;
 
+#pragma omp parallel for schedule(dynamic) \
+   private(y, x, block, p)
    for(y = 0; y < h; y += 4)
    {
       for(x = 0; x < w; x += 4)
       {
+         p = dst + ((y >> 2) * (8 * (w >> 2)) + (8 * (x >> 2)));
          extract_block(src, x, y, w, h, block);
-         encode_color_block(dst, block, type, dither, alpha);
-         dst += 8;
+         squish_compress(p, block, SQUISH_DXT1 | flags);
       }
    }
 }
 
 static void compress_DXT3(unsigned char *dst, const unsigned char *src,
-                          int w, int h, int type, int dither)
+                          int w, int h, int flags)
 {
-   unsigned char block[64];
+   unsigned char block[64], *p;
    int x, y;
 
+#pragma omp parallel for schedule(dynamic) \
+   private(y, x, block, p)
    for(y = 0; y < h; y += 4)
    {
       for(x = 0; x < w; x += 4)
       {
+         p = dst + ((y >> 2) * (16 * (w >> 2)) + (16 * (x >> 2)));
          extract_block(src, x, y, w, h, block);
-         encode_alpha_block_DXT3(dst, block);
-         encode_color_block(dst + 8, block, type, dither, 0);
-         dst += 16;
+         encode_alpha_block_DXT3(p, block);
+         squish_compress(p + 8, block, SQUISH_DXT3 | flags);
       }
    }
 }
 
 static void compress_DXT5(unsigned char *dst, const unsigned char *src,
-                          int w, int h, int type, int dither)
+                          int w, int h, int flags)
 {
-   unsigned char block[64];
+   unsigned char block[64], *p;
    int x, y;
 
+#pragma omp parallel for schedule(dynamic) \
+   private(y, x, block, p)
    for(y = 0; y < h; y += 4)
    {
       for(x = 0; x < w; x += 4)
       {
+         p = dst + ((y >> 2) * (16 * (w >> 2)) + (16 * (x >> 2)));
          extract_block(src, x, y, w, h, block);
-         encode_alpha_block_DXT5(dst, block, 0);
-         encode_color_block(dst + 8, block, type, dither, 0);
-         dst += 16;
+         encode_alpha_block_DXT5(p, block, 0);
+         squish_compress(p + 8, block, SQUISH_DXT5 | flags);
       }
    }
 }
@@ -1087,16 +371,18 @@ static void compress_DXT5(unsigned char *dst, const unsigned char *src,
 static void compress_BC4(unsigned char *dst, const unsigned char *src,
                          int w, int h)
 {
-   unsigned char block[64];
+   unsigned char block[64], *p;
    int x, y;
 
+#pragma omp parallel for schedule(dynamic) \
+   private(y, x, block, p)
    for(y = 0; y < h; y += 4)
    {
       for(x = 0; x < w; x += 4)
       {
+         p = dst + ((y >> 2) * (8 * (w >> 2)) + (8 * (x >> 2)));
          extract_block(src, x, y, w, h, block);
-         encode_alpha_block_DXT5(dst, block, -1);
-         dst += 8;
+         encode_alpha_block_DXT5(p, block, -1);
       }
    }
 }
@@ -1104,17 +390,19 @@ static void compress_BC4(unsigned char *dst, const unsigned char *src,
 static void compress_BC5(unsigned char *dst, const unsigned char *src,
                          int w, int h)
 {
-   unsigned char block[64];
+   unsigned char block[64], *p;
    int x, y;
 
+#pragma omp parallel for schedule(dynamic) \
+   private(y, x, block, p)
    for(y = 0; y < h; y += 4)
    {
       for(x = 0; x < w; x += 4)
       {
+         p = dst + ((y >> 2) * (16 * (w >> 2)) + (16 * (x >> 2)));
          extract_block(src, x, y, w, h, block);
-         encode_alpha_block_DXT5(dst, block, -2);
-         encode_alpha_block_DXT5(dst + 8, block, -1);
-         dst += 16;
+         encode_alpha_block_DXT5(p, block, -2);
+         encode_alpha_block_DXT5(p + 8, block, -1);
       }
    }
 }
@@ -1123,20 +411,25 @@ static void compress_YCoCg(unsigned char *dst, const unsigned char *src,
                            int w, int h)
 {
    unsigned char block[64], colors[4][3];
-   unsigned char *maxcolor, *mincolor;
+   unsigned char *p, *maxcolor, *mincolor;
    unsigned int mask;
    int c0, c1, d0, d1, d2, d3;
    int b0, b1, b2, b3, b4;
    int x0, x1, x2;
    int x, y, i;
 
+#pragma omp parallel for schedule(dynamic) \
+   private(block, colors, p, maxcolor, mincolor, mask, c0, c1, d0, d1, d2, d3, \
+           b0, b1, b2, b3, b4, x0, x1, x2, x, y, i)
    for(y = 0; y < h; y += 4)
    {
       for(x = 0; x < w; x += 4)
       {
+         p = dst + ((y >> 2) * (16 * (w >> 2)) + (16 * (x >> 2)));
+
          extract_block(src, x, y, w, h, block);
 
-         encode_alpha_block_DXT5(dst, block, 0);
+         encode_alpha_block_DXT5(p, block, 0);
 
          maxcolor = &colors[0][0];
          mincolor = &colors[1][0];
@@ -1175,25 +468,22 @@ static void compress_YCoCg(unsigned char *dst, const unsigned char *src,
             mask |= (x2 | ((x0 | x1) << 1));
          }
 
-         PUTL16(&dst[ 8], pack_rgb565(maxcolor));
-         PUTL16(&dst[10], pack_rgb565(mincolor));
-         PUTL32(&dst[12], mask);
-
-         dst += 16;
+         PUTL16(p +  8, pack_rgb565(maxcolor));
+         PUTL16(p + 10, pack_rgb565(mincolor));
+         PUTL32(p + 12, mask);
       }
    }
 }
 
 int dxt_compress(unsigned char *dst, unsigned char *src, int format,
                  unsigned int width, unsigned int height, int bpp,
-                 int mipmaps, int type, int dither)
+                 int mipmaps, int flags)
 {
    int i, size, w, h;
    unsigned int offset;
    unsigned char *tmp = NULL;
    int j;
    unsigned char *s;
-   int alpha = (bpp == 4);
 
    if(bpp == 1)
    {
@@ -1258,17 +548,17 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
       switch(format)
       {
          case DDS_COMPRESS_BC1:
-            compress_DXT1(dst + offset, s, w, h, type, dither, alpha);
+            compress_DXT1(dst + offset, s, w, h, flags);
             break;
          case DDS_COMPRESS_BC2:
-            compress_DXT3(dst + offset, s, w, h, type, dither);
+            compress_DXT3(dst + offset, s, w, h, flags);
             break;
          case DDS_COMPRESS_BC3:
          case DDS_COMPRESS_BC3N:
          case DDS_COMPRESS_RXGB:
          case DDS_COMPRESS_AEXP:
          case DDS_COMPRESS_YCOCG:
-            compress_DXT5(dst + offset, s, w, h, type, dither);
+            compress_DXT5(dst + offset, s, w, h, flags);
             break;
          case DDS_COMPRESS_BC4:
             compress_BC4(dst + offset, s, w, h);
@@ -1280,7 +570,7 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
             compress_YCoCg(dst + offset, s, w, h);
             break;
          default:
-            compress_DXT5(dst + offset, s, w, h, type, dither);
+            compress_DXT5(dst + offset, s, w, h, flags);
             break;
       }
       s += (w * h * bpp);

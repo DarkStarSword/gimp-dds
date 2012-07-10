@@ -24,8 +24,8 @@
 #define __DDSPLUGIN_H
 
 #define DDS_PLUGIN_VERSION_MAJOR     2
-#define DDS_PLUGIN_VERSION_MINOR     0
-#define DDS_PLUGIN_VERSION_REVISION  10
+#define DDS_PLUGIN_VERSION_MINOR     2
+#define DDS_PLUGIN_VERSION_REVISION  0
 
 #define DDS_PLUGIN_VERSION  \
    ((unsigned int)(DDS_PLUGIN_VERSION_MAJOR << 16) | \
@@ -39,11 +39,11 @@ typedef struct
    int savetype;
    int format;
    int transindex;
-   int color_type;
-   int dither;
    int mipmap_filter;
    int gamma_correct;
    float gamma;
+   int weight_by_alpha;
+   int perceptual_metric;
    int show_adv_opt;
 } DDSWriteVals;
 

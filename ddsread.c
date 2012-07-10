@@ -647,7 +647,7 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
 #else
    gimp_image_add_layer(image, layer, *l);
 #endif
-   
+
    if((*l)++) gimp_drawable_set_visible(layer, FALSE);
 
    drawable = gimp_drawable_get(layer);
