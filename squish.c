@@ -91,7 +91,7 @@ typedef struct
    vec4_t points_weights[16];
    vec4_t xsum_wsum;
    vec4_t metric;
-   vec4_t besterror;
+   float besterror;
 } clusterfit_t;
 
 static inline int float_to_int(float a, int limit)
@@ -278,8 +278,8 @@ static void colorset_remap_indices(colorset_t *colors,
 static void compute_weighted_covariance(sym3x3_t cov, colorset_t *colors)
 {
    int i;
-   float total = 0;
-   vec3_t centroid, a, b;
+   float total = 0, invtotal;
+   vec3_t centroid, a, b, t;
 
    for(i = 0; i < 6; ++i) cov[i] = 0.0f;
 
@@ -289,16 +289,15 @@ static void compute_weighted_covariance(sym3x3_t cov, colorset_t *colors)
    for(i = 0; i < colors->count; ++i)
    {
       total += colors->weights[i];
-      centroid[0] += colors->weights[i] * colors->points[i][0];
-      centroid[1] += colors->weights[i] * colors->points[i][1];
-      centroid[2] += colors->weights[i] * colors->points[i][2];
+      vec3_muls(t, colors->points[i], colors->weights[i]);
+      vec3_add(centroid, centroid, t);
    }
 
+   // normalize centroid
    if(total > FLT_EPSILON)
    {
-      centroid[0] /= total;
-      centroid[1] /= total;
-      centroid[2] /= total;
+      invtotal = 1.0f / total;
+      vec3_muls(centroid, centroid, invtotal);
    }
 
    // accumulate the covariance matrix
@@ -511,12 +510,12 @@ static void clusterfit_init(clusterfit_t *cf, colorset_t *colors, int flags)
 
    cf->colors = colors;
 
-   cf->besterror = vec4_set1(FLT_MAX);
+   cf->besterror = FLT_MAX;
 
    if(flags & SQUISH_PERCEPTUALMETRIC)
-      cf->metric = vec4_set(0.2126f, 0.7152f, 0.0722f, 1.0f);
+      cf->metric = vec4_set(0.2126f, 0.7152f, 0.0722f, 0.0f);
    else
-      cf->metric = vec4_set1(1.0f);
+      cf->metric = vec4_set(1.0f, 1.0f, 1.0f, 0.0f);
 
    compute_weighted_covariance(covariance, cf->colors);
    compute_principle_component(cf->principle, covariance);
@@ -592,7 +591,7 @@ static void clusterfit_compress3(clusterfit_t *cf, unsigned char *block)
 
    vec4_t beststart = VEC4_CONST1(0);
    vec4_t bestend = VEC4_CONST1(0);
-   vec4_t error, besterror = cf->besterror;
+   float error, besterror = cf->besterror;
    vec4_t part0, part1, part2;
    vec4_t alphax_sum, alpha2_sum;
    vec4_t betax_sum, beta2_sum;
@@ -650,10 +649,11 @@ static void clusterfit_compress3(clusterfit_t *cf, unsigned char *block)
             // apply the metric to error term
             e4 *= cf->metric;
 
-            error = vec4_splatx(e4) + vec4_splaty(e4) + vec4_splatz(e4);
+            // accumulate error term
+            error = vec4_accum(e4);
 
             // keep the solution if it wins
-            if(vec4_cmplt(error, besterror))
+            if(error < besterror)
             {
                beststart = a;
                bestend = b;
@@ -691,7 +691,7 @@ static void clusterfit_compress3(clusterfit_t *cf, unsigned char *block)
    }
 
    // save the block if necessary
-   if(vec4_cmplt(besterror, cf->besterror))
+   if(besterror < cf->besterror)
    {
       // remap the indices
       order = cf->order + 16 * bestiteration;
@@ -729,7 +729,7 @@ static void clusterfit_compress4(clusterfit_t *cf, unsigned char *block)
 
    vec4_t beststart = VEC4_CONST1(0.0f);
    vec4_t bestend = VEC4_CONST1(0.0f);
-   vec4_t error, besterror = cf->besterror;
+   float error, besterror = cf->besterror;
    vec4_t part0, part1, part2, part3;
    vec4_t alphax_sum, alpha2_sum;
    vec4_t betax_sum, beta2_sum;
@@ -791,10 +791,11 @@ static void clusterfit_compress4(clusterfit_t *cf, unsigned char *block)
                // apply the metric to error term
                e4 *= cf->metric;
 
-               error = vec4_splatx(e4) + vec4_splaty(e4) + vec4_splatz(e4);
+               // accumulate error term
+               error = vec4_accum(e4);
 
                // keep the solution if it wins
-               if(vec4_cmplt(error, besterror))
+               if(error < besterror)
                {
                   beststart = a;
                   bestend = b;
@@ -840,7 +841,7 @@ static void clusterfit_compress4(clusterfit_t *cf, unsigned char *block)
    }
 
    // save the block if necessary
-   if(vec4_cmplt(besterror, cf->besterror))
+   if(besterror < cf->besterror)
    {
       // remap the indices
       order = cf->order + 16 * bestiteration;

@@ -30,10 +30,7 @@
 #endif
 
 #ifdef USE_SSE
-#include <xmmintrin.h>
-# ifdef __SSE2__
-#  include <emmintrin.h>
-# endif
+#include <immintrin.h>
 #endif
 
 #include "imath.h"
@@ -231,14 +228,17 @@ static inline vec4_t vec4_trunc(const vec4_t v)
 #endif
 }
 
-static inline int vec4_cmplt(const vec4_t l, const vec4_t r)
+static inline float vec4_accum(const vec4_t v)
 {
 #ifdef USE_SSE
-   __m128 bits = _mm_cmplt_ps(l, r);
-   int value = _mm_movemask_ps(bits);
-   return(value != 0);
+   float rv;
+   __m128 t;
+   t = _mm_add_ps(v, _mm_movehl_ps(v, v));
+   t = _mm_add_ss(t, _mm_shuffle_ps(t, t, 0x01));
+   _mm_store_ss(&rv, t);
+   return(rv);
 #else
-   return((l[0] < r[0]) || (l[1] < r[1]) || (l[2] < r[2]) || (l[3] < r[3]));
+   return(v[0] + v[1] + v[2] + v[3]);
 #endif
 }
 
