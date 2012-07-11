@@ -108,11 +108,6 @@ static void lerp_rgb13(unsigned char *dst, unsigned char *a, unsigned char *b)
     *
     * dst = (2 * a + b) / 3;
     *
-    * TODO: Find a smart way to handle this.  Straight-forward for the compressor
-    *       (advanced option in the save dialog to disable the rounding bias used
-    *       in the above code), but more tricky to handle with the decompressor
-    *       from a user's standpoint (if we are decompressing an image that was
-    *       not compressed with this plugin, which option do you choose?).
     */
 }
 
@@ -315,8 +310,7 @@ static void compress_DXT1(unsigned char *dst, const unsigned char *src,
    unsigned char block[64], *p;
    int x, y;
 
-#pragma omp parallel for schedule(dynamic) \
-   private(y, x, block, p)
+#pragma omp parallel for schedule(dynamic) private(y, x, block, p)
    for(y = 0; y < h; y += 4)
    {
       for(x = 0; x < w; x += 4)
@@ -334,8 +328,7 @@ static void compress_DXT3(unsigned char *dst, const unsigned char *src,
    unsigned char block[64], *p;
    int x, y;
 
-#pragma omp parallel for schedule(dynamic) \
-   private(y, x, block, p)
+#pragma omp parallel for schedule(dynamic) private(y, x, block, p)
    for(y = 0; y < h; y += 4)
    {
       for(x = 0; x < w; x += 4)
@@ -354,8 +347,7 @@ static void compress_DXT5(unsigned char *dst, const unsigned char *src,
    unsigned char block[64], *p;
    int x, y;
 
-#pragma omp parallel for schedule(dynamic) \
-   private(y, x, block, p)
+#pragma omp parallel for schedule(dynamic) private(y, x, block, p)
    for(y = 0; y < h; y += 4)
    {
       for(x = 0; x < w; x += 4)
@@ -374,8 +366,7 @@ static void compress_BC4(unsigned char *dst, const unsigned char *src,
    unsigned char block[64], *p;
    int x, y;
 
-#pragma omp parallel for schedule(dynamic) \
-   private(y, x, block, p)
+#pragma omp parallel for schedule(dynamic) private(y, x, block, p)
    for(y = 0; y < h; y += 4)
    {
       for(x = 0; x < w; x += 4)
@@ -393,8 +384,7 @@ static void compress_BC5(unsigned char *dst, const unsigned char *src,
    unsigned char block[64], *p;
    int x, y;
 
-#pragma omp parallel for schedule(dynamic) \
-   private(y, x, block, p)
+#pragma omp parallel for schedule(dynamic) private(y, x, block, p)
    for(y = 0; y < h; y += 4)
    {
       for(x = 0; x < w; x += 4)

@@ -79,6 +79,7 @@ typedef struct
    vec3_t start;
    vec3_t end;
    vec3_t metric;
+   float besterror;
 } rangefit_t;
 
 typedef struct
@@ -90,15 +91,13 @@ typedef struct
    vec4_t points_weights[16];
    vec4_t xsum_wsum;
    vec4_t metric;
+   vec4_t besterror;
 } clusterfit_t;
 
-static int float_to_int(float a, int limit)
+static inline int float_to_int(float a, int limit)
 {
    int i = (int)(a + 0.5f);
-   if(i < 0)
-      i = 0;
-   else if(i > limit)
-      i = limit;
+   i = MIN(limit, MAX(0, i));
    return(i);
 }
 
@@ -356,6 +355,8 @@ static void rangefit_init(rangefit_t *rf, colorset_t *colors, int flags)
 
    rf->colors = colors;
 
+   rf->besterror = FLT_MAX;
+
    if(flags & SQUISH_PERCEPTUALMETRIC)
       vec3_set(rf->metric, 0.2126f, 0.7152f, 0.0722f);
    else
@@ -405,7 +406,7 @@ static void rangefit_init(rangefit_t *rf, colorset_t *colors, int flags)
 static void rangefit_compress3(rangefit_t *rf, unsigned char *block)
 {
    vec3_t codes[3], temp1, temp2;
-   float dist, d;
+   float error = 0, dist, d;
    int i, j, idx;
    unsigned char closest[16], indices[16];
 
@@ -433,14 +434,21 @@ static void rangefit_compress3(rangefit_t *rf, unsigned char *block)
             idx = j;
          }
       }
-      // save the index
+      // save the index and accumulate error
       closest[i] = idx;
+      error += dist;
    }
 
-   // remap the indices
-   colorset_remap_indices(rf->colors, closest, indices);
-   // save the block
-   write_color_block3(float_to_565(rf->start), float_to_565(rf->end), indices, block);
+   // save this scheme if it wins
+   if(error < rf->besterror)
+   {
+      // remap the indices
+      colorset_remap_indices(rf->colors, closest, indices);
+      // save the block
+      write_color_block3(float_to_565(rf->start), float_to_565(rf->end), indices, block);
+      // save the error
+      rf->besterror = error;
+   }
 }
 
 static void rangefit_compress4(rangefit_t *rf, unsigned char *block)
@@ -448,7 +456,7 @@ static void rangefit_compress4(rangefit_t *rf, unsigned char *block)
    const vec3_t onethird =  {1.0f / 3.0f, 1.0f / 3.0f, 1.0f / 3.0f};
    const vec3_t twothirds = {2.0f / 3.0f, 2.0f / 3.0f, 2.0f / 3.0f};
    vec3_t codes[4], temp1, temp2;
-   float dist, d;
+   float error = 0, dist, d;
    int i, j, idx;
    unsigned char closest[16], indices[16];
 
@@ -480,14 +488,21 @@ static void rangefit_compress4(rangefit_t *rf, unsigned char *block)
          }
       }
 
-      // save the index
+      // save the index and accumulate error
       closest[i] = idx;
+      error += dist;
    }
 
-   // remap the indices
-   colorset_remap_indices(rf->colors, closest, indices);
-   // save the block
-   write_color_block4(float_to_565(rf->start), float_to_565(rf->end), indices, block);
+   // save this scheme if it wins
+   if(error < rf->besterror)
+   {
+      // remap the indices
+      colorset_remap_indices(rf->colors, closest, indices);
+      // save the block
+      write_color_block4(float_to_565(rf->start), float_to_565(rf->end), indices, block);
+      // save the error
+      rf->besterror = error;
+   }
 }
 
 static void clusterfit_init(clusterfit_t *cf, colorset_t *colors, int flags)
@@ -495,6 +510,8 @@ static void clusterfit_init(clusterfit_t *cf, colorset_t *colors, int flags)
    sym3x3_t covariance;
 
    cf->colors = colors;
+
+   cf->besterror = vec4_set1(FLT_MAX);
 
    if(flags & SQUISH_PERCEPTUALMETRIC)
       cf->metric = vec4_set(0.2126f, 0.7152f, 0.0722f, 1.0f);
@@ -575,7 +592,7 @@ static void clusterfit_compress3(clusterfit_t *cf, unsigned char *block)
 
    vec4_t beststart = VEC4_CONST1(0);
    vec4_t bestend = VEC4_CONST1(0);
-   vec4_t error, besterror = VEC4_CONST1(FLT_MAX);
+   vec4_t error, besterror = cf->besterror;
    vec4_t part0, part1, part2;
    vec4_t alphax_sum, alpha2_sum;
    vec4_t betax_sum, beta2_sum;
@@ -673,21 +690,28 @@ static void clusterfit_compress3(clusterfit_t *cf, unsigned char *block)
          break;
    }
 
-   // remap the indices
-   order = cf->order + 16 * bestiteration;
+   // save the block if necessary
+   if(vec4_cmplt(besterror, cf->besterror))
+   {
+      // remap the indices
+      order = cf->order + 16 * bestiteration;
 
-   for(m = 0;     m < besti; ++m) unordered[order[m]] = 0;
-   for(m = besti; m < bestj; ++m) unordered[order[m]] = 2;
-   for(m = bestj; m < count; ++m) unordered[order[m]] = 1;
+      for(m = 0;     m < besti; ++m) unordered[order[m]] = 0;
+      for(m = besti; m < bestj; ++m) unordered[order[m]] = 2;
+      for(m = bestj; m < count; ++m) unordered[order[m]] = 1;
 
-   colorset_remap_indices(cf->colors, unordered, bestindices);
+      colorset_remap_indices(cf->colors, unordered, bestindices);
 
-   // save the block
-   vec4_to_vec3(start, beststart);
-   vec4_to_vec3(end, bestend);
+      // save the block
+      vec4_to_vec3(start, beststart);
+      vec4_to_vec3(end, bestend);
 
-   write_color_block3(float_to_565(start), float_to_565(end),
-                        bestindices, block);
+      write_color_block3(float_to_565(start), float_to_565(end),
+                           bestindices, block);
+
+      // save the error
+      cf->besterror = besterror;
+   }
 }
 
 static void clusterfit_compress4(clusterfit_t *cf, unsigned char *block)
@@ -705,7 +729,7 @@ static void clusterfit_compress4(clusterfit_t *cf, unsigned char *block)
 
    vec4_t beststart = VEC4_CONST1(0.0f);
    vec4_t bestend = VEC4_CONST1(0.0f);
-   vec4_t error, besterror = VEC4_CONST1(FLT_MAX);
+   vec4_t error, besterror = cf->besterror;
    vec4_t part0, part1, part2, part3;
    vec4_t alphax_sum, alpha2_sum;
    vec4_t betax_sum, beta2_sum;
@@ -815,22 +839,29 @@ static void clusterfit_compress4(clusterfit_t *cf, unsigned char *block)
          break;
    }
 
-   // remap the indices
-   order = cf->order + 16 * bestiteration;
+   // save the block if necessary
+   if(vec4_cmplt(besterror, cf->besterror))
+   {
+      // remap the indices
+      order = cf->order + 16 * bestiteration;
 
-   for(m = 0;     m < besti; ++m) unordered[order[m]] = 0;
-   for(m = besti; m < bestj; ++m) unordered[order[m]] = 2;
-   for(m = bestj; m < bestk; ++m) unordered[order[m]] = 3;
-   for(m = bestk; m < count; ++m) unordered[order[m]] = 1;
+      for(m = 0;     m < besti; ++m) unordered[order[m]] = 0;
+      for(m = besti; m < bestj; ++m) unordered[order[m]] = 2;
+      for(m = bestj; m < bestk; ++m) unordered[order[m]] = 3;
+      for(m = bestk; m < count; ++m) unordered[order[m]] = 1;
 
-   colorset_remap_indices(cf->colors, unordered, bestindices);
+      colorset_remap_indices(cf->colors, unordered, bestindices);
 
-   // save the block
-   vec4_to_vec3(start, beststart);
-   vec4_to_vec3(end, bestend);
+      // save the block
+      vec4_to_vec3(start, beststart);
+      vec4_to_vec3(end, bestend);
 
-   write_color_block4(float_to_565(start), float_to_565(end),
-                        bestindices, block);
+      write_color_block4(float_to_565(start), float_to_565(end),
+                           bestindices, block);
+
+      // save the error
+      cf->besterror = besterror;
+   }
 }
 
 void squish_compress(unsigned char *dst, const unsigned char *block, int flags)
@@ -868,16 +899,24 @@ void squish_compress(unsigned char *dst, const unsigned char *block, int flags)
    else if(colors.count == 0)
    {
       rangefit_init(&rf, &colors, flags);
-      if(colors.transparent && (flags & SQUISH_DXT1))
+      if(flags & SQUISH_DXT1)
+      {
          rangefit_compress3(&rf, dst);
+         if(!colors.transparent)
+            rangefit_compress4(&rf, dst);
+      }
       else
          rangefit_compress4(&rf, dst);
    }
    else
    {
       clusterfit_init(&cf, &colors, flags);
-      if(colors.transparent && (flags & SQUISH_DXT1))
+      if(flags & SQUISH_DXT1)
+      {
          clusterfit_compress3(&cf, dst);
+         if(!colors.transparent)
+            clusterfit_compress4(&cf, dst);
+      }
       else
          clusterfit_compress4(&cf, dst);
    }
