@@ -203,7 +203,9 @@ static inline vec4_t vec4_max(const vec4_t a, const vec4_t b)
 static inline vec4_t vec4_trunc(const vec4_t v)
 {
 #ifdef USE_SSE
-# ifdef __SSE2__
+# ifdef __SSE4_1__
+   return(_mm_round_ps(v, _MM_FROUND_TRUNC));
+# elif defined(__SSE2__)
    return(_mm_cvtepi32_ps(_mm_cvttps_epi32(v)));
 # else
    // convert to ints
@@ -233,8 +235,13 @@ static inline float vec4_accum(const vec4_t v)
 #ifdef USE_SSE
    float rv;
    __m128 t;
+# ifdef __SSE3__
+   t = _mm_hadd_ps(v, v);
+   t = _mm_hadd_ps(t, t);
+# else
    t = _mm_add_ps(v, _mm_movehl_ps(v, v));
    t = _mm_add_ss(t, _mm_shuffle_ps(t, t, 0x01));
+# endif
    _mm_store_ss(&rv, t);
    return(rv);
 #else

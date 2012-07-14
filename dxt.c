@@ -310,7 +310,9 @@ static void compress_DXT1(unsigned char *dst, const unsigned char *src,
    unsigned char block[64], *p;
    int x, y;
 
-#pragma omp parallel for schedule(dynamic) private(y, x, block, p)
+#ifdef _OPENMP
+#pragma omp parallel for collapse(2) schedule(dynamic) private(block, p)
+#endif
    for(y = 0; y < h; y += 4)
    {
       for(x = 0; x < w; x += 4)
@@ -328,7 +330,9 @@ static void compress_DXT3(unsigned char *dst, const unsigned char *src,
    unsigned char block[64], *p;
    int x, y;
 
-#pragma omp parallel for schedule(dynamic) private(y, x, block, p)
+#ifdef _OPENMP
+#pragma omp parallel for collapse(2) schedule(dynamic) private(block, p)
+#endif
    for(y = 0; y < h; y += 4)
    {
       for(x = 0; x < w; x += 4)
@@ -347,7 +351,9 @@ static void compress_DXT5(unsigned char *dst, const unsigned char *src,
    unsigned char block[64], *p;
    int x, y;
 
-#pragma omp parallel for schedule(dynamic) private(y, x, block, p)
+#ifdef _OPENMP
+#pragma omp parallel for collapse(2) schedule(dynamic) private(block, p)
+#endif
    for(y = 0; y < h; y += 4)
    {
       for(x = 0; x < w; x += 4)
@@ -366,7 +372,9 @@ static void compress_BC4(unsigned char *dst, const unsigned char *src,
    unsigned char block[64], *p;
    int x, y;
 
-#pragma omp parallel for schedule(dynamic) private(y, x, block, p)
+#ifdef _OPENMP
+#pragma omp parallel for collapse(2) schedule(dynamic) private(block, p)
+#endif
    for(y = 0; y < h; y += 4)
    {
       for(x = 0; x < w; x += 4)
@@ -384,7 +392,9 @@ static void compress_BC5(unsigned char *dst, const unsigned char *src,
    unsigned char block[64], *p;
    int x, y;
 
-#pragma omp parallel for schedule(dynamic) private(y, x, block, p)
+#ifdef _OPENMP
+#pragma omp parallel for collapse(2) schedule(dynamic) private(block, p)
+#endif
    for(y = 0; y < h; y += 4)
    {
       for(x = 0; x < w; x += 4)
@@ -408,9 +418,11 @@ static void compress_YCoCg(unsigned char *dst, const unsigned char *src,
    int x0, x1, x2;
    int x, y, i;
 
-#pragma omp parallel for schedule(dynamic) \
+#ifdef _OPENMP
+#pragma omp parallel for collapse(2) schedule(dynamic) \
    private(block, colors, p, maxcolor, mincolor, mask, c0, c1, d0, d1, d2, d3, \
-           b0, b1, b2, b3, b4, x0, x1, x2, x, y, i)
+           b0, b1, b2, b3, b4, x0, x1, x2, i)
+#endif
    for(y = 0; y < h; y += 4)
    {
       for(x = 0; x < w; x += 4)
