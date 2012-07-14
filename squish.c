@@ -871,7 +871,7 @@ void squish_compress(unsigned char *dst, const unsigned char *block, int flags)
    rangefit_t rf;
    clusterfit_t cf;
    int i, start, end;
-   unsigned char unordered[16], indices[16];
+   unsigned int indices;
 
    colorset_init(&colors, block, 0xffff, flags);
 
@@ -884,18 +884,37 @@ void squish_compress(unsigned char *dst, const unsigned char *block, int flags)
               (omatch6[block[1]][1] <<  5) |
               (omatch5[block[0]][1]      );
 
-      for(i = 0; i < 16; i += 2)
+      indices = 0xaaaaaaaa;  // 101010...
+
+      if(colors.transparent)
       {
-         unordered[i + 0] = 0;
-         unordered[i + 1] = 1;
+         for(i = 0; i < 16; ++i)
+         {
+            if(block[4 * i +  3] < 128)
+               indices |= (3 << (2 * i));  // set index to 3
+         }
+         if(start > end)
+            SWAP(start, end);
+      }
+      else
+      {
+         if(start < end)
+         {
+            SWAP(start, end);
+            indices ^= 0x55555555; // 010101...
+         }
       }
 
-      colorset_remap_indices(&colors, unordered, indices);
-
-      if(colors.transparent && (flags & SQUISH_DXT1))
-         write_color_block3(start, end, indices, dst);
-      else
-         write_color_block4(start, end, indices, dst);
+      // write endpoints
+      dst[0] = (unsigned char)(start & 0xff);
+      dst[1] = (unsigned char)(start >> 8);
+      dst[2] = (unsigned char)(end & 0xff);
+      dst[3] = (unsigned char)(end >> 8);
+      // write indices
+      dst[4] = (unsigned char)(indices & 0xff);
+      dst[5] = (unsigned char)(indices >> 8);
+      dst[6] = (unsigned char)(indices >> 16);
+      dst[7] = (unsigned char)(indices >> 24);
    }
    else if(colors.count == 0)
    {
