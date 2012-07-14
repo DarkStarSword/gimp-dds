@@ -531,6 +531,10 @@ static void scale_image_lanczos(unsigned char *dst, int dw, int dh,
    {
       invgamma = 1.0 / gamma;
 
+#ifdef _OPENMP
+#pragma omp parallel for schedule(dynamic) \
+      private(x, y, col, center, start, stop, nmax, s, i, n, density, r, contrib)
+#endif
       for(y = 0; y < dh; ++y)
       {
          for(x = 0; x < sw; ++x)
@@ -561,7 +565,7 @@ static void scale_image_lanczos(unsigned char *dst, int dw, int dh,
                if(r < 0) r = 0;
                if(r > 255) r = 255;
 
-               *d++ = (unsigned char)gamma_correct(r, invgamma);
+               d[(y * (sw * bpp)) + (x * bpp) + i] = (unsigned char)gamma_correct(r, invgamma);
             }
          }
       }
@@ -570,6 +574,10 @@ static void scale_image_lanczos(unsigned char *dst, int dw, int dh,
 
       d = dst;
 
+#ifdef _OPENMP
+#pragma omp parallel for schedule(dynamic) \
+      private(x, y, row, center, start, stop, nmax, s, i, n, density, r, contrib)
+#endif
       for(y = 0; y < dh; ++y)
       {
          row = tmp + (y * sstride);
@@ -600,13 +608,17 @@ static void scale_image_lanczos(unsigned char *dst, int dw, int dh,
                if(r < 0) r = 0;
                if(r > 255) r = 255;
 
-               *d++ = (unsigned char)gamma_correct(r, invgamma);
+               d[(y * (dw * bpp)) + (x * bpp) + i] = (unsigned char)gamma_correct(r, invgamma);
             }
          }
       }
    }
    else
    {
+#ifdef _OPENMP
+#pragma omp parallel for schedule(dynamic) \
+      private(x, y, col, center, start, stop, nmax, s, i, n, density, r, contrib)
+#endif
       for(y = 0; y < dh; ++y)
       {
          for(x = 0; x < sw; ++x)
@@ -637,7 +649,8 @@ static void scale_image_lanczos(unsigned char *dst, int dw, int dh,
                if(r < 0) r = 0;
                if(r > 255) r = 255;
 
-               *d++ = (unsigned char)r;
+               //*d++ = (unsigned char)r;
+               d[(y * (sw * bpp)) + (x * bpp) + i] = (unsigned char)r;
             }
          }
       }
@@ -646,6 +659,10 @@ static void scale_image_lanczos(unsigned char *dst, int dw, int dh,
 
       d = dst;
 
+#ifdef _OPENMP
+#pragma omp parallel for schedule(dynamic) \
+      private(x, y, row, center, start, stop, nmax, s, i, n, density, r, contrib)
+#endif
       for(y = 0; y < dh; ++y)
       {
          row = tmp + (y * sstride);
@@ -676,7 +693,7 @@ static void scale_image_lanczos(unsigned char *dst, int dw, int dh,
                if(r < 0) r = 0;
                if(r > 255) r = 255;
 
-               *d++ = (unsigned char)r;
+               d[(y * (dw * bpp)) + (x * bpp) + i] = (unsigned char)r;
             }
          }
       }
