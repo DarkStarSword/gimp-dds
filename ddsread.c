@@ -124,10 +124,18 @@ GimpPDBStatusType read_dds(gchar *filename, gint32 *imageID)
       if(hdr.pixelfmt.flags & DDPF_FOURCC) /* assume linear size */
       {
          hdr.pitch_or_linsize = ((hdr.width + 3) >> 2) * ((hdr.height + 3) >> 2);
-         if(hdr.pixelfmt.fourcc[3] == '1')
-            hdr.pitch_or_linsize *= 8;
-         else
-            hdr.pitch_or_linsize *= 16;
+         switch(GETL32(hdr.pixelfmt.fourcc))
+         {
+            case FOURCC('D', 'X', 'T', '1'):
+            case FOURCC('A', 'T', 'I', '1'):
+            case FOURCC('B', 'C', '4', 'U'):
+            case FOURCC('B', 'C', '4', 'S'):
+               hdr.pitch_or_linsize *= 8;
+               break;
+            default:
+               hdr.pitch_or_linsize *= 16;
+               break;
+         }
       }
       else /* assume pitch */
       {
@@ -159,10 +167,14 @@ GimpPDBStatusType read_dds(gchar *filename, gint32 *imageID)
          switch(GETL32(hdr.pixelfmt.fourcc))
          {
             case FOURCC('A', 'T', 'I', '1'):
+            case FOURCC('B', 'C', '4', 'U'):
+            case FOURCC('B', 'C', '4', 'S'):
                d.bpp = d.gimp_bpp = 1;
                type = GIMP_GRAY;
                break;
             case FOURCC('A', 'T', 'I', '2'):
+            case FOURCC('B', 'C', '5', 'U'):
+            case FOURCC('B', 'C', '5', 'S'):
                d.bpp = d.gimp_bpp = 3;
                type = GIMP_RGB;
                break;
@@ -508,7 +520,11 @@ static int validate_header(dds_header_t *hdr)
       fourcc != FOURCC('D','X','T','5') &&
       fourcc != FOURCC('R','X','G','B') &&
       fourcc != FOURCC('A','T','I','1') &&
-      fourcc != FOURCC('A','T','I','2'))
+      fourcc != FOURCC('A','T','I','2') &&
+      fourcc != FOURCC('B','C','4','U') &&
+      fourcc != FOURCC('B','C','4','S') &&
+      fourcc != FOURCC('B','C','5','U') &&
+      fourcc != FOURCC('B','C','5','S'))
    {
       g_message("Invalid compression format.\n"
                 "Only DXT1, DXT3, DXT5, ATI1N and ATI2N formats are supported.\n");
@@ -556,6 +572,10 @@ static int validate_header(dds_header_t *hdr)
          case FOURCC('R','X','G','B'):
          case FOURCC('A','T','I','1'):
          case FOURCC('A','T','I','2'):
+         case FOURCC('B','C','4','U'):
+         case FOURCC('B','C','4','S'):
+         case FOURCC('B','C','5','U'):
+         case FOURCC('B','C','5','S'):
             hdr->pixelfmt.flags |= DDPF_FOURCC;
             break;
          default:
@@ -666,8 +686,12 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
          case FOURCC('D','X','T','3'): format = DDS_COMPRESS_BC2; break;
          case FOURCC('D','X','T','5'): format = DDS_COMPRESS_BC3; break;
          case FOURCC('R','X','G','B'): format = DDS_COMPRESS_BC3; break;
-         case FOURCC('A','T','I','1'): format = DDS_COMPRESS_BC4; break;
-         case FOURCC('A','T','I','2'): format = DDS_COMPRESS_BC5; break;
+         case FOURCC('A','T','I','1'):
+         case FOURCC('B','C','4','U'):
+         case FOURCC('B','C','4','S'): format = DDS_COMPRESS_BC4; break;
+         case FOURCC('A','T','I','2'):
+         case FOURCC('B','C','5','U'):
+         case FOURCC('B','C','5','S'): format = DDS_COMPRESS_BC5; break;
       }
 
       size = w * h;
