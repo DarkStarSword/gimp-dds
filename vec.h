@@ -35,99 +35,49 @@
 
 #include "imath.h"
 
-typedef float vec3_t[3];
 typedef float vec4_t __attribute__((vector_size(16)));
 typedef float sym3x3_t[6];
 
 #define VEC4_CONST4(x, y, z, w)  {x, y, z, w}
 #define VEC4_CONST1(x)           {x, x, x, x}
 
-static inline void vec3_set(vec3_t v, float x, float y, float z)
-{
-   v[0] = x; v[1] = y; v[2] = z;
-}
-
-static inline void vec3_copy(vec3_t r, const vec3_t v)
-{
-   r[0] = v[0]; r[1] = v[1]; r[2] = v[2];
-}
-
-static inline void vec3_add(vec3_t v, const vec3_t a, const vec3_t b)
-{
-   v[0] = a[0] + b[0];
-   v[1] = a[1] + b[1];
-   v[2] = a[2] + b[2];
-}
-
-static inline void vec3_sub(vec3_t v, const vec3_t a, const vec3_t b)
-{
-   v[0] = a[0] - b[0];
-   v[1] = a[1] - b[1];
-   v[2] = a[2] - b[2];
-}
-
-static inline void vec3_mul(vec3_t v, const vec3_t a, const vec3_t b)
-{
-   v[0] = a[0] * b[0];
-   v[1] = a[1] * b[1];
-   v[2] = a[2] * b[2];
-}
-
-static inline void vec3_muls(vec3_t v, const vec3_t a, float b)
-{
-   v[0] = a[0] * b;
-   v[1] = a[1] * b;
-   v[2] = a[2] * b;
-}
-
-static inline void vec3_madds(vec3_t v, const vec3_t a, const vec3_t b, float c)
-{
-   v[0] = a[0] * b[0] + c;
-   v[1] = a[1] * b[1] + c;
-   v[2] = a[2] * b[2] + c;
-}
-
-static inline float vec3_dot(const vec3_t a, const vec3_t b)
-{
-   return(a[0] * b[0] + a[1] * b[1] + a[2] * b[2]);
-}
-
-static inline void vec3_mins(vec3_t r, const vec3_t v, float s)
-{
-   r[0] = v[0] < s ? v[0] : s;
-   r[1] = v[1] < s ? v[1] : s;
-   r[2] = v[2] < s ? v[2] : s;
-}
-
-static inline void vec3_maxs(vec3_t r, const vec3_t v, float s)
-{
-   r[0] = v[0] > s ? v[0] : s;
-   r[1] = v[1] > s ? v[1] : s;
-   r[2] = v[2] > s ? v[2] : s;
-}
-
-static inline void vec3_trunc(vec3_t r, const vec3_t v)
-{
-   r[0] = v[0] > 0.0f ? floorf(v[0]) : ceilf(v[0]);
-   r[1] = v[1] > 0.0f ? floorf(v[1]) : ceilf(v[1]);
-   r[2] = v[2] > 0.0f ? floorf(v[2]) : ceilf(v[2]);
-}
-
 static inline vec4_t vec4_set(float x, float y, float z, float w)
 {
+#ifdef USE_SSE
+   return(_mm_setr_ps(x, y, z, w));
+#else
    vec4_t v = {x, y, z, w};
    return(v);
+#endif
 }
 
 static inline vec4_t vec4_set1(float f)
 {
+#ifdef USE_SSE
+   return(_mm_set1_ps(f));
+#else
    vec4_t v = {f, f, f, f};
    return(v);
+#endif
 }
 
-static inline void vec4_to_vec3(vec3_t r, const vec4_t v)
+static inline vec4_t vec4_zero()
 {
-   r[0] = v[0]; r[1] = v[1]; r[2] = v[2];
+#ifdef USE_SSE
+   return(_mm_setzero_ps());
+#else
+   vec4_t v = {0, 0, 0, 0};
+   return(v);
+#endif
+}
+
+static inline void vec4_store(float *f, const vec4_t v)
+{
+#ifdef USE_SSE
+   _mm_store_ps(f, v);
+#else
+   f[0] = v[0]; f[1] = v[1]; f[2] = v[2]; f[3] = v[3];
+#endif
 }
 
 static inline vec4_t vec4_splatx(const vec4_t v)
@@ -246,6 +196,18 @@ static inline float vec4_accum(const vec4_t v)
    return(rv);
 #else
    return(v[0] + v[1] + v[2] + v[3]);
+#endif
+}
+
+static inline float vec4_dot(const vec4_t a, const vec4_t b)
+{
+#if defined(USE_SSE) && defined(__SSE4_1__)
+   float rv;
+   __m128 t = _mm_dp_ps(a, b, 0xff);
+   _mm_store_ss(&rv, t);
+   return(rv);
+#else
+   return(vec4_accum(a * b));
 #endif
 }
 

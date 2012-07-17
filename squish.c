@@ -67,7 +67,7 @@
 typedef struct
 {
    int count;
-   vec3_t points[16];
+   vec4_t points[16];
    float weights[16];
    int remap[16];
    int transparent;
@@ -76,9 +76,9 @@ typedef struct
 typedef struct
 {
    colorset_t *colors;
-   vec3_t start;
-   vec3_t end;
-   vec3_t metric;
+   vec4_t start;
+   vec4_t end;
+   vec4_t metric;
    float besterror;
 } rangefit_t;
 
@@ -86,8 +86,8 @@ typedef struct
 {
    colorset_t *colors;
    int flags;
-   vec3_t principle;
    unsigned char order[16 * CLUSTERFIT_ITERATIONS];
+   vec4_t principle;
    vec4_t points_weights[16];
    vec4_t xsum_wsum;
    vec4_t metric;
@@ -107,6 +107,13 @@ static int float_to_565(const float *c)
    int g = float_to_int(63.0f * c[1], 63);
    int b = float_to_int(31.0f * c[0], 31);
    return((r << 11) | (g << 5) | b);
+}
+
+static int vec4_to_565(const vec4_t v)
+{
+   float c[4] __attribute__((aligned(16)));
+   vec4_store(c, v);
+   return(float_to_565(c));
 }
 
 static void write_color_block(int a, int b, unsigned char *indices, unsigned char *block)
@@ -222,7 +229,7 @@ static void colorset_init(colorset_t *colors, const unsigned char *rgba, int mas
             w = (float)(rgba[4 * i + 3] + 1) / 256.0f;
 
             // add the point
-            vec3_set(colors->points[colors->count], x, y, z);
+            colors->points[colors->count] = vec4_set(x, y, z, 0.0f);
             colors->weights[colors->count] = wba ? w : 1.0f;
             colors->remap[i] = colors->count;
 
@@ -278,33 +285,29 @@ static void colorset_remap_indices(colorset_t *colors,
 static void compute_weighted_covariance(sym3x3_t cov, colorset_t *colors)
 {
    int i;
-   float total = 0, invtotal;
-   vec3_t centroid, a, b, t;
+   vec4_t total, centroid, w, a, b;
 
    for(i = 0; i < 6; ++i) cov[i] = 0.0f;
 
    // compute the centroid
-   vec3_set(centroid, 0.0f, 0.0f, 0.0f);
+   total = vec4_zero();
+   centroid = vec4_zero();
 
    for(i = 0; i < colors->count; ++i)
    {
-      total += colors->weights[i];
-      vec3_muls(t, colors->points[i], colors->weights[i]);
-      vec3_add(centroid, centroid, t);
+      w = vec4_set1(colors->weights[i]);
+      total += w;
+      centroid += colors->points[i] * w;
    }
 
    // normalize centroid
-   if(total > FLT_EPSILON)
-   {
-      invtotal = 1.0f / total;
-      vec3_muls(centroid, centroid, invtotal);
-   }
+   centroid *= vec4_rcp(total);
 
    // accumulate the covariance matrix
    for(i = 0; i < colors->count; ++i)
    {
-      vec3_sub(a, colors->points[i], centroid);
-      vec3_muls(b, a, colors->weights[i]);
+      a = colors->points[i] - centroid;
+      b = a * vec4_set1(colors->weights[i]);
 
       cov[0] += a[0] * b[0];
       cov[1] += a[0] * b[1];
@@ -315,7 +318,7 @@ static void compute_weighted_covariance(sym3x3_t cov, colorset_t *colors)
    }
 }
 
-static void compute_principle_component(vec3_t r, const sym3x3_t matrix)
+static vec4_t compute_principle_component(const sym3x3_t matrix)
 {
    const int POWER_ITERATIONS = 8;
    vec4_t row0, row1, row2, v, w, a;
@@ -340,81 +343,81 @@ static void compute_principle_component(vec3_t r, const sym3x3_t matrix)
       v = w * a;
    }
 
-   vec4_to_vec3(r, v);
+   return(v);
 }
 
 static void rangefit_init(rangefit_t *rf, colorset_t *colors, int flags)
 {
+   const vec4_t zero = VEC4_CONST1(0.0f);
+   const vec4_t one = VEC4_CONST1(1.0f);
+   const vec4_t half = VEC4_CONST1(0.5f);
+   const vec4_t grid = VEC4_CONST4(31.0f, 63.0f, 31.0f, 0.0f);
+   const vec4_t gridrcp = VEC4_CONST4(1.0f / 31.0f, 1.0f / 63.0f, 1.0f / 31.0f, 0.0f);
+
    sym3x3_t covariance;
-   vec3_t principle, start, end;
+   vec4_t principle, start, end;
    float min, max, val;
    int i;
-   const vec3_t grid = {31.0f, 63.0f, 31.0f};
-   const vec3_t gridrcp = {1.0f / 31.0f, 1.0f / 63.0f, 1.0f / 31.0f};
 
    rf->colors = colors;
 
    rf->besterror = FLT_MAX;
 
    if(flags & SQUISH_PERCEPTUALMETRIC)
-      vec3_set(rf->metric, 0.2126f, 0.7152f, 0.0722f);
+      rf->metric = vec4_set(0.2126f, 0.7152f, 0.0722f, 0.0f);
    else
-      vec3_set(rf->metric, 1.0f, 1.0f, 1.0f);
+      rf->metric = vec4_set(1.0f, 1.0f, 1.0f, 0.0f);
 
    // get the covariance matrix
    compute_weighted_covariance(covariance, rf->colors);
    // compute the principle component
-   compute_principle_component(principle, covariance);
+   principle = compute_principle_component(covariance);
 
    // get the min and max range as the codebook endpoints
-   vec3_set(start, 0, 0, 0);
-   vec3_set(end, 0, 0, 0);
+   start = end = zero;
 
    if(rf->colors->count > 0)
    {
       // compute the range
-      vec3_copy(start, rf->colors->points[0]);
-      vec3_copy(end, rf->colors->points[0]);
-      min = max = vec3_dot(rf->colors->points[0], principle);
+      start = end = rf->colors->points[0];
+      min = max = vec4_dot(rf->colors->points[0], principle);
       for(i = 1; i < rf->colors->count; ++i)
       {
-         val = vec3_dot(rf->colors->points[i], principle);
+         val = vec4_dot(rf->colors->points[i], principle);
          if(val < min)
          {
-            vec3_copy(start, rf->colors->points[i]);
+            start = rf->colors->points[i];
             min = val;
          }
          else if(val > max)
          {
-            vec3_copy(end, rf->colors->points[i]);
+            end = rf->colors->points[i];
             max = val;
          }
       }
    }
 
    // clamp the output to [0,1]
-   vec3_maxs(start, start, 0); vec3_mins(start, start, 1);
-   vec3_maxs(end, end, 0); vec3_mins(end, end, 1);
+   start = vec4_min(one, vec4_max(zero, start));
+   end   = vec4_min(one, vec4_max(zero, end));
    // clamp to the grid and save
-   vec3_madds(rf->start, grid, start, 0.5f);
-   vec3_mul(rf->start, rf->start, gridrcp);
-   vec3_madds(rf->end, grid, end, 0.5f);
-   vec3_mul(rf->end, rf->end, gridrcp);
+   rf->start = (grid * start + half) * gridrcp;
+   rf->end   = (grid * end   + half) * gridrcp;
 }
 
 static void rangefit_compress3(rangefit_t *rf, unsigned char *block)
 {
-   vec3_t codes[3], temp1, temp2;
+   const vec4_t half = VEC4_CONST1(0.5f);
+
+   vec4_t codes[3], temp;
    float error = 0, dist, d;
    int i, j, idx;
    unsigned char closest[16], indices[16];
 
    // create a codebook
-   vec3_copy(codes[0], rf->start);
-   vec3_copy(codes[1], rf->end);
-   vec3_muls(temp1, rf->start, 0.5f);
-   vec3_muls(temp2, rf->end, 0.5f);
-   vec3_add(codes[2], temp1, temp2);
+   codes[0] = rf->start;
+   codes[1] = rf->end;
+   codes[2] = (rf->start * half) + (rf->end * half);
 
    // match each point to the closest code
    for(i = 0; i < rf->colors->count; ++i)
@@ -424,9 +427,8 @@ static void rangefit_compress3(rangefit_t *rf, unsigned char *block)
       idx = 0;
       for(j = 0; j < 3; ++j)
       {
-         vec3_sub(temp1, rf->colors->points[i], codes[j]);
-         vec3_mul(temp1, rf->metric, temp1);
-         d = vec3_dot(temp1, temp1);
+         temp = (rf->colors->points[i] - codes[j]) * rf->metric;
+         d = vec4_dot(temp, temp);
          if(d < dist)
          {
             dist = d;
@@ -444,7 +446,7 @@ static void rangefit_compress3(rangefit_t *rf, unsigned char *block)
       // remap the indices
       colorset_remap_indices(rf->colors, closest, indices);
       // save the block
-      write_color_block3(float_to_565(rf->start), float_to_565(rf->end), indices, block);
+      write_color_block3(vec4_to_565(rf->start), vec4_to_565(rf->end), indices, block);
       // save the error
       rf->besterror = error;
    }
@@ -452,22 +454,19 @@ static void rangefit_compress3(rangefit_t *rf, unsigned char *block)
 
 static void rangefit_compress4(rangefit_t *rf, unsigned char *block)
 {
-   const vec3_t onethird =  {1.0f / 3.0f, 1.0f / 3.0f, 1.0f / 3.0f};
-   const vec3_t twothirds = {2.0f / 3.0f, 2.0f / 3.0f, 2.0f / 3.0f};
-   vec3_t codes[4], temp1, temp2;
+   const vec4_t onethird =  VEC4_CONST4(1.0f / 3.0f, 1.0f / 3.0f, 1.0f / 3.0f, 0.0f);
+   const vec4_t twothirds = VEC4_CONST4(2.0f / 3.0f, 2.0f / 3.0f, 2.0f / 3.0f, 0.0f);
+
+   vec4_t codes[4], temp;
    float error = 0, dist, d;
    int i, j, idx;
    unsigned char closest[16], indices[16];
 
    // create a codebook
-   vec3_copy(codes[0], rf->start);
-   vec3_copy(codes[1], rf->end);
-   vec3_mul(temp1, twothirds, rf->start);
-   vec3_mul(temp2, onethird, rf->end);
-   vec3_add(codes[2], temp1, temp2);
-   vec3_mul(temp1, onethird, rf->start);
-   vec3_mul(temp2, twothirds, rf->end);
-   vec3_add(codes[3], temp1, temp2);
+   codes[0] = rf->start;
+   codes[1] = rf->end;
+   codes[2] = (rf->start * twothirds) + (rf->end * onethird );
+   codes[3] = (rf->start * onethird ) + (rf->end * twothirds);
 
    // match each point to the closest code
    for(i = 0; i < rf->colors->count; ++i)
@@ -477,9 +476,8 @@ static void rangefit_compress4(rangefit_t *rf, unsigned char *block)
       idx = 0;
       for(j = 0; j < 4; ++j)
       {
-         vec3_sub(temp1, rf->colors->points[i], codes[j]);
-         vec3_mul(temp1, rf->metric, temp1);
-         d = vec3_dot(temp1, temp1);
+         temp = (rf->colors->points[i] - codes[j]) * rf->metric;
+         d = vec4_dot(temp, temp);
          if(d < dist)
          {
             dist = d;
@@ -498,7 +496,7 @@ static void rangefit_compress4(rangefit_t *rf, unsigned char *block)
       // remap the indices
       colorset_remap_indices(rf->colors, closest, indices);
       // save the block
-      write_color_block4(float_to_565(rf->start), float_to_565(rf->end), indices, block);
+      write_color_block4(vec4_to_565(rf->start), vec4_to_565(rf->end), indices, block);
       // save the error
       rf->besterror = error;
    }
@@ -518,10 +516,10 @@ static void clusterfit_init(clusterfit_t *cf, colorset_t *colors, int flags)
       cf->metric = vec4_set(1.0f, 1.0f, 1.0f, 0.0f);
 
    compute_weighted_covariance(covariance, cf->colors);
-   compute_principle_component(cf->principle, covariance);
+   cf->principle = compute_principle_component(covariance);
 }
 
-static int clusterfit_construct_ordering(clusterfit_t *cf, vec3_t axis, int iteration)
+static int clusterfit_construct_ordering(clusterfit_t *cf, const vec4_t axis, int iteration)
 {
    int i, j, it, same;
    float dps[16];
@@ -532,7 +530,8 @@ static int clusterfit_construct_ordering(clusterfit_t *cf, vec3_t axis, int iter
    // build the list of dot products
    for(i = 0; i < cf->colors->count; ++i)
    {
-      dps[i] = vec3_dot(cf->colors->points[i], axis);
+      p = vec4_set(cf->colors->points[i][0], cf->colors->points[i][1], cf->colors->points[i][2], 0.0f);
+      dps[i] = vec4_dot(p, axis);
       order[i] = i;
    }
 
@@ -597,7 +596,7 @@ static void clusterfit_compress3(clusterfit_t *cf, unsigned char *block)
    vec4_t betax_sum, beta2_sum;
    vec4_t alphabeta_sum;
    vec4_t factor, a, b, e1, e2, e3, e4;
-   vec3_t axis, start, end;
+   vec4_t axis;
    unsigned char bestindices[16], unordered[16];
    unsigned char *order;
    int bestiteration = 0, besti = 0, bestj = 0;
@@ -684,7 +683,8 @@ static void clusterfit_compress3(clusterfit_t *cf, unsigned char *block)
          break;
 
       // stop if a new iteration is an ordering that has already been tried
-      vec4_to_vec3(axis, bestend - beststart);
+      //vec4_to_vec3(axis, bestend - beststart);
+      axis = bestend - beststart;
 
       if(!clusterfit_construct_ordering(cf, axis, iteration))
          break;
@@ -703,11 +703,8 @@ static void clusterfit_compress3(clusterfit_t *cf, unsigned char *block)
       colorset_remap_indices(cf->colors, unordered, bestindices);
 
       // save the block
-      vec4_to_vec3(start, beststart);
-      vec4_to_vec3(end, bestend);
-
-      write_color_block3(float_to_565(start), float_to_565(end),
-                           bestindices, block);
+      write_color_block3(vec4_to_565(beststart), vec4_to_565(bestend),
+                         bestindices, block);
 
       // save the error
       cf->besterror = besterror;
@@ -735,7 +732,7 @@ static void clusterfit_compress4(clusterfit_t *cf, unsigned char *block)
    vec4_t betax_sum, beta2_sum;
    vec4_t alphabeta_sum;
    vec4_t factor, a, b, e1, e2, e3, e4;
-   vec3_t axis, start, end;
+   vec4_t axis;
    unsigned char bestindices[16], unordered[16];
    unsigned char *order;
    int bestiteration = 0, besti = 0, bestj = 0, bestk = 0;
@@ -834,7 +831,8 @@ static void clusterfit_compress4(clusterfit_t *cf, unsigned char *block)
          break;
 
       // stop if a new iteration is an ordering that has already been tried
-      vec4_to_vec3(axis, bestend - beststart);
+      //vec4_to_vec3(axis, bestend - beststart);
+      axis = bestend - beststart;
 
       if(!clusterfit_construct_ordering(cf, axis, iteration))
          break;
@@ -854,11 +852,8 @@ static void clusterfit_compress4(clusterfit_t *cf, unsigned char *block)
       colorset_remap_indices(cf->colors, unordered, bestindices);
 
       // save the block
-      vec4_to_vec3(start, beststart);
-      vec4_to_vec3(end, bestend);
-
-      write_color_block4(float_to_565(start), float_to_565(end),
-                           bestindices, block);
+      write_color_block4(vec4_to_565(beststart), vec4_to_565(bestend),
+                         bestindices, block);
 
       // save the error
       cf->besterror = besterror;
