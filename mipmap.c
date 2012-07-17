@@ -25,6 +25,10 @@
 
 #include <gtk/gtk.h>
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
 #include "dds.h"
 #include "mipmap.h"
 #include "imath.h"
@@ -499,7 +503,7 @@ static void scale_image_lanczos(unsigned char *dst, int dw, int dh,
 
    int x, y, start, stop, nmax, n, i;
    int sstride = sw * bpp;
-   float center, contrib, density, s, r;
+   float center, contrib, density, s, r, t;
 
    unsigned char *d, *row, *col;
 
@@ -521,180 +525,99 @@ static void scale_image_lanczos(unsigned char *dst, int dw, int dh,
       yscale = 1.0f;
    }
 
-   /* resample in Y direction first to temporary buffer */
+   invgamma = 1.0 / gamma;
+
    unsigned char *tmp;
 
-   tmp = g_malloc(sw * dh * bpp);
-   d = tmp;
-
-   if(gc)
-   {
-      invgamma = 1.0 / gamma;
+#ifdef _OPENMP
+   tmp = g_malloc(sw * bpp * omp_get_max_threads());
+#else
+   tmp = g_malloc(sw * bpp);
+#endif
 
 #ifdef _OPENMP
 #pragma omp parallel for schedule(dynamic) \
-      private(x, y, col, center, start, stop, nmax, s, i, n, density, r, contrib)
+      private(x, y, d, row, col, center, start, stop, nmax, s, i, n, density, r, t, contrib)
 #endif
-      for(y = 0; y < dh; ++y)
+   for(y = 0; y < dh; ++y)
+   {
+      /* resample in Y direction to temp buffer */
+      d = tmp;
+#ifdef _OPENMP
+      d += (sw * bpp * omp_get_thread_num());
+#endif
+
+      for(x = 0; x < sw; ++x)
       {
-         for(x = 0; x < sw; ++x)
+         col = src + (x * bpp);
+
+         center = ((float)y + 0.5f) / yfactor;
+         start = (int)MAX(center - ysupport + 0.5f, 0);
+         stop = (int)MIN(center + ysupport + 0.5f, sh);
+         nmax = stop - start;
+         s = (float)start - center + 0.5f;
+
+         for(i = 0; i < bpp; ++i)
          {
-            col = src + (x * bpp);
+            density = 0.0f;
+            r = 0.0f;
 
-            center = ((float)y + 0.5f) / yfactor;
-            start = (int)MAX(center - ysupport + 0.5f, 0);
-            stop = (int)MIN(center + ysupport + 0.5f, sh);
-            nmax = stop - start;
-            s = (float)start - center + 0.5f;
-
-            for(i = 0; i < bpp; ++i)
+            for(n = 0; n < nmax; ++n)
             {
-               density = 0.0f;
-               r = 0.0f;
-
-               for(n = 0; n < nmax; ++n)
-               {
-                  contrib = lanczos(FILTER_RADIUS, (s + n) * yscale);
-                  density += contrib;
-                  r += (float)gamma_correct(col[((start + n) * sstride) + i], gamma) * contrib;
-               }
-
-               if(density != 0.0f && density != 1.0f)
-                  r /= density;
-
-               if(r < 0) r = 0;
-               if(r > 255) r = 255;
-
-               d[(y * (sw * bpp)) + (x * bpp) + i] = (unsigned char)gamma_correct(r, invgamma);
+               contrib = lanczos(FILTER_RADIUS, (s + n) * yscale);
+               density += contrib;
+               t = (float)col[((start + n) * sstride) + i] * contrib;
+               if(gc) t = gamma_correct(t, gamma);
+               r += t;
             }
+
+            if(density != 0.0f && density != 1.0f)
+               r /= density;
+
+            if(r < 0) r = 0;
+            if(r > 255) r = 255;
+
+            if(gc) r = gamma_correct(r, invgamma);
+
+            d[(x * bpp) + i] = (unsigned char)r;
          }
       }
 
-      /* resample temp buffer in X direction */
-
+      /* resample in X direction using temp buffer */
+      row = d;
       d = dst;
 
-#ifdef _OPENMP
-#pragma omp parallel for schedule(dynamic) \
-      private(x, y, row, center, start, stop, nmax, s, i, n, density, r, contrib)
-#endif
-      for(y = 0; y < dh; ++y)
+      for(x = 0; x < dw; ++x)
       {
-         row = tmp + (y * sstride);
+         center = ((float)x + 0.5f) / xfactor;
+         start = (int)MAX(center - xsupport + 0.5f, 0);
+         stop = (int)MIN(center + xsupport + 0.5f, sw);
+         nmax = stop - start;
+         s = (float)start - center + 0.5f;
 
-         for(x = 0; x < dw; ++x)
+         for(i = 0; i < bpp; ++i)
          {
-            center = ((float)x + 0.5f) / xfactor;
-            start = (int)MAX(center - xsupport + 0.5f, 0);
-            stop = (int)MIN(center + xsupport + 0.5f, sw);
-            nmax = stop - start;
-            s = (float)start - center + 0.5f;
+            density = 0.0f;
+            r = 0.0f;
 
-            for(i = 0; i < bpp; ++i)
+            for(n = 0; n < nmax; ++n)
             {
-               density = 0.0f;
-               r = 0.0f;
-
-               for(n = 0; n < nmax; ++n)
-               {
-                  contrib = lanczos(FILTER_RADIUS, (s + n) * xscale);
-                  density += contrib;
-                  r += (float)gamma_correct(row[((start + n) * bpp) + i], gamma) * contrib;
-               }
-
-               if(density != 0.0f && density != 1.0f)
-                  r /= density;
-
-               if(r < 0) r = 0;
-               if(r > 255) r = 255;
-
-               d[(y * (dw * bpp)) + (x * bpp) + i] = (unsigned char)gamma_correct(r, invgamma);
+               contrib = lanczos(FILTER_RADIUS, (s + n) * xscale);
+               density += contrib;
+               t = (float)row[((start + n) * bpp) + i] * contrib;
+               if(gc) t = gamma_correct(t, gamma);
+               r += t;
             }
-         }
-      }
-   }
-   else
-   {
-#ifdef _OPENMP
-#pragma omp parallel for schedule(dynamic) \
-      private(x, y, col, center, start, stop, nmax, s, i, n, density, r, contrib)
-#endif
-      for(y = 0; y < dh; ++y)
-      {
-         for(x = 0; x < sw; ++x)
-         {
-            col = src + (x * bpp);
 
-            center = ((float)y + 0.5f) / yfactor;
-            start = (int)MAX(center - ysupport + 0.5f, 0);
-            stop = (int)MIN(center + ysupport + 0.5f, sh);
-            nmax = stop - start;
-            s = (float)start - center + 0.5f;
+            if(density != 0.0f && density != 1.0f)
+               r /= density;
 
-            for(i = 0; i < bpp; ++i)
-            {
-               density = 0.0f;
-               r = 0.0f;
+            if(r < 0) r = 0;
+            if(r > 255) r = 255;
 
-               for(n = 0; n < nmax; ++n)
-               {
-                  contrib = lanczos(FILTER_RADIUS, (s + n) * yscale);
-                  density += contrib;
-                  r += (float)col[((start + n) * sstride) + i] * contrib;
-               }
+            if(gc) r = gamma_correct(r, invgamma);
 
-               if(density != 0.0f && density != 1.0f)
-                  r /= density;
-
-               if(r < 0) r = 0;
-               if(r > 255) r = 255;
-
-               //*d++ = (unsigned char)r;
-               d[(y * (sw * bpp)) + (x * bpp) + i] = (unsigned char)r;
-            }
-         }
-      }
-
-      /* resample temp buffer in X direction */
-
-      d = dst;
-
-#ifdef _OPENMP
-#pragma omp parallel for schedule(dynamic) \
-      private(x, y, row, center, start, stop, nmax, s, i, n, density, r, contrib)
-#endif
-      for(y = 0; y < dh; ++y)
-      {
-         row = tmp + (y * sstride);
-
-         for(x = 0; x < dw; ++x)
-         {
-            center = ((float)x + 0.5f) / xfactor;
-            start = (int)MAX(center - xsupport + 0.5f, 0);
-            stop = (int)MIN(center + xsupport + 0.5f, sw);
-            nmax = stop - start;
-            s = (float)start - center + 0.5f;
-
-            for(i = 0; i < bpp; ++i)
-            {
-               density = 0.0f;
-               r = 0.0f;
-
-               for(n = 0; n < nmax; ++n)
-               {
-                  contrib = lanczos(FILTER_RADIUS, (s + n) * xscale);
-                  density += contrib;
-                  r += (float)row[((start + n) * bpp) + i] * contrib;
-               }
-
-               if(density != 0.0f && density != 1.0f)
-                  r /= density;
-
-               if(r < 0) r = 0;
-               if(r > 255) r = 255;
-
-               d[(y * (dw * bpp)) + (x * bpp) + i] = (unsigned char)r;
-            }
+            d[(y * (dw * bpp)) + (x * bpp) + i] = (unsigned char)r;
          }
       }
    }
@@ -1431,7 +1354,7 @@ int generate_volume_mipmaps(unsigned char *dst, unsigned char *src,
          case DDS_MIPMAP_FILTER_BICUBIC:  mipmap_func = scale_volume_image_cubic;    break;
          case DDS_MIPMAP_FILTER_BOX:
          default:
-                                   mipmap_func = scale_volume_image_box;      break;
+                                          mipmap_func = scale_volume_image_box;      break;
       }
    }
 
