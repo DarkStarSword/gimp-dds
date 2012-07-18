@@ -39,6 +39,7 @@ typedef float vec4_t __attribute__((vector_size(16)));
 typedef float sym3x3_t[6];
 
 #define VEC4_CONST4(x, y, z, w)  {x, y, z, w}
+#define VEC4_CONST3(x, y, z)     {x, y, z, 0.0f}
 #define VEC4_CONST1(x)           {x, x, x, x}
 
 static inline vec4_t vec4_set(float x, float y, float z, float w)

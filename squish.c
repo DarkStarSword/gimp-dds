@@ -64,6 +64,20 @@
 
 #define SWAP(a, b)  do { typeof(a) t; t = a; a = b; b = t; } while(0)
 
+/* SIMD constants */
+static const vec4_t V4ZERO       = VEC4_CONST1(0.0f);
+static const vec4_t V4ONE        = VEC4_CONST1(1.0f);
+static const vec4_t V4TWO        = VEC4_CONST1(2.0f);
+static const vec4_t V4HALF       = VEC4_CONST1(0.5f);
+static const vec4_t V4HALF_HALF2 = VEC4_CONST4(0.5f, 0.5f, 0.5f, 0.25f);
+static const vec4_t V4ONETHIRD   = VEC4_CONST3(1.0f / 3.0f, 1.0f / 3.0f, 1.0f / 3.0f);
+static const vec4_t V4TWOTHIRDS  = VEC4_CONST3(2.0f / 3.0f, 2.0f / 3.0f, 2.0f / 3.0f);
+static const vec4_t V4ONETHIRD_ONETHIRD2   = VEC4_CONST4(1.0f / 3.0f, 1.0f / 3.0f, 1.0f / 3.0f, 1.0f / 9.0f);
+static const vec4_t V4TWOTHIRDS_TWOTHIRDS2 = VEC4_CONST4(2.0f / 3.0f, 2.0f / 3.0f, 2.0f / 3.0f, 4.0f / 9.0f);
+static const vec4_t V4TWONINTHS  = VEC4_CONST1(2.0f / 9.0f);
+static const vec4_t V4GRID       = VEC4_CONST3(31.0f, 63.0f, 31.0f);
+static const vec4_t V4GRIDRCP    = VEC4_CONST3(1.0f / 31.0f, 1.0f / 63.0f, 1.0f / 31.0f);
+
 typedef struct
 {
    int count;
@@ -94,26 +108,67 @@ typedef struct
    float besterror;
 } clusterfit_t;
 
-static inline int float_to_int(float a, int limit)
+static void vec4_endpoints_to_565(int *start, int *end, const vec4_t a, const vec4_t b)
 {
-   int i = (int)(a + 0.5f);
-   i = MIN(limit, MAX(0, i));
-   return(i);
-}
+   int c[8] __attribute__((aligned(16)));
+   vec4_t ta = a * V4GRID + V4HALF;
+   vec4_t tb = b * V4GRID + V4HALF;
 
-static int float_to_565(const float *c)
-{
-   int r = float_to_int(31.0f * c[2], 31);
-   int g = float_to_int(63.0f * c[1], 63);
-   int b = float_to_int(31.0f * c[0], 31);
-   return((r << 11) | (g << 5) | b);
-}
+#ifdef USE_SSE
+# ifdef __SSE4_1__
+   const __m128i C565 = _mm_setr_epi32(31, 63, 31, 0);
+   __m128i ia = _mm_cvttps_epi32(ta);
+   __m128i ib = _mm_cvttps_epi32(tb);
+   __m128i zero = _mm_setzero_si128();
+   ia = _mm_min_epi32(C565, _mm_max_epi32(zero, ia));
+   ib = _mm_min_epi32(C565, _mm_max_epi32(zero, ib));
+   *((__m128i *)&c[0]) = ia;
+   *((__m128i *)&c[4]) = ib;
+# elif defined(__SSE2__)
+   const __m128i C565 = _mm_setr_epi16(31, 63, 31, 0, 0, 0, 0, 0);
+   __m128i ia = _mm_cvttps_epi32(ta);
+   __m128i ib = _mm_cvttps_epi32(tb);
+   __m128i zero = _mm_setzero_si128();
+   __m128i sa = _mm_packs_epi32(ia, zero);
+   __m128i sb = _mm_packs_epi32(ib, zero);
+   sa = _mm_min_epi16(C565, _mm_max_epi16(zero, sa));
+   sb = _mm_min_epi16(C565, _mm_max_epi16(zero, sb));
+   ia = _mm_unpacklo_epi16(sa, zero);
+   ib = _mm_unpacklo_epi16(sb, zero);
+   *((__m128i *)&c[0]) = ia;
+   *((__m128i *)&c[4]) = ib;
+# else
+   __m64 lo, hi;
+   lo = _mm_cvttps_pi32(ta);
+   hi = _mm_cvttps_pi32(_mm_movehl_ps(ta, ta));
+   *((__m64 *)&c[0]) = lo;
+   *((__m64 *)&c[2]) = hi;
+   lo = _mm_cvttps_pi32(tb);
+   hi = _mm_cvttps_pi32(_mm_movehl_ps(tb, tb));
+   *((__m64 *)&c[4]) = lo;
+   *((__m64 *)&c[6]) = hi;
+   _mm_empty();
+   c[0] = MIN(32, MAX(0, c[0]));
+   c[1] = MIN(63, MAX(0, c[1]));
+   c[2] = MIN(32, MAX(0, c[2]));
+   c[4] = MIN(32, MAX(0, c[4]));
+   c[5] = MIN(63, MAX(0, c[5]));
+   c[6] = MIN(32, MAX(0, c[6]));
+# endif
+#else
+   c[0] = (int)ta[0]; c[4] = (int)tb[0];
+   c[1] = (int)ta[1]; c[5] = (int)tb[1];
+   c[2] = (int)ta[2]; c[6] = (int)tb[2];
+   c[0] = MIN(31, MAX(0, c[0]));
+   c[1] = MIN(63, MAX(0, c[1]));
+   c[2] = MIN(31, MAX(0, c[2]));
+   c[4] = MIN(31, MAX(0, c[4]));
+   c[5] = MIN(63, MAX(0, c[5]));
+   c[6] = MIN(31, MAX(0, c[6]));
+#endif
 
-static int vec4_to_565(const vec4_t v)
-{
-   float c[4] __attribute__((aligned(16)));
-   vec4_store(c, v);
-   return(float_to_565(c));
+   *start = ((c[2] << 11) | (c[1] << 5) | c[0]);
+   *end   = ((c[6] << 11) | (c[5] << 5) | c[4]);
 }
 
 static void write_color_block(int a, int b, unsigned char *indices, unsigned char *block)
@@ -348,12 +403,6 @@ static vec4_t compute_principle_component(const sym3x3_t matrix)
 
 static void rangefit_init(rangefit_t *rf, colorset_t *colors, int flags)
 {
-   const vec4_t zero = VEC4_CONST1(0.0f);
-   const vec4_t one = VEC4_CONST1(1.0f);
-   const vec4_t half = VEC4_CONST1(0.5f);
-   const vec4_t grid = VEC4_CONST4(31.0f, 63.0f, 31.0f, 0.0f);
-   const vec4_t gridrcp = VEC4_CONST4(1.0f / 31.0f, 1.0f / 63.0f, 1.0f / 31.0f, 0.0f);
-
    sym3x3_t covariance;
    vec4_t principle, start, end;
    float min, max, val;
@@ -374,7 +423,7 @@ static void rangefit_init(rangefit_t *rf, colorset_t *colors, int flags)
    principle = compute_principle_component(covariance);
 
    // get the min and max range as the codebook endpoints
-   start = end = zero;
+   start = end = V4ZERO;
 
    if(rf->colors->count > 0)
    {
@@ -398,26 +447,24 @@ static void rangefit_init(rangefit_t *rf, colorset_t *colors, int flags)
    }
 
    // clamp the output to [0,1]
-   start = vec4_min(one, vec4_max(zero, start));
-   end   = vec4_min(one, vec4_max(zero, end));
+   start = vec4_min(V4ONE, vec4_max(V4ZERO, start));
+   end   = vec4_min(V4ONE, vec4_max(V4ZERO, end));
    // clamp to the grid and save
-   rf->start = (grid * start + half) * gridrcp;
-   rf->end   = (grid * end   + half) * gridrcp;
+   rf->start = (V4GRID * start + V4HALF) * V4GRIDRCP;
+   rf->end   = (V4GRID * end   + V4HALF) * V4GRIDRCP;
 }
 
 static void rangefit_compress3(rangefit_t *rf, unsigned char *block)
 {
-   const vec4_t half = VEC4_CONST1(0.5f);
-
    vec4_t codes[3], temp;
    float error = 0, dist, d;
-   int i, j, idx;
+   int i, j, idx, start, end;
    unsigned char closest[16], indices[16];
 
    // create a codebook
    codes[0] = rf->start;
    codes[1] = rf->end;
-   codes[2] = (rf->start * half) + (rf->end * half);
+   codes[2] = (rf->start * V4HALF) + (rf->end * V4HALF);
 
    // match each point to the closest code
    for(i = 0; i < rf->colors->count; ++i)
@@ -445,8 +492,10 @@ static void rangefit_compress3(rangefit_t *rf, unsigned char *block)
    {
       // remap the indices
       colorset_remap_indices(rf->colors, closest, indices);
+      // convert endpoints
+      vec4_endpoints_to_565(&start, &end, rf->start, rf->end);
       // save the block
-      write_color_block3(vec4_to_565(rf->start), vec4_to_565(rf->end), indices, block);
+      write_color_block3(start, end, indices, block);
       // save the error
       rf->besterror = error;
    }
@@ -454,19 +503,16 @@ static void rangefit_compress3(rangefit_t *rf, unsigned char *block)
 
 static void rangefit_compress4(rangefit_t *rf, unsigned char *block)
 {
-   const vec4_t onethird =  VEC4_CONST4(1.0f / 3.0f, 1.0f / 3.0f, 1.0f / 3.0f, 0.0f);
-   const vec4_t twothirds = VEC4_CONST4(2.0f / 3.0f, 2.0f / 3.0f, 2.0f / 3.0f, 0.0f);
-
    vec4_t codes[4], temp;
    float error = 0, dist, d;
-   int i, j, idx;
+   int i, j, idx, start, end;
    unsigned char closest[16], indices[16];
 
    // create a codebook
    codes[0] = rf->start;
    codes[1] = rf->end;
-   codes[2] = (rf->start * twothirds) + (rf->end * onethird );
-   codes[3] = (rf->start * onethird ) + (rf->end * twothirds);
+   codes[2] = (rf->start * V4TWOTHIRDS) + (rf->end * V4ONETHIRD );
+   codes[3] = (rf->start * V4ONETHIRD ) + (rf->end * V4TWOTHIRDS);
 
    // match each point to the closest code
    for(i = 0; i < rf->colors->count; ++i)
@@ -495,8 +541,10 @@ static void rangefit_compress4(rangefit_t *rf, unsigned char *block)
    {
       // remap the indices
       colorset_remap_indices(rf->colors, closest, indices);
+      // convert endpoints
+      vec4_endpoints_to_565(&start, &end, rf->start, rf->end);
       // save the block
-      write_color_block4(vec4_to_565(rf->start), vec4_to_565(rf->end), indices, block);
+      write_color_block4(start, end, indices, block);
       // save the error
       rf->besterror = error;
    }
@@ -580,13 +628,6 @@ static int clusterfit_construct_ordering(clusterfit_t *cf, const vec4_t axis, in
 static void clusterfit_compress3(clusterfit_t *cf, unsigned char *block)
 {
    const int count = cf->colors->count;
-   const vec4_t zero = VEC4_CONST1(0.0f);
-   const vec4_t one = VEC4_CONST1(1.0f);
-   const vec4_t two = VEC4_CONST1(2.0f);
-   const vec4_t half = VEC4_CONST1(0.5f);
-   const vec4_t half_half2 = VEC4_CONST4(0.5f, 0.5f, 0.5f, 0.25f);
-   const vec4_t grid = VEC4_CONST4(31.0f, 63.0f, 31.0f, 0.0f);
-   const vec4_t gridrcp = VEC4_CONST4(1.0f / 31.0f, 1.0f / 63.0f, 1.0f / 31.0f, 0.0f);
 
    vec4_t beststart = VEC4_CONST1(0);
    vec4_t bestend = VEC4_CONST1(0);
@@ -600,7 +641,7 @@ static void clusterfit_compress3(clusterfit_t *cf, unsigned char *block)
    unsigned char bestindices[16], unordered[16];
    unsigned char *order;
    int bestiteration = 0, besti = 0, bestj = 0;
-   int iteration, i, j, jmin, m;
+   int iteration, i, j, jmin, m, start, end;
 
    // prepare an ordering using the principle axis
    clusterfit_construct_ordering(cf, cf->principle, 0);
@@ -609,11 +650,11 @@ static void clusterfit_compress3(clusterfit_t *cf, unsigned char *block)
    for(iteration = 0; ; )
    {
       // first cluster [0,i) is at the start
-      part0 = zero;
+      part0 = vec4_zero();
       for(i = 0; i < count; ++i)
       {
          // second cluster [i,j) is half along
-         part1 = (i == 0) ? cf->points_weights[0] : zero;
+         part1 = (i == 0) ? cf->points_weights[0] : vec4_zero();
          jmin = (i == 0) ? 1 : i;
          for(j = jmin; ; )
          {
@@ -621,12 +662,12 @@ static void clusterfit_compress3(clusterfit_t *cf, unsigned char *block)
             part2 = cf->xsum_wsum - part1 - part0;
 
             // compute least squares terms directly
-            alphax_sum = part1 * half_half2 + part0;
+            alphax_sum = part1 * V4HALF_HALF2 + part0;
             alpha2_sum = vec4_splatw(alphax_sum);
-            betax_sum  = part1 * half_half2 + part2;
+            betax_sum  = part1 * V4HALF_HALF2 + part2;
             beta2_sum  = vec4_splatw(betax_sum);
 
-            alphabeta_sum = vec4_splatw(part1 * half_half2);
+            alphabeta_sum = vec4_splatw(part1 * V4HALF_HALF2);
 
             // comput the least-squares optimal points
             factor = vec4_rcp((alpha2_sum * beta2_sum) - alphabeta_sum * alphabeta_sum);
@@ -634,16 +675,16 @@ static void clusterfit_compress3(clusterfit_t *cf, unsigned char *block)
             b = ((betax_sum  * alpha2_sum) - alphax_sum * alphabeta_sum) * factor;
 
             // clamp to the grid
-            a = vec4_min(one, vec4_max(zero, a));
-            b = vec4_min(one, vec4_max(zero, b));
-            a = vec4_trunc(grid * a + half) * gridrcp;
-            b = vec4_trunc(grid * b + half) * gridrcp;
+            a = vec4_min(V4ONE, vec4_max(V4ZERO, a));
+            b = vec4_min(V4ONE, vec4_max(V4ZERO, b));
+            a = vec4_trunc(V4GRID * a + V4HALF) * V4GRIDRCP;
+            b = vec4_trunc(V4GRID * b + V4HALF) * V4GRIDRCP;
 
             // compute the error (we skip the constant xxsum)
             e1 = (a * a) * alpha2_sum + (b * b * beta2_sum);
             e2 = (a * b * alphabeta_sum) - a * alphax_sum;
             e3 = e2 - b * betax_sum;
-            e4 = two * e3 + e1;
+            e4 = V4TWO * e3 + e1;
 
             // apply the metric to error term
             e4 *= cf->metric;
@@ -702,9 +743,11 @@ static void clusterfit_compress3(clusterfit_t *cf, unsigned char *block)
 
       colorset_remap_indices(cf->colors, unordered, bestindices);
 
+      // convert endpoints
+      vec4_endpoints_to_565(&start, &end, beststart, bestend);
+
       // save the block
-      write_color_block3(vec4_to_565(beststart), vec4_to_565(bestend),
-                         bestindices, block);
+      write_color_block3(start, end, bestindices, block);
 
       // save the error
       cf->besterror = besterror;
@@ -714,15 +757,6 @@ static void clusterfit_compress3(clusterfit_t *cf, unsigned char *block)
 static void clusterfit_compress4(clusterfit_t *cf, unsigned char *block)
 {
    const int count = cf->colors->count;
-   const vec4_t zero = VEC4_CONST1(0.0f);
-   const vec4_t one = VEC4_CONST1(1.0f);
-   const vec4_t two = VEC4_CONST1(2.0f);
-   const vec4_t half = VEC4_CONST1(0.5f);
-   const vec4_t onethird_onethird2 = VEC4_CONST4(1.0f / 3.0f, 1.0f / 3.0f, 1.0f / 3.0f, 1.0f / 9.0f);
-   const vec4_t twothirds_twothirds2 = VEC4_CONST4(2.0f / 3.0f, 2.0f / 3.0f, 2.0f / 3.0f, 4.0f / 9.0f);
-   const vec4_t twoninths = VEC4_CONST1(2.0f / 9.0f);
-   const vec4_t grid = VEC4_CONST4(31.0f, 63.0f, 31.0f, 0.0f);
-   const vec4_t gridrcp = VEC4_CONST4(1.0f / 31.0f, 1.0f / 63.0f, 1.0f / 31.0f, 0.0f);
 
    vec4_t beststart = VEC4_CONST1(0.0f);
    vec4_t bestend = VEC4_CONST1(0.0f);
@@ -736,7 +770,7 @@ static void clusterfit_compress4(clusterfit_t *cf, unsigned char *block)
    unsigned char bestindices[16], unordered[16];
    unsigned char *order;
    int bestiteration = 0, besti = 0, bestj = 0, bestk = 0;
-   int iteration, i, j, k, kmin, m;
+   int iteration, i, j, k, kmin, m, start, end;
 
    // prepare an ordering using the principle axis
    clusterfit_construct_ordering(cf, cf->principle, 0);
@@ -745,15 +779,15 @@ static void clusterfit_compress4(clusterfit_t *cf, unsigned char *block)
    for(iteration = 0; ; )
    {
       // first cluster [0,i) is at the start
-      part0 = zero;
+      part0 = vec4_zero();
       for(i = 0; i < count; ++i)
       {
          // second cluster [i,j) is one third along
-         part1 = zero;
+         part1 = vec4_zero();
          for(j = i; ; )
          {
             // third cluster [j,k) is two thirds along
-            part2 = (j == 0) ? cf->points_weights[0] : zero;
+            part2 = (j == 0) ? cf->points_weights[0] : vec4_zero();
             kmin = (j == 0) ? 1 : j;
             for(k = kmin; ; )
             {
@@ -761,12 +795,12 @@ static void clusterfit_compress4(clusterfit_t *cf, unsigned char *block)
                part3 = cf->xsum_wsum - part2 - part1 - part0;
 
                // compute least squares terms directly
-               alphax_sum = part2 * onethird_onethird2 + (part1 * twothirds_twothirds2 + part0);
+               alphax_sum = part2 * V4ONETHIRD_ONETHIRD2 + (part1 * V4TWOTHIRDS_TWOTHIRDS2 + part0);
                alpha2_sum = vec4_splatw(alphax_sum);
-               betax_sum  = part1 * onethird_onethird2 + (part2 * twothirds_twothirds2 + part3);
+               betax_sum  = part1 * V4ONETHIRD_ONETHIRD2 + (part2 * V4TWOTHIRDS_TWOTHIRDS2 + part3);
                beta2_sum  = vec4_splatw(betax_sum);
 
-               alphabeta_sum = twoninths * vec4_splatw(part1 + part2);
+               alphabeta_sum = V4TWONINTHS * vec4_splatw(part1 + part2);
 
                // compute the least-squares optimal points
                factor = vec4_rcp((alpha2_sum * beta2_sum) - alphabeta_sum * alphabeta_sum);
@@ -774,16 +808,16 @@ static void clusterfit_compress4(clusterfit_t *cf, unsigned char *block)
                b = ((betax_sum  * alpha2_sum) - alphax_sum * alphabeta_sum) * factor;
 
                // clamp to the grid
-               a = vec4_min(one, vec4_max(zero, a));
-               b = vec4_min(one, vec4_max(zero, b));
-               a = vec4_trunc(grid * a + half) * gridrcp;
-               b = vec4_trunc(grid * b + half) * gridrcp;
+               a = vec4_min(V4ONE, vec4_max(V4ZERO, a));
+               b = vec4_min(V4ONE, vec4_max(V4ZERO, b));
+               a = vec4_trunc(V4GRID * a + V4HALF) * V4GRIDRCP;
+               b = vec4_trunc(V4GRID * b + V4HALF) * V4GRIDRCP;
 
                // compute the error (we skip the constant xxsum)
                e1 = (a * a) * alpha2_sum + (b * b * beta2_sum);
                e2 = (a * b * alphabeta_sum) - a * alphax_sum;
                e3 = e2 - b * betax_sum;
-               e4 = two * e3 + e1;
+               e4 = V4TWO * e3 + e1;
 
                // apply the metric to error term
                e4 *= cf->metric;
@@ -851,9 +885,11 @@ static void clusterfit_compress4(clusterfit_t *cf, unsigned char *block)
 
       colorset_remap_indices(cf->colors, unordered, bestindices);
 
+      // convert endpoints
+      vec4_endpoints_to_565(&start, &end, beststart, bestend);
+
       // save the block
-      write_color_block4(vec4_to_565(beststart), vec4_to_565(bestend),
-                         bestindices, block);
+      write_color_block4(start, end, bestindices, block);
 
       // save the error
       cf->besterror = besterror;
