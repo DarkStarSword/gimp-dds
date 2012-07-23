@@ -50,6 +50,7 @@ typedef enum
    DDS_SAVE_SELECTED_LAYER = 0,
    DDS_SAVE_CUBEMAP,
    DDS_SAVE_VOLUMEMAP,
+   DDS_SAVE_ARRAY,
    DDS_SAVE_MAX
 } DDS_SAVE_TYPE;
 
@@ -157,7 +158,7 @@ typedef struct
 
 typedef struct
 {
-   char magic[4];
+   unsigned int magic;
    unsigned int size;
    unsigned int flags;
    unsigned int height;
@@ -181,7 +182,8 @@ typedef struct
    unsigned int reserved2;
 } dds_header_t;
 
-typedef enum DXGI_FORMAT {
+typedef enum
+{
    DXGI_FORMAT_UNKNOWN                      = 0,
    DXGI_FORMAT_R32G32B32A32_TYPELESS        = 1,
    DXGI_FORMAT_R32G32B32A32_FLOAT           = 2,

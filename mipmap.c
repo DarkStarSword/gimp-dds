@@ -22,6 +22,7 @@
 
 #include <string.h>
 #include <math.h>
+#include <float.h>
 
 #include <gtk/gtk.h>
 
@@ -516,12 +517,12 @@ static void scale_image_lanczos(unsigned char *dst, int dw, int dh,
 
    if(xsupport <= 0.5f)
    {
-      xsupport = 0.5f + 1e-12f;
+      xsupport = 0.5f + FLT_EPSILON;
       xscale = 1.0f;
    }
    if(ysupport <= 0.5f)
    {
-      ysupport = 0.5f + 1e-12f;
+      ysupport = 0.5f + FLT_EPSILON;
       yscale = 1.0f;
    }
 

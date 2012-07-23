@@ -749,7 +749,7 @@ int dxt_decompress(unsigned char *dst, unsigned char *src, int format,
                    int bpp, int normals)
 {
    unsigned char *s;
-   unsigned int i, x, y;
+   unsigned int x, y;
    unsigned char block[16 * 4];
 
    if(!(IS_MUL4(width) && IS_MUL4(height)))
@@ -761,9 +761,7 @@ int dxt_decompress(unsigned char *dst, unsigned char *src, int format,
    {
       for(x = 0; x < width; x += 4)
       {
-         memset(block, 0, 16 * 4);
-         for(i = 0; i < 16 * 4; i += 4)
-            block[i + 3] = 255;
+         memset(block, 255, 16 * 4);
 
          if(format == DDS_COMPRESS_BC1)
          {

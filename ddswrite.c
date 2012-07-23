@@ -153,6 +153,7 @@ static string_value_t save_type_strings[] =
    {DDS_SAVE_SELECTED_LAYER, "Selected layer"},
    {DDS_SAVE_CUBEMAP,        "As cube map"},
    {DDS_SAVE_VOLUMEMAP,      "As volume map"},
+   {DDS_SAVE_ARRAY,          "As texture array"},
    {-1, 0}
 };
 
@@ -168,7 +169,7 @@ static struct
    unsigned int amask;
 } format_info[] =
 {
-   {DDS_FORMAT_RGB8,    DXGI_FORMAT_B8G8R8X8_UNORM,    3, 0, 0x00ff0000, 0x0000ff00, 0x000000ff, 0x00000000},
+   {DDS_FORMAT_RGB8,    DXGI_FORMAT_UNKNOWN,           3, 0, 0x00ff0000, 0x0000ff00, 0x000000ff, 0x00000000},
    {DDS_FORMAT_RGBA8,   DXGI_FORMAT_B8G8R8A8_UNORM,    4, 1, 0x00ff0000, 0x0000ff00, 0x000000ff, 0xff000000},
    {DDS_FORMAT_BGR8,    DXGI_FORMAT_UNKNOWN,           3, 0, 0x000000ff, 0x0000ff00, 0x00ff0000, 0x00000000},
    {DDS_FORMAT_ABGR8,   DXGI_FORMAT_R8G8B8A8_UNORM,    4, 1, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000},
@@ -1066,14 +1067,16 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    GimpPixelRgn rgn;
    int i, w, h, bpp = 0, fmtbpp = 0, has_alpha = 0;
    int num_mipmaps;
-   unsigned char hdr[DDS_HEADERSIZE];
+   unsigned char hdr[DDS_HEADERSIZE], hdr10[DDS_HEADERSIZE_DX10];
    unsigned int flags = 0, pflags = 0, caps = 0, caps2 = 0, size = 0;
    unsigned int rmask = 0, gmask = 0, bmask = 0, amask = 0;
    unsigned int fourcc = 0;
+   DXGI_FORMAT dxgi_format = DXGI_FORMAT_UNKNOWN;
    gint32 num_layers, *layers;
    guchar *cmap;
    gint colors;
    unsigned char zero[4] = {0, 0, 0, 0};
+   int is_dx10 = 0;
 
    layers = gimp_image_get_layers(image_id, &num_layers);
 
@@ -1127,6 +1130,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
             gmask = format_info[i].gmask;
             bmask = format_info[i].bmask;
             amask = format_info[i].amask;
+            dxgi_format = format_info[i].dxgi_format;
             break;
          }
       }
@@ -1145,6 +1149,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
          has_alpha = 0;
          rmask = 0x000000ff;
          gmask = bmask = amask = 0;
+         dxgi_format = DXGI_FORMAT_R8_UNORM;
       }
    }
    else if(bpp == 2)
@@ -1181,6 +1186,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
       gmask = 0x0000ff00;
       bmask = 0x000000ff;
       amask = 0xff000000;
+      dxgi_format = DXGI_FORMAT_B8G8R8A8_UNORM;
    }
 
    memset(hdr, 0, DDS_HEADERSIZE);
@@ -1296,21 +1302,33 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
       switch(dds_write_vals.compression)
       {
          case DDS_COMPRESS_BC1:
-            fourcc = FOURCC('D','X','T','1'); break;
+            fourcc = FOURCC('D','X','T','1');
+            dxgi_format = DXGI_FORMAT_BC1_UNORM;
+            break;
          case DDS_COMPRESS_BC2:
-            fourcc = FOURCC('D','X','T','3'); break;
+            fourcc = FOURCC('D','X','T','3');
+            dxgi_format = DXGI_FORMAT_BC2_UNORM;
+            break;
          case DDS_COMPRESS_BC3:
          case DDS_COMPRESS_BC3N:
          case DDS_COMPRESS_YCOCG:
          case DDS_COMPRESS_YCOCGS:
          case DDS_COMPRESS_AEXP:
-            fourcc = FOURCC('D','X','T','5'); break;
+            fourcc = FOURCC('D','X','T','5');
+            dxgi_format = DXGI_FORMAT_BC3_UNORM;
+            break;
          case DDS_COMPRESS_RXGB:
-            fourcc = FOURCC('R','X','G','B'); break;
+            fourcc = FOURCC('R','X','G','B');
+            dxgi_format = DXGI_FORMAT_BC3_UNORM;
+            break;
          case DDS_COMPRESS_BC4:
-            fourcc = FOURCC('A','T','I','1'); break;
+            fourcc = FOURCC('B','C','4','U');
+            dxgi_format = DXGI_FORMAT_BC4_UNORM;
+            break;
          case DDS_COMPRESS_BC5:
-            fourcc = FOURCC('A','T','I','2'); break;
+            fourcc = FOURCC('A','T','I','2');
+            dxgi_format = DXGI_FORMAT_BC5_UNORM;
+            break;
       }
 
       if((dds_write_vals.compression == DDS_COMPRESS_BC3N) ||
@@ -1349,7 +1367,26 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
       }
    }
 
+   /* texture arrays require a DX10 header */
+   if(dds_write_vals.savetype == DDS_SAVE_ARRAY)
+   {
+      is_dx10 = 1;
+
+      PUTL32(hdr10 +  0, dxgi_format);
+      PUTL32(hdr10 +  4, D3D10_RESOURCE_DIMENSION_TEXTURE2D);
+      PUTL32(hdr10 +  8, 0);
+      PUTL32(hdr10 + 12, num_layers);
+      PUTL32(hdr10 + 16, 0);
+
+      /* update main header accordingly */
+      PUTL32(hdr + 80, pflags | DDPF_FOURCC);
+      PUTL32(hdr + 84, FOURCC('D','X','1','0'));
+   }
+
    fwrite(hdr, DDS_HEADERSIZE, 1, fp);
+
+   if(is_dx10)
+      fwrite(hdr10, DDS_HEADERSIZE_DX10, 1, fp);
 
    if(basetype == GIMP_INDEXED && dds_write_vals.format == DDS_FORMAT_DEFAULT &&
       dds_write_vals.compression == DDS_COMPRESS_NONE)
@@ -1390,10 +1427,18 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
          write_volume_mipmaps(fp, image_id, layers, w, h, num_layers,
                               bpp, fmtbpp, num_mipmaps);
    }
+   else if(dds_write_vals.savetype == DDS_SAVE_ARRAY)
+   {
+      for(i = 0; i < num_layers; ++i)
+      {
+         write_layer(fp, image_id, layers[i], w, h, bpp, fmtbpp, num_mipmaps);
+         if(interactive_dds)
+            gimp_progress_update((float)i / (float)num_layers);
+      }
+   }
    else
    {
-      write_layer(fp, image_id, drawable_id, w, h, bpp, fmtbpp,
-                  num_mipmaps);
+      write_layer(fp, image_id, drawable_id, w, h, bpp, fmtbpp, num_mipmaps);
    }
 
    if(interactive_dds)
@@ -1530,6 +1575,7 @@ static void savetype_selected(GtkWidget *widget, gpointer data)
    {
       case DDS_SAVE_SELECTED_LAYER:
       case DDS_SAVE_CUBEMAP:
+      case DDS_SAVE_ARRAY:
          gtk_widget_set_sensitive(compress_opt, 1);
          string_value_combo_set_item_sensitive(mipmap_filter_opt,
                                                DDS_MIPMAP_FILTER_LANCZOS,
@@ -1621,11 +1667,7 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    GtkWidget *expander;
    GimpImageBaseType basetype;
 
-   if(is_cubemap)
-      dds_write_vals.savetype = DDS_SAVE_CUBEMAP;
-   else if(is_volume)
-      dds_write_vals.savetype = DDS_SAVE_VOLUMEMAP;
-   else
+   if(is_cubemap || is_volume)
       dds_write_vals.savetype = DDS_SAVE_SELECTED_LAYER;
 
    basetype = gimp_image_base_type(image_id);
@@ -1714,6 +1756,7 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
 
    string_value_combo_set_item_sensitive(opt, DDS_SAVE_CUBEMAP, is_cubemap);
    string_value_combo_set_item_sensitive(opt, DDS_SAVE_VOLUMEMAP, is_volume);
+   string_value_combo_set_item_sensitive(opt, DDS_SAVE_ARRAY, is_volume);
 
    gtk_widget_set_sensitive(opt, is_cubemap || is_volume);
 
