@@ -174,7 +174,7 @@ static struct
    {DDS_FORMAT_BGR8,    DXGI_FORMAT_UNKNOWN,           3, 0, 0x000000ff, 0x0000ff00, 0x00ff0000, 0x00000000},
    {DDS_FORMAT_ABGR8,   DXGI_FORMAT_R8G8B8A8_UNORM,    4, 1, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000},
    {DDS_FORMAT_R5G6B5,  DXGI_FORMAT_B5G6R5_UNORM,      2, 0, 0x0000f800, 0x000007e0, 0x0000001f, 0x00000000},
-   {DDS_FORMAT_RGBA4,   DXGI_FORMAT_UNKNOWN,           2, 1, 0x00000f00, 0x000000f0, 0x0000000f, 0x0000f000},
+   {DDS_FORMAT_RGBA4,   DXGI_FORMAT_B4G4R4A4_UNORM,    2, 1, 0x00000f00, 0x000000f0, 0x0000000f, 0x0000f000},
    {DDS_FORMAT_RGB5A1,  DXGI_FORMAT_B5G5R5A1_UNORM,    2, 1, 0x00007c00, 0x000003e0, 0x0000001f, 0x00008000},
    {DDS_FORMAT_RGB10A2, DXGI_FORMAT_R10G10B10A2_UNORM, 4, 1, 0x000003ff, 0x000ffc00, 0x3ff00000, 0xc0000000},
    {DDS_FORMAT_R3G3B2,  DXGI_FORMAT_UNKNOWN,           1, 0, 0x000000e0, 0x0000001c, 0x00000003, 0x00000000},
@@ -1076,7 +1076,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    guchar *cmap;
    gint colors;
    unsigned char zero[4] = {0, 0, 0, 0};
-   int is_dx10 = 0;
+   int is_dx10 = 0, array_size = 1;
 
    layers = gimp_image_get_layers(image_id, &num_layers);
 
@@ -1324,10 +1324,12 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
          case DDS_COMPRESS_BC4:
             fourcc = FOURCC('B','C','4','U');
             dxgi_format = DXGI_FORMAT_BC4_UNORM;
+            is_dx10 = 1;
             break;
          case DDS_COMPRESS_BC5:
             fourcc = FOURCC('A','T','I','2');
             dxgi_format = DXGI_FORMAT_BC5_UNORM;
+            is_dx10 = 1;
             break;
       }
 
@@ -1369,13 +1371,16 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
 
    /* texture arrays require a DX10 header */
    if(dds_write_vals.savetype == DDS_SAVE_ARRAY)
-   {
       is_dx10 = 1;
+
+   if(is_dx10)
+   {
+      array_size = (dds_write_vals.savetype == DDS_SAVE_SELECTED_LAYER) ? 1 : num_layers;
 
       PUTL32(hdr10 +  0, dxgi_format);
       PUTL32(hdr10 +  4, D3D10_RESOURCE_DIMENSION_TEXTURE2D);
       PUTL32(hdr10 +  8, 0);
-      PUTL32(hdr10 + 12, num_layers);
+      PUTL32(hdr10 + 12, array_size);
       PUTL32(hdr10 + 16, 0);
 
       /* update main header accordingly */
@@ -1703,7 +1708,7 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    gtk_table_attach(GTK_TABLE(table), label, 0, 1, 0, 1,
                     (GtkAttachOptions)(GTK_FILL),
                     (GtkAttachOptions)(0), 0, 0);
-   gtk_misc_set_alignment(GTK_MISC(label), 0, 0.5);
+   gtk_misc_set_alignment(GTK_MISC(label), 1, 0.5);
 
    opt = string_value_combo_new(compression_strings,
                                 dds_write_vals.compression);
@@ -1722,7 +1727,7 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    gtk_table_attach(GTK_TABLE(table), label, 0, 1, 1, 2,
                     (GtkAttachOptions)(GTK_FILL),
                     (GtkAttachOptions)(0), 0, 0);
-   gtk_misc_set_alignment(GTK_MISC(label), 0, 0.5);
+   gtk_misc_set_alignment(GTK_MISC(label), 1, 0.5);
 
    opt = string_value_combo_new(format_strings, dds_write_vals.format);
    gtk_widget_show(opt);
@@ -1743,7 +1748,7 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    gtk_table_attach(GTK_TABLE(table), label, 0, 1, 2, 3,
                     (GtkAttachOptions)(GTK_FILL),
                     (GtkAttachOptions)(0), 0, 0);
-   gtk_misc_set_alignment(GTK_MISC(label), 0, 0.5);
+   gtk_misc_set_alignment(GTK_MISC(label), 1, 0.5);
 
    opt = string_value_combo_new(save_type_strings, dds_write_vals.savetype);
    gtk_widget_show(opt);
@@ -1765,7 +1770,7 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    gtk_table_attach(GTK_TABLE(table), label, 0, 1, 3, 4,
                     (GtkAttachOptions)(GTK_FILL),
                     (GtkAttachOptions)(0), 0, 0);
-   gtk_misc_set_alignment(GTK_MISC(label), 0, 0.5);
+   gtk_misc_set_alignment(GTK_MISC(label), 1, 0.5);
 
    opt = string_value_combo_new(mipmap_strings,
                                 dds_write_vals.mipmaps);

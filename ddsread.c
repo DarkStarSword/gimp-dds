@@ -660,6 +660,7 @@ static int setup_dxgi_format(dds_header_t *hdr, dds_header_dx10_t *dx10hdr)
    if((dx10hdr->dxgiFormat >= DXGI_FORMAT_BC1_TYPELESS) &&
       (dx10hdr->dxgiFormat <= DXGI_FORMAT_BC5_SNORM))
    {
+      // set flag and replace FOURCC
       hdr->pixelfmt.flags |= DDPF_FOURCC;
 
       switch(dx10hdr->dxgiFormat)
@@ -681,7 +682,7 @@ static int setup_dxgi_format(dds_header_t *hdr, dds_header_dx10_t *dx10hdr)
             break;
          case DXGI_FORMAT_BC4_TYPELESS:
          case DXGI_FORMAT_BC4_UNORM:
-            PUTL32(hdr->pixelfmt.fourcc, FOURCC('B','C','4','U'));
+            PUTL32(hdr->pixelfmt.fourcc, FOURCC('A','T','I','1'));
             break;
          case DXGI_FORMAT_BC4_SNORM:
             PUTL32(hdr->pixelfmt.fourcc, FOURCC('B','C','4','S'));
@@ -699,7 +700,7 @@ static int setup_dxgi_format(dds_header_t *hdr, dds_header_dx10_t *dx10hdr)
    }
    else
    {
-      /* unset the FOURC flag */
+      /* unset the FOURCC flag */
       hdr->pixelfmt.flags &= ~DDPF_FOURCC;
 
       switch(dx10hdr->dxgiFormat)
@@ -775,6 +776,17 @@ static int setup_dxgi_format(dds_header_t *hdr, dds_header_dx10_t *dx10hdr)
             hdr->pixelfmt.bpp = 8;
             hdr->pixelfmt.rmask = 0x000000ff;
             hdr->pixelfmt.gmask = hdr->pixelfmt.bmask = hdr->pixelfmt.amask = 0;
+            break;
+         case DXGI_FORMAT_B4G4R4A4_UNORM:
+            hdr->pixelfmt.bpp = 16;
+            hdr->pixelfmt.flags |= DDPF_ALPHAPIXELS;
+            hdr->pixelfmt.rmask = 0x00000f00;
+            hdr->pixelfmt.gmask = 0x000000f0;
+            hdr->pixelfmt.bmask = 0x0000000f;
+            hdr->pixelfmt.amask = 0x0000f000;
+            break;
+         case DXGI_FORMAT_UNKNOWN:
+            g_message("Unknown DXGI format.  Expect problems...");
             break;
          default:  /* unsupported DXGI format */
             g_message("Unsupported DXGI format (%d)", dx10hdr->dxgiFormat);
