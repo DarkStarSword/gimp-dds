@@ -317,7 +317,7 @@ static void compress_DXT1(unsigned char *dst, const unsigned char *src,
    {
       for(x = 0; x < w; x += 4)
       {
-         p = dst + ((y >> 2) * (8 * (w >> 2)) + (8 * (x >> 2)));
+         p = dst + ((y >> 2) * (8 * ((w + 3) >> 2)) + (8 * (x >> 2)));
          extract_block(src, x, y, w, h, block);
          squish_compress(p, block, SQUISH_DXT1 | flags);
       }
@@ -337,7 +337,7 @@ static void compress_DXT3(unsigned char *dst, const unsigned char *src,
    {
       for(x = 0; x < w; x += 4)
       {
-         p = dst + ((y >> 2) * (16 * (w >> 2)) + (16 * (x >> 2)));
+         p = dst + ((y >> 2) * (16 * ((w + 3) >> 2)) + (16 * (x >> 2)));
          extract_block(src, x, y, w, h, block);
          encode_alpha_block_DXT3(p, block);
          squish_compress(p + 8, block, SQUISH_DXT3 | flags);
@@ -358,7 +358,7 @@ static void compress_DXT5(unsigned char *dst, const unsigned char *src,
    {
       for(x = 0; x < w; x += 4)
       {
-         p = dst + ((y >> 2) * (16 * (w >> 2)) + (16 * (x >> 2)));
+         p = dst + ((y >> 2) * (16 * ((w + 3) >> 2)) + (16 * (x >> 2)));
          extract_block(src, x, y, w, h, block);
          encode_alpha_block_DXT5(p, block, 0);
          squish_compress(p + 8, block, SQUISH_DXT5 | flags);
@@ -379,7 +379,7 @@ static void compress_BC4(unsigned char *dst, const unsigned char *src,
    {
       for(x = 0; x < w; x += 4)
       {
-         p = dst + ((y >> 2) * (8 * (w >> 2)) + (8 * (x >> 2)));
+         p = dst + ((y >> 2) * (8 * ((w + 3) >> 2)) + (8 * (x >> 2)));
          extract_block(src, x, y, w, h, block);
          encode_alpha_block_DXT5(p, block, -1);
       }
@@ -399,7 +399,7 @@ static void compress_BC5(unsigned char *dst, const unsigned char *src,
    {
       for(x = 0; x < w; x += 4)
       {
-         p = dst + ((y >> 2) * (16 * (w >> 2)) + (16 * (x >> 2)));
+         p = dst + ((y >> 2) * (16 * ((w + 3) >> 2)) + (16 * (x >> 2)));
          extract_block(src, x, y, w, h, block);
          encode_alpha_block_DXT5(p, block, -2);
          encode_alpha_block_DXT5(p + 8, block, -1);
@@ -427,7 +427,7 @@ static void compress_YCoCg(unsigned char *dst, const unsigned char *src,
    {
       for(x = 0; x < w; x += 4)
       {
-         p = dst + ((y >> 2) * (16 * (w >> 2)) + (16 * (x >> 2)));
+         p = dst + ((y >> 2) * (16 * ((w + 3) >> 2)) + (16 * (x >> 2)));
 
          extract_block(src, x, y, w, h, block);
 
@@ -733,10 +733,10 @@ static void put_block(unsigned char *dst, unsigned char *block,
    int x, y, i;
    unsigned char *d;
 
-   for(y = 0; y < 4; ++y)
+   for(y = 0; y < 4 && ((by + y) < height); ++y)
    {
       d = dst + ((y + by) * width + bx) * bpp;
-      for(x = 0; x < 4; ++x)
+      for(x = 0; x < 4 && ((bx + x) < width); ++x)
       {
          for(i = 0; i < bpp; ++ i)
             *d++ = block[y * 16 + (x * 4) + i];
@@ -751,9 +751,6 @@ int dxt_decompress(unsigned char *dst, unsigned char *src, int format,
    unsigned char *s;
    unsigned int x, y;
    unsigned char block[16 * 4];
-
-   if(!(IS_MUL4(width) && IS_MUL4(height)))
-      return(0);
 
    s = src;
 

@@ -942,8 +942,8 @@ void squish_compress(unsigned char *dst, const unsigned char *block, int flags)
       dst[2] = (unsigned char)(end & 0xff);
       dst[3] = (unsigned char)(end >> 8);
       // write indices
-      dst[4] = (unsigned char)(indices & 0xff);
-      dst[5] = (unsigned char)(indices >> 8);
+      dst[4] = (unsigned char)(indices      );
+      dst[5] = (unsigned char)(indices >>  8);
       dst[6] = (unsigned char)(indices >> 16);
       dst[7] = (unsigned char)(indices >> 24);
    }
