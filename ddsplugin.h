@@ -1,7 +1,7 @@
 /*
 	DDS GIMP plugin
 
-	Copyright (C) 2004-2012 Shawn Kirst <skirst@gmail.com>,
+	Copyright (C) 2004-2010 Shawn Kirst <skirst@insightbb.com>,
    with parts (C) 2003 Arne Reuter <homepage@arnereuter.de> where specified.
 
 	This program is free software; you can redistribute it and/or
@@ -16,16 +16,16 @@
 
 	You should have received a copy of the GNU General Public License
 	along with this program; see the file COPYING.  If not, write to
-	the Free Software Foundation, 51 Franklin Street, Fifth Floor
-	Boston, MA 02110-1301, USA.
+	the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
+	Boston, MA 02111-1307, USA.
 */
 
 #ifndef __DDSPLUGIN_H
 #define __DDSPLUGIN_H
 
 #define DDS_PLUGIN_VERSION_MAJOR     2
-#define DDS_PLUGIN_VERSION_MINOR     9
-#define DDS_PLUGIN_VERSION_REVISION  80
+#define DDS_PLUGIN_VERSION_MINOR     0
+#define DDS_PLUGIN_VERSION_REVISION  10
 
 #define DDS_PLUGIN_VERSION  \
    ((unsigned int)(DDS_PLUGIN_VERSION_MAJOR << 16) | \
@@ -39,11 +39,11 @@ typedef struct
    int savetype;
    int format;
    int transindex;
+   int color_type;
+   int dither;
    int mipmap_filter;
    int gamma_correct;
    float gamma;
-   int weight_by_alpha;
-   int perceptual_metric;
    int show_adv_opt;
 } DDSWriteVals;
 

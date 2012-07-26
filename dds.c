@@ -1,7 +1,7 @@
 /*
 	DDS GIMP plugin
 
-	Copyright (C) 2004-2012 Shawn Kirst <skirst@gmail.com>,
+	Copyright (C) 2004-2010 Shawn Kirst <skirst@insightbb.com>,
    with parts (C) 2003 Arne Reuter <homepage@arnereuter.de> where specified.
 
 	This program is free software; you can redistribute it and/or
@@ -16,8 +16,8 @@
 
 	You should have received a copy of the GNU General Public License
 	along with this program; see the file COPYING.  If not, write to
-	the Free Software Foundation, 51 Franklin Street, Fifth Floor
-	Boston, MA 02110-1301, USA.
+	the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
+	Boston, MA 02111-1307, USA.
 */
 
 #include <stdio.h>
@@ -51,7 +51,8 @@ GimpPlugInInfo PLUG_IN_INFO =
 DDSWriteVals dds_write_vals =
 {
 	DDS_COMPRESS_NONE, DDS_MIPMAP_NONE, DDS_SAVE_SELECTED_LAYER,
-   DDS_FORMAT_DEFAULT, -1, DDS_MIPMAP_FILTER_DEFAULT, 0, 2.2, 0, 0, 0
+   DDS_FORMAT_DEFAULT, -1, DDS_COLOR_DEFAULT, 0, DDS_MIPMAP_FILTER_DEFAULT,
+   0, 2.2, 0
 };
 
 DDSReadVals dds_read_vals =
@@ -71,7 +72,7 @@ static GimpParamDef load_return_vals[] =
 {
    {GIMP_PDB_IMAGE, "image", "Output image"}
 };
-
+	
 static GimpParamDef save_args[] =
 {
    {GIMP_PDB_INT32, "run_mode", "Interactive, non-interactive"},
@@ -81,14 +82,14 @@ static GimpParamDef save_args[] =
    {GIMP_PDB_STRING, "raw_filename", "The name entered"},
    {GIMP_PDB_INT32, "compression_format", "Compression format (0 = None, 1 = BC1/DXT1, 2 = BC2/DXT3, 3 = BC3/DXT5, 4 = BC3n/DXT5nm, 5 = BC4/ATI1N, 6 = BC5/ATI2N, 7 = RXGB (DXT5), 8 = Alpha Exponent (DXT5), 9 = YCoCg (DXT5), 10 = YCoCg scaled (DXT5))"},
    {GIMP_PDB_INT32, "mipmaps", "How to handle mipmaps (0 = No mipmaps, 1 = Generate mipmaps, 2 = Use existing mipmaps (layers)"},
-   {GIMP_PDB_INT32, "savetype", "How to save the image (0 = selected layer, 1 = cube map, 2 = volume map, 3 = texture array"},
+   {GIMP_PDB_INT32, "savetype", "How to save the image (0 = selected layer, 1 = cube map, 2 = volume map"},
    {GIMP_PDB_INT32, "format", "Custom pixel format (0 = default, 1 = R5G6B5, 2 = RGBA4, 3 = RGB5A1, 4 = RGB10A2)"},
    {GIMP_PDB_INT32, "transparent_index", "Index of transparent color or -1 to disable (for indexed images only)."},
+   {GIMP_PDB_INT32, "color_type", "Color selection algorithm used in DXT compression (0 = default, 1 = distance, 2 = luminance, 3 = inset bounding box)"},
+   {GIMP_PDB_INT32, "dither", "Work on dithered color blocks when doing color selection for DXT compression"},
    {GIMP_PDB_INT32, "mipmap_filter", "Filtering to use when generating mipmaps (0 = default, 1 = nearest, 2 = box, 3 = bilinear, 4 = bicubic, 5 = lanczos)"},
    {GIMP_PDB_INT32, "gamma_correct", "Use gamma correct mipmap filtering"},
-   {GIMP_PDB_FLOAT, "gamma", "Gamma value to use for gamma correction (i.e. 2.2)"},
-   {GIMP_PDB_INT32, "weight_by_alpha", "Colors weighted by alpha value during compression"},
-   {GIMP_PDB_INT32, "perceptual_metric", "Use a perceptual metric on colors during compression"}
+   {GIMP_PDB_FLOAT, "gamma", "Gamma value to use for gamma correction (i.e. 2.2)"}
 };
 
 static GimpParamDef decode_args[] =
@@ -99,7 +100,7 @@ static GimpParamDef decode_args[] =
 };
 
 MAIN()
-
+	
 static void query(void)
 {
 	gimp_install_procedure(LOAD_PROC,
@@ -120,7 +121,7 @@ static void query(void)
 												"dds",
 												"",
 												"0,string,DDS");
-
+   
 	gimp_install_procedure(SAVE_PROC,
 								  "Saves files in DDS image format",
 								  "Saves files in DDS image format",
@@ -137,7 +138,7 @@ static void query(void)
 	gimp_register_save_handler(SAVE_PROC,
 										"dds",
 										"");
-
+   
    gimp_install_procedure(DECODE_YCOCG_PROC,
                           "Converts YCoCg encoded pixels to RGB",
                           "Converts YCoCg encoded pixels to RGB",
@@ -149,7 +150,7 @@ static void query(void)
                           GIMP_PLUGIN,
                           G_N_ELEMENTS(decode_args), 0,
                           decode_args, 0);
-
+   
    gimp_install_procedure(DECODE_YCOCG_SCALED_PROC,
                           "Converts YCoCg (scaled) encoded pixels to RGB",
                           "Converts YCoCg (scaled) encoded pixels to RGB",
@@ -161,7 +162,7 @@ static void query(void)
                           GIMP_PLUGIN,
                           G_N_ELEMENTS(decode_args), 0,
                           decode_args, 0);
-
+   
    gimp_install_procedure(DECODE_ALPHA_EXP_PROC,
                           "Converts alpha exponent encoded pixels to RGB",
                           "Converts alpha exponent encoded pixels to RGB",
@@ -173,7 +174,7 @@ static void query(void)
                           GIMP_PLUGIN,
                           G_N_ELEMENTS(decode_args), 0,
                           decode_args, 0);
-
+   
 }
 
 static void run(const gchar *name, gint nparams, const GimpParam *param,
@@ -185,15 +186,15 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
 	gint32 imageID;
 	gint32 drawableID;
 	GimpExportReturn export = GIMP_EXPORT_CANCEL;
-
+	
 	run_mode = param[0].data.d_int32;
-
+	
 	*nreturn_vals = 1;
 	*return_vals = values;
-
+	
 	values[0].type = GIMP_PDB_STATUS;
 	values[0].data.d_status = GIMP_PDB_EXECUTION_ERROR;
-
+   
 	if(!strcmp(name, LOAD_PROC))
 	{
 		switch(run_mode)
@@ -213,7 +214,7 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
 			default:
 			   break;
 		}
-
+		
 		if(status == GIMP_PDB_SUCCESS)
 		{
 			status = read_dds(param[1].data.d_string, &imageID);
@@ -233,7 +234,7 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
 	{
 		imageID = param[1].data.d_int32;
 		drawableID = param[2].data.d_int32;
-
+		
 		switch(run_mode)
 		{
 			case GIMP_RUN_INTERACTIVE:
@@ -253,7 +254,7 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
 			default:
 			   break;
 		}
-
+		
 		switch(run_mode)
 		{
 			case GIMP_RUN_INTERACTIVE:
@@ -271,12 +272,12 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
                dds_write_vals.savetype = param[7].data.d_int32;
                dds_write_vals.format = param[8].data.d_int32;
                dds_write_vals.transindex = param[9].data.d_int32;
-               dds_write_vals.mipmap_filter = param[10].data.d_int32;
-               dds_write_vals.gamma_correct = param[11].data.d_int32;
-               dds_write_vals.gamma = param[12].data.d_float;
-               dds_write_vals.weight_by_alpha = param[13].data.d_int32;
-               dds_write_vals.perceptual_metric = param[14].data.d_int32;
-
+               dds_write_vals.color_type = param[10].data.d_int32;
+               dds_write_vals.dither = param[11].data.d_int32;
+               dds_write_vals.mipmap_filter = param[12].data.d_int32;
+               dds_write_vals.gamma_correct = param[13].data.d_int32;
+               dds_write_vals.gamma = param[14].data.d_float;
+               
 					if(dds_write_vals.compression < DDS_COMPRESS_NONE ||
 						dds_write_vals.compression >= DDS_COMPRESS_MAX)
 						status = GIMP_PDB_CALLING_ERROR;
@@ -288,6 +289,9 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
                   status = GIMP_PDB_CALLING_ERROR;
                if(dds_write_vals.format < DDS_FORMAT_DEFAULT ||
                   dds_write_vals.format >= DDS_FORMAT_MAX)
+                  status = GIMP_PDB_CALLING_ERROR;
+               if(dds_write_vals.color_type < DDS_COLOR_DEFAULT ||
+                  dds_write_vals.color_type >= DDS_COLOR_MAX)
                   status = GIMP_PDB_CALLING_ERROR;
                if(dds_write_vals.mipmap_filter < DDS_MIPMAP_FILTER_DEFAULT ||
                   dds_write_vals.mipmap_filter >= DDS_MIPMAP_FILTER_MAX)
@@ -301,14 +305,14 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
 			default:
 			   break;
 		}
-
+		
 		if(status == GIMP_PDB_SUCCESS)
 		{
 			status = write_dds(param[3].data.d_string, imageID, drawableID);
 			if(status == GIMP_PDB_SUCCESS)
 				gimp_set_data(SAVE_PROC, &dds_write_vals, sizeof(dds_write_vals));
 		}
-
+		
 		if(export == GIMP_EXPORT_EXPORT)
 			gimp_image_delete(imageID);
    }
@@ -318,9 +322,9 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
 		drawableID = param[2].data.d_int32;
 
       decode_ycocg_image(drawableID);
-
+      
       status = GIMP_PDB_SUCCESS;
-
+      
       if(run_mode != GIMP_RUN_NONINTERACTIVE)
          gimp_displays_flush();
    }
@@ -330,7 +334,7 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
 		drawableID = param[2].data.d_int32;
 
       decode_ycocg_scaled_image(drawableID);
-
+      
       status = GIMP_PDB_SUCCESS;
 
       if(run_mode != GIMP_RUN_NONINTERACTIVE)
@@ -342,9 +346,9 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
 		drawableID = param[2].data.d_int32;
 
       decode_alpha_exp_image(drawableID);
-
+      
       status = GIMP_PDB_SUCCESS;
-
+      
       if(run_mode != GIMP_RUN_NONINTERACTIVE)
          gimp_displays_flush();
    }

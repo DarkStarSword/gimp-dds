@@ -1,7 +1,7 @@
 /*
 	DDS GIMP plugin
 
-	Copyright (C) 2004-2012 Shawn Kirst <skirst@gmail.com>,
+	Copyright (C) 2004-2010 Shawn Kirst <skirst@insightbb.com>,
    with parts (C) 2003 Arne Reuter <homepage@arnereuter.de> where specified.
 
 	This program is free software; you can redistribute it and/or
@@ -16,19 +16,14 @@
 
 	You should have received a copy of the GNU General Public License
 	along with this program; see the file COPYING.  If not, write to
-	the Free Software Foundation, 51 Franklin Street, Fifth Floor
-	Boston, MA 02110-1301, USA.
+	the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
+	Boston, MA 02111-1307, USA.
 */
 
 #include <string.h>
 #include <math.h>
-#include <float.h>
 
 #include <gtk/gtk.h>
-
-#ifdef _OPENMP
-#include <omp.h>
-#endif
 
 #include "dds.h"
 #include "mipmap.h"
@@ -504,7 +499,7 @@ static void scale_image_lanczos(unsigned char *dst, int dw, int dh,
 
    int x, y, start, stop, nmax, n, i;
    int sstride = sw * bpp;
-   float center, contrib, density, s, r, t;
+   float center, contrib, density, s, r;
 
    unsigned char *d, *row, *col;
 
@@ -517,108 +512,172 @@ static void scale_image_lanczos(unsigned char *dst, int dw, int dh,
 
    if(xsupport <= 0.5f)
    {
-      xsupport = 0.5f + FLT_EPSILON;
+      xsupport = 0.5f + 1e-12f;
       xscale = 1.0f;
    }
    if(ysupport <= 0.5f)
    {
-      ysupport = 0.5f + FLT_EPSILON;
+      ysupport = 0.5f + 1e-12f;
       yscale = 1.0f;
    }
 
-   invgamma = 1.0 / gamma;
-
+   /* resample in Y direction first to temporary buffer */
    unsigned char *tmp;
 
-#ifdef _OPENMP
-   tmp = g_malloc(sw * bpp * omp_get_max_threads());
-#else
-   tmp = g_malloc(sw * bpp);
-#endif
+   tmp = g_malloc(sw * dh * bpp);
+   d = tmp;
 
-#ifdef _OPENMP
-#pragma omp parallel for schedule(dynamic) \
-      private(x, y, d, row, col, center, start, stop, nmax, s, i, n, density, r, t, contrib)
-#endif
-   for(y = 0; y < dh; ++y)
+   if(gc)
    {
-      /* resample in Y direction to temp buffer */
-      d = tmp;
-#ifdef _OPENMP
-      d += (sw * bpp * omp_get_thread_num());
-#endif
+      invgamma = 1.0 / gamma;
 
-      for(x = 0; x < sw; ++x)
+      for(y = 0; y < dh; ++y)
       {
-         col = src + (x * bpp);
-
-         center = ((float)y + 0.5f) / yfactor;
-         start = (int)MAX(center - ysupport + 0.5f, 0);
-         stop = (int)MIN(center + ysupport + 0.5f, sh);
-         nmax = stop - start;
-         s = (float)start - center + 0.5f;
-
-         for(i = 0; i < bpp; ++i)
+         for(x = 0; x < sw; ++x)
          {
-            density = 0.0f;
-            r = 0.0f;
+            col = src + (x * bpp);
 
-            for(n = 0; n < nmax; ++n)
+            center = ((float)y + 0.5f) / yfactor;
+            start = (int)MAX(center - ysupport + 0.5f, 0);
+            stop = (int)MIN(center + ysupport + 0.5f, sh);
+            nmax = stop - start;
+            s = (float)start - center + 0.5f;
+
+            for(i = 0; i < bpp; ++i)
             {
-               contrib = lanczos(FILTER_RADIUS, (s + n) * yscale);
-               density += contrib;
-               t = (float)col[((start + n) * sstride) + i] * contrib;
-               if(gc) t = gamma_correct(t, gamma);
-               r += t;
+               density = 0.0f;
+               r = 0.0f;
+
+               for(n = 0; n < nmax; ++n)
+               {
+                  contrib = lanczos(FILTER_RADIUS, (s + n) * yscale);
+                  density += contrib;
+                  r += (float)gamma_correct(col[((start + n) * sstride) + i], gamma) * contrib;
+               }
+
+               if(density != 0.0f && density != 1.0f)
+                  r /= density;
+
+               if(r < 0) r = 0;
+               if(r > 255) r = 255;
+
+               *d++ = (unsigned char)gamma_correct(r, invgamma);
             }
-
-            if(density != 0.0f && density != 1.0f)
-               r /= density;
-
-            if(r < 0) r = 0;
-            if(r > 255) r = 255;
-
-            if(gc) r = gamma_correct(r, invgamma);
-
-            d[(x * bpp) + i] = (unsigned char)r;
          }
       }
 
-      /* resample in X direction using temp buffer */
-      row = d;
+      /* resample temp buffer in X direction */
+
       d = dst;
 
-      for(x = 0; x < dw; ++x)
+      for(y = 0; y < dh; ++y)
       {
-         center = ((float)x + 0.5f) / xfactor;
-         start = (int)MAX(center - xsupport + 0.5f, 0);
-         stop = (int)MIN(center + xsupport + 0.5f, sw);
-         nmax = stop - start;
-         s = (float)start - center + 0.5f;
+         row = tmp + (y * sstride);
 
-         for(i = 0; i < bpp; ++i)
+         for(x = 0; x < dw; ++x)
          {
-            density = 0.0f;
-            r = 0.0f;
+            center = ((float)x + 0.5f) / xfactor;
+            start = (int)MAX(center - xsupport + 0.5f, 0);
+            stop = (int)MIN(center + xsupport + 0.5f, sw);
+            nmax = stop - start;
+            s = (float)start - center + 0.5f;
 
-            for(n = 0; n < nmax; ++n)
+            for(i = 0; i < bpp; ++i)
             {
-               contrib = lanczos(FILTER_RADIUS, (s + n) * xscale);
-               density += contrib;
-               t = (float)row[((start + n) * bpp) + i] * contrib;
-               if(gc) t = gamma_correct(t, gamma);
-               r += t;
+               density = 0.0f;
+               r = 0.0f;
+
+               for(n = 0; n < nmax; ++n)
+               {
+                  contrib = lanczos(FILTER_RADIUS, (s + n) * xscale);
+                  density += contrib;
+                  r += (float)gamma_correct(row[((start + n) * bpp) + i], gamma) * contrib;
+               }
+
+               if(density != 0.0f && density != 1.0f)
+                  r /= density;
+
+               if(r < 0) r = 0;
+               if(r > 255) r = 255;
+
+               *d++ = (unsigned char)gamma_correct(r, invgamma);
             }
+         }
+      }
+   }
+   else
+   {
+      for(y = 0; y < dh; ++y)
+      {
+         for(x = 0; x < sw; ++x)
+         {
+            col = src + (x * bpp);
 
-            if(density != 0.0f && density != 1.0f)
-               r /= density;
+            center = ((float)y + 0.5f) / yfactor;
+            start = (int)MAX(center - ysupport + 0.5f, 0);
+            stop = (int)MIN(center + ysupport + 0.5f, sh);
+            nmax = stop - start;
+            s = (float)start - center + 0.5f;
 
-            if(r < 0) r = 0;
-            if(r > 255) r = 255;
+            for(i = 0; i < bpp; ++i)
+            {
+               density = 0.0f;
+               r = 0.0f;
 
-            if(gc) r = gamma_correct(r, invgamma);
+               for(n = 0; n < nmax; ++n)
+               {
+                  contrib = lanczos(FILTER_RADIUS, (s + n) * yscale);
+                  density += contrib;
+                  r += (float)col[((start + n) * sstride) + i] * contrib;
+               }
 
-            d[(y * (dw * bpp)) + (x * bpp) + i] = (unsigned char)r;
+               if(density != 0.0f && density != 1.0f)
+                  r /= density;
+
+               if(r < 0) r = 0;
+               if(r > 255) r = 255;
+
+               *d++ = (unsigned char)r;
+            }
+         }
+      }
+
+      /* resample temp buffer in X direction */
+
+      d = dst;
+
+      for(y = 0; y < dh; ++y)
+      {
+         row = tmp + (y * sstride);
+
+         for(x = 0; x < dw; ++x)
+         {
+            center = ((float)x + 0.5f) / xfactor;
+            start = (int)MAX(center - xsupport + 0.5f, 0);
+            stop = (int)MIN(center + xsupport + 0.5f, sw);
+            nmax = stop - start;
+            s = (float)start - center + 0.5f;
+
+            for(i = 0; i < bpp; ++i)
+            {
+               density = 0.0f;
+               r = 0.0f;
+
+               for(n = 0; n < nmax; ++n)
+               {
+                  contrib = lanczos(FILTER_RADIUS, (s + n) * xscale);
+                  density += contrib;
+                  r += (float)row[((start + n) * bpp) + i] * contrib;
+               }
+
+               if(density != 0.0f && density != 1.0f)
+                  r /= density;
+
+               if(r < 0) r = 0;
+               if(r > 255) r = 255;
+
+               *d++ = (unsigned char)r;
+            }
          }
       }
    }
@@ -1355,7 +1414,7 @@ int generate_volume_mipmaps(unsigned char *dst, unsigned char *src,
          case DDS_MIPMAP_FILTER_BICUBIC:  mipmap_func = scale_volume_image_cubic;    break;
          case DDS_MIPMAP_FILTER_BOX:
          default:
-                                          mipmap_func = scale_volume_image_box;      break;
+                                   mipmap_func = scale_volume_image_box;      break;
       }
    }
 

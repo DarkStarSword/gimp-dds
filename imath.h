@@ -1,7 +1,7 @@
 /*
 	DDS GIMP plugin
 
-	Copyright (C) 2004-2012 Shawn Kirst <skirst@gmail.com>,
+	Copyright (C) 2004-2010 Shawn Kirst <skirst@insightbb.com>,
    with parts (C) 2003 Arne Reuter <homepage@arnereuter.de> where specified.
 
 	This program is free software; you can redistribute it and/or
@@ -16,8 +16,8 @@
 
 	You should have received a copy of the GNU General Public License
 	along with this program; see the file COPYING.  If not, write to
-	the Free Software Foundation, 51 Franklin Street, Fifth Floor
-	Boston, MA 02110-1301, USA.
+	the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
+	Boston, MA 02111-1307, USA.
 */
 
 #ifndef IMATH_H
@@ -25,7 +25,7 @@
 
 #ifndef MIN
 # ifdef __GNUC__
-#  define MIN(a, b)  ({typeof(a) _a=(a); typeof(b) _b=(b); _a < _b ? _a : _b;})
+#  define MIN(a, b)  ({typeof(a) _a=(a), typeof(b) _b=(b); _a < _b ? _a : _b;})
 # else
 #  define MIN(a, b)  ((a) < (b) ? (a) : (b))
 # endif
@@ -33,7 +33,7 @@
 
 #ifndef MAX
 # ifdef __GNUC__
-#  define MAX(a, b)  ({typeof(a) _a=(a); typeof(b) _b=(b); _a > _b ? _a : _b;})
+#  define MAX(a, b)  ({typeof(a) _a=(a), typeof(b) _b=(b); _a > _b ? _a : _b;})
 # else
 #  define MAX(a, b)  ((a) > (b) ? (a) : (b))
 # endif

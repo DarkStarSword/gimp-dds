@@ -1,7 +1,7 @@
 /*
 	DDS GIMP plugin
 
-	Copyright (C) 2004-2012 Shawn Kirst <skirst@gmail.com>,
+	Copyright (C) 2004-2010 Shawn Kirst <skirst@insightbb.com>,
    with parts (C) 2003 Arne Reuter <homepage@arnereuter.de> where specified.
 
 	This program is free software; you can redistribute it and/or
@@ -16,8 +16,8 @@
 
 	You should have received a copy of the GNU General Public License
 	along with this program; see the file COPYING.  If not, write to
-	the Free Software Foundation, 51 Franklin Street, Fifth Floor
-	Boston, MA 02110-1301, USA.
+	the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
+	Boston, MA 02111-1307, USA.
 */
 
 #ifndef DDS_H
@@ -50,7 +50,6 @@ typedef enum
    DDS_SAVE_SELECTED_LAYER = 0,
    DDS_SAVE_CUBEMAP,
    DDS_SAVE_VOLUMEMAP,
-   DDS_SAVE_ARRAY,
    DDS_SAVE_MAX
 } DDS_SAVE_TYPE;
 
@@ -73,6 +72,15 @@ typedef enum
    DDS_FORMAT_YCOCG,
    DDS_FORMAT_MAX
 } DDS_FORMAT_TYPE;
+
+typedef enum
+{
+   DDS_COLOR_DEFAULT = 0,
+   DDS_COLOR_DISTANCE,
+   DDS_COLOR_LUMINANCE,
+   DDS_COLOR_INSET_BBOX,
+   DDS_COLOR_MAX
+} DDS_COLOR_TYPE;
 
 typedef enum
 {
@@ -158,7 +166,7 @@ typedef struct
 
 typedef struct
 {
-   unsigned int magic;
+   char magic[4];
    unsigned int size;
    unsigned int flags;
    unsigned int height;
@@ -182,8 +190,7 @@ typedef struct
    unsigned int reserved2;
 } dds_header_t;
 
-typedef enum
-{
+typedef enum DXGI_FORMAT {
    DXGI_FORMAT_UNKNOWN                      = 0,
    DXGI_FORMAT_R32G32B32A32_TYPELESS        = 1,
    DXGI_FORMAT_R32G32B32A32_FLOAT           = 2,
@@ -284,22 +291,6 @@ typedef enum
    DXGI_FORMAT_BC7_TYPELESS                 = 97,
    DXGI_FORMAT_BC7_UNORM                    = 98,
    DXGI_FORMAT_BC7_UNORM_SRGB               = 99,
-   DXGI_FORMAT_AYUV                         = 100,
-   DXGI_FORMAT_Y410                         = 101,
-   DXGI_FORMAT_Y416                         = 102,
-   DXGI_FORMAT_NV12                         = 103,
-   DXGI_FORMAT_P010                         = 104,
-   DXGI_FORMAT_P016                         = 105,
-   DXGI_FORMAT_420_OPAQUE                   = 106,
-   DXGI_FORMAT_YUY2                         = 107,
-   DXGI_FORMAT_Y210                         = 108,
-   DXGI_FORMAT_Y216                         = 109,
-   DXGI_FORMAT_NV11                         = 110,
-   DXGI_FORMAT_AI44                         = 111,
-   DXGI_FORMAT_IA44                         = 112,
-   DXGI_FORMAT_P8                           = 113,
-   DXGI_FORMAT_A8P8                         = 114,
-   DXGI_FORMAT_B4G4R4A4_UNORM               = 115,
    DXGI_FORMAT_FORCE_UINT                   = 0xffffffffUL
 } DXGI_FORMAT;
 
