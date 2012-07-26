@@ -598,16 +598,8 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
    unsigned int size = hdr->pitch_or_linsize >> (2 * level);
    int format = DDS_COMPRESS_NONE;
 
-   if(hdr->pixelfmt.flags & DDPF_FOURCC)
-   {
-      width  = MAX(width,  4);
-      height = MAX(height, 4);
-   }
-   else
-   {
-      if(width < 1) width = 1;
-      if(height < 1) height = 1;
-   }
+   if(width < 1) width = 1;
+   if(height < 1) height = 1;
 
    switch(d->bpp)
    {

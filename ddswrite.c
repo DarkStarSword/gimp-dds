@@ -732,7 +732,8 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
 {
    GimpDrawable *drawable;
    GimpPixelRgn rgn;
-   GimpImageType basetype, type;
+   GimpImageBaseType basetype;
+   GimpImageType type;
    unsigned char *src, *dst, *fmtdst, *tmp;
    unsigned char *palette = NULL;
    int i, c, x, y, size, fmtsize, offset, colors;
@@ -977,7 +978,7 @@ static void write_volume_mipmaps(FILE *fp, gint32 image_id, gint32 *layers,
    unsigned char *palette = 0;
    GimpDrawable *drawable;
    GimpPixelRgn rgn;
-   GimpImageType type;
+   GimpImageBaseType type;
 
    type = gimp_image_base_type(image_id);
 
@@ -1064,7 +1065,8 @@ static void write_volume_mipmaps(FILE *fp, gint32 image_id, gint32 *layers,
 static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
 {
    GimpDrawable *drawable;
-   GimpImageType drawable_type, basetype;
+   GimpImageType drawable_type;
+   GimpImageBaseType basetype;
    GimpPixelRgn rgn;
    int i, w, h, bpp = 0, fmtbpp = 0, has_alpha = 0;
    int num_mipmaps;
@@ -1087,23 +1089,6 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    basetype = gimp_image_base_type(image_id);
    drawable_type = gimp_drawable_type(drawable_id);
    gimp_pixel_rgn_init(&rgn, drawable, 0, 0, w, h, 0, 0);
-
-   if((dds_write_vals.compression != DDS_COMPRESS_NONE) &&
-      !(IS_MUL4(w) && IS_MUL4(h)))
-   {
-      dds_write_vals.compression = DDS_COMPRESS_NONE;
-      g_message("DDS: Cannot compress images whose dimensions are not multiples of 4.\n"
-                "Saved image will not be compressed.");
-   }
-
-   if((dds_write_vals.compression != DDS_COMPRESS_NONE) &&
-      dds_write_vals.mipmaps &&
-      !(IS_POW2(w) && IS_POW2(h)))
-   {
-      dds_write_vals.mipmaps = 0;
-      g_message("DDS: Cannot generate mipmaps for compressed images whose dimensions are not powers of 2.\n"
-                "Saved image will not have mipmaps generated.");
-   }
 
    switch(drawable_type)
    {
@@ -1629,7 +1614,7 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    GtkWidget *check;
    GtkWidget *spin;
    GtkWidget *expander;
-   GimpImageType basetype;
+   GimpImageBaseType basetype;
 
    if(is_cubemap)
       dds_write_vals.savetype = DDS_SAVE_CUBEMAP;

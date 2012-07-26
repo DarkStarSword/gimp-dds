@@ -51,7 +51,7 @@ int get_num_mipmaps(int width, int height)
 unsigned int get_mipmapped_size(int width, int height, int bpp,
                                 int level, int num, int format)
 {
-   int w, h, cw, ch, n = 0;
+   int w, h, n = 0;
    unsigned int size = 0;
 
    w = width >> level;
@@ -68,11 +68,7 @@ unsigned int get_mipmapped_size(int width, int height, int bpp,
       if(format == DDS_COMPRESS_NONE)
          size += (w * h);
       else
-      {
-         cw = MAX(w, 4);
-         ch = MAX(h, 4);
-         size += ((cw + 3) >> 2) * ((ch + 3) >> 2);
-      }
+         size += ((w + 3) >> 2) * ((h + 3) >> 2);
       ++n;
    }
 

@@ -1441,10 +1441,10 @@ static void put_block(unsigned char *dst, unsigned char *block,
    int x, y, i;
    unsigned char *d;
 
-   for(y = 0; y < 4; ++y)
+   for(y = 0; y < 4 && ((by + y) < height); ++y)
    {
       d = dst + ((y + by) * width + bx) * bpp;
-      for(x = 0; x < 4; ++x)
+      for(x = 0; x < 4 && ((bx + x) < width); ++x)
       {
          for(i = 0; i < bpp; ++ i)
             *d++ = block[y * 16 + (x * 4) + i];
@@ -1459,9 +1459,6 @@ int dxt_decompress(unsigned char *dst, unsigned char *src, int format,
    unsigned char *s;
    unsigned int i, x, y;
    unsigned char block[16 * 4];
-
-   if(!(IS_MUL4(width) && IS_MUL4(height)))
-      return(0);
 
    s = src;
 
