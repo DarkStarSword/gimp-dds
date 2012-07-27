@@ -28,6 +28,7 @@
 #define SQUISH_DXT5              0x00000004
 #define SQUISH_WEIGHTBYALPHA     0x00000008
 #define SQUISH_PERCEPTUALMETRIC  0x00000010
+#define SQUISH_FASTCOMPRESS      0x00000020
 
 void squish_compress(unsigned char *dst, const unsigned char *block, int flags);
 

@@ -86,6 +86,7 @@ static GtkWidget *gamma_chk;
 static GtkWidget *gamma_spin;
 static GtkWidget *wba_chk;
 static GtkWidget *pm_chk;
+static GtkWidget *fast_chk;
 
 typedef struct string_value_s
 {
@@ -360,7 +361,7 @@ static int check_mipmap_chain_consitency(gint32 image_id)
 
    layers = gimp_image_get_layers(image_id, &num_layers);
 
-   if(num_layers == 1) return(1);
+   if(num_layers == 1) return(0);
 
    /* find largest layer */
    for(i = 0; i < num_layers; ++i)
@@ -953,6 +954,7 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
       flags = 0;
       if(dds_write_vals.weight_by_alpha)   flags |= SQUISH_WEIGHTBYALPHA;
       if(dds_write_vals.perceptual_metric) flags |= SQUISH_PERCEPTUALMETRIC;
+      if(dds_write_vals.fast_compress)     flags |= SQUISH_FASTCOMPRESS;
 
       dxt_compress(dst, src, compression, w, h, bpp, mipmaps, flags);
 
@@ -1553,6 +1555,7 @@ static void compression_selected(GtkWidget *widget, gpointer data)
    gtk_widget_set_sensitive(format_opt, dds_write_vals.compression == DDS_COMPRESS_NONE);
    gtk_widget_set_sensitive(wba_chk, dds_write_vals.compression != DDS_COMPRESS_NONE);
    gtk_widget_set_sensitive(pm_chk, dds_write_vals.compression != DDS_COMPRESS_NONE);
+   gtk_widget_set_sensitive(fast_chk, dds_write_vals.compression != DDS_COMPRESS_NONE);
 }
 
 static void savetype_selected(GtkWidget *widget, gpointer data)
@@ -1821,7 +1824,7 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    gtk_box_pack_start(GTK_BOX(vbox), expander, 1, 1, 0);
    gtk_widget_show(expander);
 
-   table = gtk_table_new(5, 2, 0);
+   table = gtk_table_new(6, 2, 0);
    gtk_table_set_row_spacings(GTK_TABLE(table), 8);
    gtk_table_set_col_spacings(GTK_TABLE(table), 8);
    gtk_container_add(GTK_CONTAINER(expander), table);
@@ -1901,11 +1904,23 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
 
    pm_chk = check;
 
+   check = gtk_check_button_new_with_label("Use faster, reduced quality compression");
+   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check), dds_write_vals.fast_compress);
+   gtk_table_attach(GTK_TABLE(table), check, 0, 2, 5, 6,
+                    (GtkAttachOptions)(GTK_FILL),
+                    (GtkAttachOptions)(0), 0, 0);
+   gtk_signal_connect(GTK_OBJECT(check), "clicked",
+                      GTK_SIGNAL_FUNC(toggle_clicked), &dds_write_vals.fast_compress);
+   gtk_widget_show(check);
+
+   fast_chk = check;
+
    gtk_widget_set_sensitive(mipmap_filter_opt, dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE);
    gtk_widget_set_sensitive(gamma_chk, dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE);
    gtk_widget_set_sensitive(gamma_spin, (dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE) && dds_write_vals.gamma_correct);
    gtk_widget_set_sensitive(wba_chk, dds_write_vals.compression != DDS_COMPRESS_NONE);
    gtk_widget_set_sensitive(pm_chk, dds_write_vals.compression != DDS_COMPRESS_NONE);
+   gtk_widget_set_sensitive(fast_chk, dds_write_vals.compression != DDS_COMPRESS_NONE);
 
    gtk_widget_show(dlg);
 

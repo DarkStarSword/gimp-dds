@@ -51,7 +51,7 @@ GimpPlugInInfo PLUG_IN_INFO =
 DDSWriteVals dds_write_vals =
 {
 	DDS_COMPRESS_NONE, DDS_MIPMAP_NONE, DDS_SAVE_SELECTED_LAYER,
-   DDS_FORMAT_DEFAULT, -1, DDS_MIPMAP_FILTER_DEFAULT, 0, 2.2, 0, 0, 0
+   DDS_FORMAT_DEFAULT, -1, DDS_MIPMAP_FILTER_DEFAULT, 0, 2.2, 0, 0, 0, 0
 };
 
 DDSReadVals dds_read_vals =
@@ -88,7 +88,8 @@ static GimpParamDef save_args[] =
    {GIMP_PDB_INT32, "gamma_correct", "Use gamma correct mipmap filtering"},
    {GIMP_PDB_FLOAT, "gamma", "Gamma value to use for gamma correction (i.e. 2.2)"},
    {GIMP_PDB_INT32, "weight_by_alpha", "Colors weighted by alpha value during compression"},
-   {GIMP_PDB_INT32, "perceptual_metric", "Use a perceptual metric on colors during compression"}
+   {GIMP_PDB_INT32, "perceptual_metric", "Use a perceptual metric on colors during compression"},
+   {GIMP_PDB_INT32, "fast_compress", "Use faster, reduced quality compression"}
 };
 
 static GimpParamDef decode_args[] =
@@ -276,6 +277,7 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
                dds_write_vals.gamma = param[12].data.d_float;
                dds_write_vals.weight_by_alpha = param[13].data.d_int32;
                dds_write_vals.perceptual_metric = param[14].data.d_int32;
+               dds_write_vals.fast_compress = param[15].data.d_int32;
 
 					if(dds_write_vals.compression < DDS_COMPRESS_NONE ||
 						dds_write_vals.compression >= DDS_COMPRESS_MAX)

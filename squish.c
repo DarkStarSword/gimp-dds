@@ -947,7 +947,7 @@ void squish_compress(unsigned char *dst, const unsigned char *block, int flags)
       dst[6] = (unsigned char)(indices >> 16);
       dst[7] = (unsigned char)(indices >> 24);
    }
-   else if(colors.count == 0)
+   else if(colors.count == 0 || (flags & SQUISH_FASTCOMPRESS))
    {
       rangefit_init(&rf, &colors, flags);
       if(flags & SQUISH_DXT1)
