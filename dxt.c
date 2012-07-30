@@ -41,6 +41,8 @@
 
 #include "dxt_tables.h"
 
+#define SWAP(a, b)  do { typeof(a) t; t = a; a = b; b = t; } while(0)
+
 /* extract 4x4 BGRA block */
 static void extract_block(const unsigned char *src, int x, int y,
                           int w, int h, unsigned char *block)
@@ -99,10 +101,15 @@ static void unpack_rgb565(unsigned char *dst, unsigned short v)
 /* linear interpolation at 1/3 point between a and b */
 static void lerp_rgb13(unsigned char *dst, unsigned char *a, unsigned char *b)
 {
+#if 0
    dst[0] = blerp(a[0], b[0], 0x55);
    dst[1] = blerp(a[1], b[1], 0x55);
    dst[2] = blerp(a[2], b[2], 0x55);
-
+#else
+   dst[0] = (2 * a[0] + b[0]) / 3;
+   dst[1] = (2 * a[1] + b[1]) / 3;
+   dst[2] = (2 * a[2] + b[2]) / 3;
+#endif   
    /*
     * according to the S3TC/DX10 specs, this is the correct way to do the
     * interpolation (with no rounding bias)
@@ -655,14 +662,8 @@ static void select_diagonal(const unsigned char *block,
    x1 = cmin[0];
    y1 = cmin[1];
 
-   if(covariance[0] < 0)
-   {
-      x0 ^= x1; x1 ^= x0; x0 ^= x1;
-   }
-   if(covariance[1] < 0)
-   {
-      y0 ^= y1; y1 ^= y0; y0 ^= y1;
-   }
+   if(covariance[0] < 0) SWAP(x0, x1);
+   if(covariance[1] < 0) SWAP(y0, y1);
 
    cmax[0] = MAX(0, MIN(255, x0));
    cmax[1] = MAX(0, MIN(255, y0));
@@ -870,9 +871,7 @@ static void encode_color_block(unsigned char *dst,
       min16 = pack_rgb565(cmin);
 
       if(max16 > min16)
-      {
-         max16 ^= min16; min16 ^= max16; max16 ^= min16;
-      }
+         SWAP(max16, min16);
 
       eval_colors(color, max16, min16);
       mask = match_colors_block_DXT1a(block, color);
@@ -943,7 +942,7 @@ static void encode_color_block(unsigned char *dst,
 
       if(max16 < min16)
       {
-         max16 ^= min16; min16 ^= max16; max16 ^= min16;
+         SWAP(max16, min16);
          mask ^= 0x55555555;
       }
    }
