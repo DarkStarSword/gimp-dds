@@ -115,45 +115,32 @@ static void vec4_endpoints_to_565(int *start, int *end, const vec4_t a, const ve
    vec4_t tb = b * V4GRID + V4HALF;
 
 #ifdef USE_SSE
-# ifdef __SSE4_1__
-   const __m128i C565 = _mm_setr_epi32(31, 63, 31, 0);
+# ifdef __SSE2__
+   const __m128i C565 = _mm_setr_epi16(31, 63, 31, 0, 31, 63, 31, 0);
    __m128i ia = _mm_cvttps_epi32(ta);
    __m128i ib = _mm_cvttps_epi32(tb);
    __m128i zero = _mm_setzero_si128();
-   ia = _mm_min_epi32(C565, _mm_max_epi32(zero, ia));
-   ib = _mm_min_epi32(C565, _mm_max_epi32(zero, ib));
-   *((__m128i *)&c[0]) = ia;
-   *((__m128i *)&c[4]) = ib;
-# elif defined(__SSE2__)
-   const __m128i C565 = _mm_setr_epi16(31, 63, 31, 0, 0, 0, 0, 0);
-   __m128i ia = _mm_cvttps_epi32(ta);
-   __m128i ib = _mm_cvttps_epi32(tb);
-   __m128i zero = _mm_setzero_si128();
-   __m128i sa = _mm_packs_epi32(ia, zero);
-   __m128i sb = _mm_packs_epi32(ib, zero);
-   sa = _mm_min_epi16(C565, _mm_max_epi16(zero, sa));
-   sb = _mm_min_epi16(C565, _mm_max_epi16(zero, sb));
-   ia = _mm_unpacklo_epi16(sa, zero);
-   ib = _mm_unpacklo_epi16(sb, zero);
-   *((__m128i *)&c[0]) = ia;
-   *((__m128i *)&c[4]) = ib;
-# else
-   __m64 lo, hi;
+   __m128i s = _mm_packs_epi32(ia, ib);
+   s = _mm_min_epi16(C565, _mm_max_epi16(zero, s));
+   *((__m128i *)&c[0]) = _mm_unpacklo_epi16(s, zero);
+   *((__m128i *)&c[4]) = _mm_unpackhi_epi16(s, zero);
+   # else
+   const __m64 C565 = _mm_setr_pi16(31, 63, 31, 0);
+   __m64 lo, hi, c0, c1;
+   __m64 zero = _mm_setzero_si64();
    lo = _mm_cvttps_pi32(ta);
    hi = _mm_cvttps_pi32(_mm_movehl_ps(ta, ta));
-   *((__m64 *)&c[0]) = lo;
-   *((__m64 *)&c[2]) = hi;
+   c0 = _mm_packs_pi32(lo, hi);
    lo = _mm_cvttps_pi32(tb);
    hi = _mm_cvttps_pi32(_mm_movehl_ps(tb, tb));
-   *((__m64 *)&c[4]) = lo;
-   *((__m64 *)&c[6]) = hi;
+   c1 = _mm_packs_pi32(lo, hi);
+   c0 = _mm_min_pi16(C565, _mm_max_pi16(zero, c0));
+   c1 = _mm_min_pi16(C565, _mm_max_pi16(zero, c1));
+   *((__m64 *)&c[0]) = _mm_unpacklo_pi16(c0, zero);
+   *((__m64 *)&c[2]) = _mm_unpackhi_pi16(c0, zero);
+   *((__m64 *)&c[4]) = _mm_unpacklo_pi16(c1, zero);
+   *((__m64 *)&c[6]) = _mm_unpackhi_pi16(c1, zero);
    _mm_empty();
-   c[0] = MIN(32, MAX(0, c[0]));
-   c[1] = MIN(63, MAX(0, c[1]));
-   c[2] = MIN(32, MAX(0, c[2]));
-   c[4] = MIN(32, MAX(0, c[4]));
-   c[5] = MIN(63, MAX(0, c[5]));
-   c[6] = MIN(32, MAX(0, c[6]));
 # endif
 #else
    c[0] = (int)ta[0]; c[4] = (int)tb[0];
@@ -412,7 +399,7 @@ static void rangefit_init(rangefit_t *rf, colorset_t *colors, int flags)
 
    rf->besterror = FLT_MAX;
 
-   if(flags & SQUISH_PERCEPTUALMETRIC)
+   if(flags & SQUISH_PERCEPTUAL)
       rf->metric = vec4_set(0.2126f, 0.7152f, 0.0722f, 0.0f);
    else
       rf->metric = vec4_set(1.0f, 1.0f, 1.0f, 0.0f);
@@ -558,7 +545,7 @@ static void clusterfit_init(clusterfit_t *cf, colorset_t *colors, int flags)
 
    cf->besterror = FLT_MAX;
 
-   if(flags & SQUISH_PERCEPTUALMETRIC)
+   if(flags & SQUISH_PERCEPTUAL)
       cf->metric = vec4_set(0.2126f, 0.7152f, 0.0722f, 0.0f);
    else
       cf->metric = vec4_set(1.0f, 1.0f, 1.0f, 0.0f);
@@ -578,8 +565,7 @@ static int clusterfit_construct_ordering(clusterfit_t *cf, const vec4_t axis, in
    // build the list of dot products
    for(i = 0; i < cf->colors->count; ++i)
    {
-      p = vec4_set(cf->colors->points[i][0], cf->colors->points[i][1], cf->colors->points[i][2], 0.0f);
-      dps[i] = vec4_dot(p, axis);
+      dps[i] = vec4_dot(cf->colors->points[i], axis);
       order[i] = i;
    }
 
@@ -670,9 +656,9 @@ static void clusterfit_compress3(clusterfit_t *cf, unsigned char *block)
             alphabeta_sum = vec4_splatw(part1 * V4HALF_HALF2);
 
             // comput the least-squares optimal points
-            factor = vec4_rcp((alpha2_sum * beta2_sum) - alphabeta_sum * alphabeta_sum);
-            a = ((alphax_sum * beta2_sum ) - betax_sum  * alphabeta_sum) * factor;
-            b = ((betax_sum  * alpha2_sum) - alphax_sum * alphabeta_sum) * factor;
+            factor = vec4_rcp(alpha2_sum * beta2_sum - alphabeta_sum * alphabeta_sum);
+            a = (alphax_sum * beta2_sum  - betax_sum  * alphabeta_sum) * factor;
+            b = (betax_sum  * alpha2_sum - alphax_sum * alphabeta_sum) * factor;
 
             // clamp to the grid
             a = vec4_min(V4ONE, vec4_max(V4ZERO, a));
@@ -803,9 +789,9 @@ static void clusterfit_compress4(clusterfit_t *cf, unsigned char *block)
                alphabeta_sum = V4TWONINTHS * vec4_splatw(part1 + part2);
 
                // compute the least-squares optimal points
-               factor = vec4_rcp((alpha2_sum * beta2_sum) - alphabeta_sum * alphabeta_sum);
-               a = ((alphax_sum * beta2_sum ) - betax_sum  * alphabeta_sum) * factor;
-               b = ((betax_sum  * alpha2_sum) - alphax_sum * alphabeta_sum) * factor;
+               factor = vec4_rcp(alpha2_sum * beta2_sum - alphabeta_sum * alphabeta_sum);
+               a = (alphax_sum * beta2_sum  - betax_sum  * alphabeta_sum) * factor;
+               b = (betax_sum  * alpha2_sum - alphax_sum * alphabeta_sum) * factor;
 
                // clamp to the grid
                a = vec4_min(V4ONE, vec4_max(V4ZERO, a));

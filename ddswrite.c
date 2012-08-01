@@ -953,7 +953,7 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
 
       flags = 0;
       if(dds_write_vals.weight_by_alpha)   flags |= SQUISH_WEIGHTBYALPHA;
-      if(dds_write_vals.perceptual_metric) flags |= SQUISH_PERCEPTUALMETRIC;
+      if(dds_write_vals.perceptual_metric) flags |= SQUISH_PERCEPTUAL;
       if(dds_write_vals.fast_compress)     flags |= SQUISH_FASTCOMPRESS;
 
       dxt_compress(dst, src, compression, w, h, bpp, mipmaps, flags);
@@ -1835,7 +1835,7 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    gtk_table_attach(GTK_TABLE(table), label, 0, 1, 0, 1,
                     (GtkAttachOptions)(GTK_FILL),
                     (GtkAttachOptions)(0), 0, 0);
-   gtk_misc_set_alignment(GTK_MISC(label), 0, 0.5);
+   gtk_misc_set_alignment(GTK_MISC(label), 1, 0.5);
 
    opt = string_value_combo_new(mipmap_filter_strings,
                                 dds_write_vals.mipmap_filter);
@@ -1869,7 +1869,7 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    gtk_table_attach(GTK_TABLE(table), label, 0, 1, 2, 3,
                     (GtkAttachOptions)(GTK_FILL),
                     (GtkAttachOptions)(0), 0, 0);
-   gtk_misc_set_alignment(GTK_MISC(label), 0, 0.5);
+   gtk_misc_set_alignment(GTK_MISC(label), 1, 0.5);
 
    spin = gtk_spin_button_new(GTK_ADJUSTMENT(gtk_adjustment_new(dds_write_vals.gamma, 1e-05, 100, 0.1, 0.5, 0)), 1, 1);
    gtk_table_attach(GTK_TABLE(table), spin, 1, 2, 2, 3,
@@ -1893,7 +1893,7 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
 
    wba_chk = check;
 
-   check = gtk_check_button_new_with_label("Use perceptual color metric");
+   check = gtk_check_button_new_with_label("Use perceptual error metric");
    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check), dds_write_vals.perceptual_metric);
    gtk_table_attach(GTK_TABLE(table), check, 0, 2, 4, 5,
                     (GtkAttachOptions)(GTK_FILL),

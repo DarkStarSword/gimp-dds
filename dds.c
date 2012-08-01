@@ -88,7 +88,7 @@ static GimpParamDef save_args[] =
    {GIMP_PDB_INT32, "gamma_correct", "Use gamma correct mipmap filtering"},
    {GIMP_PDB_FLOAT, "gamma", "Gamma value to use for gamma correction (i.e. 2.2)"},
    {GIMP_PDB_INT32, "weight_by_alpha", "Colors weighted by alpha value during compression"},
-   {GIMP_PDB_INT32, "perceptual_metric", "Use a perceptual metric on colors during compression"},
+   {GIMP_PDB_INT32, "perceptual_metric", "Use a perceptual error metric during compression"},
    {GIMP_PDB_INT32, "fast_compress", "Use faster, reduced quality compression"}
 };
 

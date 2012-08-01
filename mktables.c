@@ -7,6 +7,15 @@ int mul8bit(int a, int b)
    return((t + (t >> 8)) >> 8);
 }
 
+int lerp13(int a, int b)
+{
+#if 0
+   return(a + mul8bit(b - a, 0x55));
+#else
+   return((2 * a + b) / 3);
+#endif   
+}
+
 static void prepare_opt_table(unsigned char *tab,
                               const unsigned char *expand, int size)
 {
@@ -14,7 +23,7 @@ static void prepare_opt_table(unsigned char *tab,
    
    for(i = 0; i < 256; ++i)
    {
-      bestE = 256;
+      bestE = 256 * 100;
       
       for(mn = 0; mn < size; ++mn)
       {
@@ -22,9 +31,9 @@ static void prepare_opt_table(unsigned char *tab,
          {
             minE = expand[mn];
             maxE = expand[mx];
-            e = abs(maxE + mul8bit(minE - maxE, 0x55) - i) * 100;
+            e = abs(lerp13(maxE, minE) - i) * 100;
             
-            e += abs(maxE - minE) * 3;
+            e += abs(mx - mn) * 3;
             
             if(e < bestE)
             {

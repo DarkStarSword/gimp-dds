@@ -98,10 +98,11 @@ static void unpack_rgb565(unsigned char *dst, unsigned short v)
 /* linear interpolation at 1/3 point between a and b */
 static void lerp_rgb13(unsigned char *dst, unsigned char *a, unsigned char *b)
 {
+#if 0
    dst[0] = blerp(a[0], b[0], 0x55);
    dst[1] = blerp(a[1], b[1], 0x55);
    dst[2] = blerp(a[2], b[2], 0x55);
-
+#else
    /*
     * according to the S3TC/DX10 specs, this is the correct way to do the
     * interpolation (with no rounding bias)
@@ -109,6 +110,10 @@ static void lerp_rgb13(unsigned char *dst, unsigned char *a, unsigned char *b)
     * dst = (2 * a + b) / 3;
     *
     */
+   dst[0] = (2 * a[0] + b[0]) / 3;
+   dst[1] = (2 * a[1] + b[1]) / 3;
+   dst[2] = (2 * a[2] + b[2]) / 3;
+#endif
 }
 
 static void get_min_max_YCoCg(const unsigned char *block,
@@ -226,6 +231,57 @@ static void select_diagonal_YCoCg(const unsigned char *block,
    maxcolor[1] = c1;
 }
 
+static void encode_YCoCg_block(unsigned char *dst, unsigned char *block)
+{
+   unsigned char colors[4][3], *maxcolor, *mincolor;
+   unsigned int mask;
+   int c0, c1, d0, d1, d2, d3;
+   int b0, b1, b2, b3, b4;
+   int x0, x1, x2;
+   int i;
+
+   maxcolor = &colors[0][0];
+   mincolor = &colors[1][0];
+
+   get_min_max_YCoCg(block, mincolor, maxcolor);
+   scale_YCoCg(block, mincolor, maxcolor);
+   inset_bbox_YCoCg(mincolor, maxcolor);
+   select_diagonal_YCoCg(block, mincolor, maxcolor);
+
+   lerp_rgb13(&colors[2][0], maxcolor, mincolor);
+   lerp_rgb13(&colors[3][0], mincolor, maxcolor);
+
+   mask = 0;
+
+   for(i = 15; i >= 0; --i)
+   {
+      c0 = block[4 * i + 2];
+      c1 = block[4 * i + 1];
+
+      d0 = abs(colors[0][2] - c0) + abs(colors[0][1] - c1);
+      d1 = abs(colors[1][2] - c0) + abs(colors[1][1] - c1);
+      d2 = abs(colors[2][2] - c0) + abs(colors[2][1] - c1);
+      d3 = abs(colors[3][2] - c0) + abs(colors[3][1] - c1);
+
+      b0 = d0 > d3;
+      b1 = d1 > d2;
+      b2 = d0 > d2;
+      b3 = d1 > d3;
+      b4 = d2 > d3;
+
+      x0 = b1 & b2;
+      x1 = b0 & b3;
+      x2 = b0 & b4;
+
+      mask <<= 2;
+      mask |= (x2 | ((x0 | x1) << 1));
+   }
+
+   PUTL16(dst + 0, pack_rgb565(maxcolor));
+   PUTL16(dst + 2, pack_rgb565(mincolor));
+   PUTL32(dst + 4, mask);
+}
+
 /* write DXT3 alpha block */
 static void encode_alpha_block_DXT3(unsigned char *dst,
                                     const unsigned char *block)
@@ -313,7 +369,7 @@ static void compress_DXT1(unsigned char *dst, const unsigned char *src,
    int x, y;
 
 #ifdef _OPENMP
-#pragma omp parallel for collapse(2) schedule(dynamic) private(block, p)
+#pragma omp parallel for schedule(dynamic) private(block, p, x)
 #endif
    for(y = 0; y < h; y += 4)
    {
@@ -333,7 +389,7 @@ static void compress_DXT3(unsigned char *dst, const unsigned char *src,
    int x, y;
 
 #ifdef _OPENMP
-#pragma omp parallel for collapse(2) schedule(dynamic) private(block, p)
+#pragma omp parallel for schedule(dynamic) private(block, p, x)
 #endif
    for(y = 0; y < h; y += 4)
    {
@@ -354,7 +410,7 @@ static void compress_DXT5(unsigned char *dst, const unsigned char *src,
    int x, y;
 
 #ifdef _OPENMP
-#pragma omp parallel for collapse(2) schedule(dynamic) private(block, p)
+#pragma omp parallel for schedule(dynamic) private(block, p, x)
 #endif
    for(y = 0; y < h; y += 4)
    {
@@ -375,7 +431,7 @@ static void compress_BC4(unsigned char *dst, const unsigned char *src,
    int x, y;
 
 #ifdef _OPENMP
-#pragma omp parallel for collapse(2) schedule(dynamic) private(block, p)
+#pragma omp parallel for schedule(dynamic) private(block, p, x)
 #endif
    for(y = 0; y < h; y += 4)
    {
@@ -395,7 +451,7 @@ static void compress_BC5(unsigned char *dst, const unsigned char *src,
    int x, y;
 
 #ifdef _OPENMP
-#pragma omp parallel for collapse(2) schedule(dynamic) private(block, p)
+#pragma omp parallel for schedule(dynamic) private(block, p, x)
 #endif
    for(y = 0; y < h; y += 4)
    {
@@ -412,69 +468,20 @@ static void compress_BC5(unsigned char *dst, const unsigned char *src,
 static void compress_YCoCg(unsigned char *dst, const unsigned char *src,
                            int w, int h)
 {
-   unsigned char block[64], colors[4][3];
-   unsigned char *p, *maxcolor, *mincolor;
-   unsigned int mask;
-   int c0, c1, d0, d1, d2, d3;
-   int b0, b1, b2, b3, b4;
-   int x0, x1, x2;
-   int x, y, i;
+   unsigned char block[64], *p;
+   int x, y;
 
 #ifdef _OPENMP
-#pragma omp parallel for collapse(2) schedule(dynamic) \
-   private(block, colors, p, maxcolor, mincolor, mask, c0, c1, d0, d1, d2, d3, \
-           b0, b1, b2, b3, b4, x0, x1, x2, i)
+#pragma omp parallel for schedule(dynamic) private(block, p, x)
 #endif
    for(y = 0; y < h; y += 4)
    {
       for(x = 0; x < w; x += 4)
       {
          p = dst + BLOCK_OFFSET(x, y, w, 16);
-
          extract_block(src, x, y, w, h, block);
-
          encode_alpha_block_DXT5(p, block, 0);
-
-         maxcolor = &colors[0][0];
-         mincolor = &colors[1][0];
-
-         get_min_max_YCoCg(block, mincolor, maxcolor);
-         scale_YCoCg(block, mincolor, maxcolor);
-         inset_bbox_YCoCg(mincolor, maxcolor);
-         select_diagonal_YCoCg(block, mincolor, maxcolor);
-
-         lerp_rgb13(&colors[2][0], maxcolor, mincolor);
-         lerp_rgb13(&colors[3][0], mincolor, maxcolor);
-
-         mask = 0;
-
-         for(i = 15; i >= 0; --i)
-         {
-            c0 = block[4 * i + 2];
-            c1 = block[4 * i + 1];
-
-            d0 = abs(colors[0][2] - c0) + abs(colors[0][1] - c1);
-            d1 = abs(colors[1][2] - c0) + abs(colors[1][1] - c1);
-            d2 = abs(colors[2][2] - c0) + abs(colors[2][1] - c1);
-            d3 = abs(colors[3][2] - c0) + abs(colors[3][1] - c1);
-
-            b0 = d0 > d3;
-            b1 = d1 > d2;
-            b2 = d0 > d2;
-            b3 = d1 > d3;
-            b4 = d2 > d3;
-
-            x0 = b1 & b2;
-            x1 = b0 & b3;
-            x2 = b0 & b4;
-
-            mask <<= 2;
-            mask |= (x2 | ((x0 | x1) << 1));
-         }
-
-         PUTL16(p +  8, pack_rgb565(maxcolor));
-         PUTL16(p + 10, pack_rgb565(mincolor));
-         PUTL32(p + 12, mask);
+         encode_YCoCg_block(p + 8, block);
       }
    }
 }
