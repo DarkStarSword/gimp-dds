@@ -212,4 +212,15 @@ static inline float vec4_dot(const vec4_t a, const vec4_t b)
 #endif
 }
 
+static inline int vec4_cmplt(const vec4_t a, const vec4_t b)
+{
+#ifdef USE_SSE
+   __m128 bits = _mm_cmplt_ps(a, b);
+   int val = _mm_movemask_ps(bits);
+   return(val != 0);
+#else
+   return(a[0] < b[0] || a[1] < b[1] || a[2] < b[2] || a[3] < b[3]);
+#endif
+}
+
 #endif

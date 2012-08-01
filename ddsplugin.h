@@ -42,9 +42,7 @@ typedef struct
    int mipmap_filter;
    int gamma_correct;
    float gamma;
-   int weight_by_alpha;
    int perceptual_metric;
-   int fast_compress;
    int show_adv_opt;
 } DDSWriteVals;
 

@@ -37,7 +37,6 @@
 #include "endian.h"
 #include "imath.h"
 #include "color.h"
-#include "squish.h"
 
 static gint save_dialog(gint32 image_id, gint32 drawable);
 static void save_dialog_response(GtkWidget *widget, gint response_id, gpointer data);
@@ -84,9 +83,7 @@ static GtkWidget *format_opt;
 static GtkWidget *mipmap_filter_opt;
 static GtkWidget *gamma_chk;
 static GtkWidget *gamma_spin;
-static GtkWidget *wba_chk;
 static GtkWidget *pm_chk;
-static GtkWidget *fast_chk;
 
 typedef struct string_value_s
 {
@@ -952,9 +949,7 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
       }
 
       flags = 0;
-      if(dds_write_vals.weight_by_alpha)   flags |= SQUISH_WEIGHTBYALPHA;
-      if(dds_write_vals.perceptual_metric) flags |= SQUISH_PERCEPTUAL;
-      if(dds_write_vals.fast_compress)     flags |= SQUISH_FASTCOMPRESS;
+      if(dds_write_vals.perceptual_metric) flags |= DXT_PERCEPTUAL;
 
       dxt_compress(dst, src, compression, w, h, bpp, mipmaps, flags);
 
@@ -1553,9 +1548,7 @@ static void compression_selected(GtkWidget *widget, gpointer data)
                       &dds_write_vals.compression, -1);
 
    gtk_widget_set_sensitive(format_opt, dds_write_vals.compression == DDS_COMPRESS_NONE);
-   gtk_widget_set_sensitive(wba_chk, dds_write_vals.compression != DDS_COMPRESS_NONE);
    gtk_widget_set_sensitive(pm_chk, dds_write_vals.compression != DDS_COMPRESS_NONE);
-   gtk_widget_set_sensitive(fast_chk, dds_write_vals.compression != DDS_COMPRESS_NONE);
 }
 
 static void savetype_selected(GtkWidget *widget, gpointer data)
@@ -1824,7 +1817,7 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    gtk_box_pack_start(GTK_BOX(vbox), expander, 1, 1, 0);
    gtk_widget_show(expander);
 
-   table = gtk_table_new(6, 2, 0);
+   table = gtk_table_new(4, 2, 0);
    gtk_table_set_row_spacings(GTK_TABLE(table), 8);
    gtk_table_set_col_spacings(GTK_TABLE(table), 8);
    gtk_container_add(GTK_CONTAINER(expander), table);
@@ -1882,20 +1875,9 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
 
    gamma_spin = spin;
 
-   check = gtk_check_button_new_with_label("Weight colors by alpha");
-   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check), dds_write_vals.weight_by_alpha);
-   gtk_table_attach(GTK_TABLE(table), check, 0, 2, 3, 4,
-                    (GtkAttachOptions)(GTK_FILL),
-                    (GtkAttachOptions)(0), 0, 0);
-   gtk_signal_connect(GTK_OBJECT(check), "clicked",
-                      GTK_SIGNAL_FUNC(toggle_clicked), &dds_write_vals.weight_by_alpha);
-   gtk_widget_show(check);
-
-   wba_chk = check;
-
    check = gtk_check_button_new_with_label("Use perceptual error metric");
    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check), dds_write_vals.perceptual_metric);
-   gtk_table_attach(GTK_TABLE(table), check, 0, 2, 4, 5,
+   gtk_table_attach(GTK_TABLE(table), check, 0, 2, 3, 4,
                     (GtkAttachOptions)(GTK_FILL),
                     (GtkAttachOptions)(0), 0, 0);
    gtk_signal_connect(GTK_OBJECT(check), "clicked",
@@ -1904,23 +1886,10 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
 
    pm_chk = check;
 
-   check = gtk_check_button_new_with_label("Use faster, reduced quality compression");
-   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check), dds_write_vals.fast_compress);
-   gtk_table_attach(GTK_TABLE(table), check, 0, 2, 5, 6,
-                    (GtkAttachOptions)(GTK_FILL),
-                    (GtkAttachOptions)(0), 0, 0);
-   gtk_signal_connect(GTK_OBJECT(check), "clicked",
-                      GTK_SIGNAL_FUNC(toggle_clicked), &dds_write_vals.fast_compress);
-   gtk_widget_show(check);
-
-   fast_chk = check;
-
    gtk_widget_set_sensitive(mipmap_filter_opt, dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE);
    gtk_widget_set_sensitive(gamma_chk, dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE);
    gtk_widget_set_sensitive(gamma_spin, (dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE) && dds_write_vals.gamma_correct);
-   gtk_widget_set_sensitive(wba_chk, dds_write_vals.compression != DDS_COMPRESS_NONE);
    gtk_widget_set_sensitive(pm_chk, dds_write_vals.compression != DDS_COMPRESS_NONE);
-   gtk_widget_set_sensitive(fast_chk, dds_write_vals.compression != DDS_COMPRESS_NONE);
 
    gtk_widget_show(dlg);
 
