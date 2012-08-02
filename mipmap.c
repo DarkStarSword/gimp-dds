@@ -563,9 +563,9 @@ static void scale_image_lanczos(unsigned char *dst, int dw, int dh,
             {
                contrib = lanczos(FILTER_RADIUS, (s + n) * yscale);
                density += contrib;
-               t = (float)col[((start + n) * sstride) + i] * contrib;
+               t = (float)col[((start + n) * sstride) + i];
                if(gc) t = gamma_correct(t, gamma);
-               r += t;
+               r += t * contrib;
             }
 
             if(density != 0.0f && density != 1.0f)
@@ -601,9 +601,9 @@ static void scale_image_lanczos(unsigned char *dst, int dw, int dh,
             {
                contrib = lanczos(FILTER_RADIUS, (s + n) * xscale);
                density += contrib;
-               t = (float)row[((start + n) * bpp) + i] * contrib;
+               t = (float)row[((start + n) * bpp) + i];
                if(gc) t = gamma_correct(t, gamma);
-               r += t;
+               r += t * contrib;
             }
 
             if(density != 0.0f && density != 1.0f)

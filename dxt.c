@@ -220,6 +220,9 @@ static void dxtblock_init(dxtblock_t *dxtb, const unsigned char *block, int flag
       dxtb->single = dxtb->single && (c == c0);
    }
 
+   // no need to continue if this is a single color block
+   if(dxtb->single) return;
+
    min = vec4_set1(1.0f);
    max = vec4_zero();
 
@@ -378,8 +381,8 @@ static void optimize_endpoints4(dxtblock_t *dxtb, unsigned int indices,
 
 static unsigned int compress3(dxtblock_t *dxtb)
 {
-   const int MAX_ITERATIONS = 4;
-   int i, iteration, bestiteration = 0, idx;
+   const int MAX_ITERATIONS = 8;
+   int i, iteration, idx;
    unsigned int indices, bestindices = 0;
    vec4_t palette[3], max, min, t0, t1, t2;
    float error, besterror = FLT_MAX;
@@ -440,13 +443,11 @@ static unsigned int compress3(dxtblock_t *dxtb)
       if(error < besterror)
       {
          besterror = error;
-         bestiteration = iteration;
          bestindices = indices;
          dxtb->max = max;
          dxtb->min = min;
       }
-
-      if(bestiteration != iteration) break;
+      else break;
 
       ++iteration;
       if(iteration == MAX_ITERATIONS) break;
@@ -460,8 +461,8 @@ static unsigned int compress3(dxtblock_t *dxtb)
 
 static unsigned int compress4(dxtblock_t *dxtb)
 {
-   const int MAX_ITERATIONS = 4;
-   int i, iteration, bestiteration = 0;
+   const int MAX_ITERATIONS = 8;
+   int i, iteration;
    vec4_t palette[4], max, min, t0, t1, t2, t3;
    float error, besterror = FLT_MAX;
    unsigned int b0, b1, b2, b3, b4;
@@ -525,13 +526,11 @@ static unsigned int compress4(dxtblock_t *dxtb)
       if(error < besterror)
       {
          besterror = error;
-         bestiteration = iteration;
          bestindices = indices;
          dxtb->max = max;
          dxtb->min = min;
       }
-
-      if(bestiteration != iteration) break;
+      else break;
 
       ++iteration;
       if(iteration == MAX_ITERATIONS) break;

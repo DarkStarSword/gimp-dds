@@ -499,15 +499,12 @@ GimpPDBStatusType write_dds(gchar *filename, gint32 image_id, gint32 drawable_id
       return(GIMP_PDB_EXECUTION_ERROR);
    }
 
-   if(interactive_dds)
-   {
-      if(strrchr(filename, '/'))
-         tmp = g_strdup_printf("Saving %s:", strrchr(filename, '/') + 1);
-      else
-         tmp = g_strdup_printf("Saving %s:", filename);
-      gimp_progress_init(tmp);
-      g_free(tmp);
-   }
+   if(strrchr(filename, '/'))
+      tmp = g_strdup_printf("Saving %s:", strrchr(filename, '/') + 1);
+   else
+      tmp = g_strdup_printf("Saving %s:", filename);
+   gimp_progress_init(tmp);
+   g_free(tmp);
 
    rc = write_image(fp, image_id, drawable_id);
 
@@ -1395,8 +1392,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
       {
          write_layer(fp, image_id, cubemap_faces[i], w, h, bpp, fmtbpp,
                      num_mipmaps);
-         if(interactive_dds)
-            gimp_progress_update((float)(i + 1) / 6.0);
+         gimp_progress_update((float)(i + 1) / 6.0);
       }
    }
    else if(dds_write_vals.savetype == DDS_SAVE_VOLUMEMAP)
@@ -1404,8 +1400,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
       for(i = 0; i < num_layers; ++i)
       {
          write_layer(fp, image_id, layers[i], w, h, bpp, fmtbpp, 1);
-         if(interactive_dds)
-            gimp_progress_update((float)i / (float)num_layers);
+         gimp_progress_update((float)i / (float)num_layers);
       }
 
       if(num_mipmaps > 1)
@@ -1417,8 +1412,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
       for(i = 0; i < num_layers; ++i)
       {
          write_layer(fp, image_id, layers[i], w, h, bpp, fmtbpp, num_mipmaps);
-         if(interactive_dds)
-            gimp_progress_update((float)i / (float)num_layers);
+         gimp_progress_update((float)i / (float)num_layers);
       }
    }
    else
@@ -1426,8 +1420,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
       write_layer(fp, image_id, drawable_id, w, h, bpp, fmtbpp, num_mipmaps);
    }
 
-   if(interactive_dds)
-      gimp_progress_update(1.0);
+   gimp_progress_update(1.0);
 
    gimp_drawable_detach(drawable);
 
