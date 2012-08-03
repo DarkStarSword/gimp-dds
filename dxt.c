@@ -150,10 +150,10 @@ static void vec4_endpoints_to_565(int *start, int *end, const vec4_t a, const ve
    __m128i ia = _mm_cvttps_epi32(ta);
    __m128i ib = _mm_cvttps_epi32(tb);
    __m128i zero = _mm_setzero_si128();
-   __m128i s = _mm_packs_epi32(ia, ib);
-   s = _mm_min_epi16(C565, _mm_max_epi16(zero, s));
-   *((__m128i *)&c[0]) = _mm_unpacklo_epi16(s, zero);
-   *((__m128i *)&c[4]) = _mm_unpackhi_epi16(s, zero);
+   __m128i words = _mm_packs_epi32(ia, ib);
+   words = _mm_min_epi16(C565, _mm_max_epi16(zero, words));
+   *((__m128i *)&c[0]) = _mm_unpacklo_epi16(words, zero);
+   *((__m128i *)&c[4]) = _mm_unpackhi_epi16(words, zero);
 # else
    const __m64 C565 = _mm_setr_pi16(31, 63, 31, 0);
    __m64 lo, hi, c0, c1;

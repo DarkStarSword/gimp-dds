@@ -51,7 +51,7 @@ GimpPlugInInfo PLUG_IN_INFO =
 DDSWriteVals dds_write_vals =
 {
 	DDS_COMPRESS_NONE, DDS_MIPMAP_NONE, DDS_SAVE_SELECTED_LAYER,
-   DDS_FORMAT_DEFAULT, -1, DDS_MIPMAP_FILTER_DEFAULT, 0, 2.2, 0, 0
+   DDS_FORMAT_DEFAULT, -1, DDS_MIPMAP_FILTER_DEFAULT, 0, 0, 2.2, 0, 0
 };
 
 DDSReadVals dds_read_vals =
@@ -86,6 +86,7 @@ static GimpParamDef save_args[] =
    {GIMP_PDB_INT32, "transparent_index", "Index of transparent color or -1 to disable (for indexed images only)."},
    {GIMP_PDB_INT32, "mipmap_filter", "Filtering to use when generating mipmaps (0 = default, 1 = nearest, 2 = box, 3 = bilinear, 4 = bicubic, 5 = lanczos)"},
    {GIMP_PDB_INT32, "gamma_correct", "Use gamma correct mipmap filtering"},
+   {GIMP_PDB_INT32, "srgb", "Use sRGB colorspace for gamma correction"},
    {GIMP_PDB_FLOAT, "gamma", "Gamma value to use for gamma correction (i.e. 2.2)"},
    {GIMP_PDB_INT32, "perceptual_metric", "Use a perceptual error metric during compression"}
 };
@@ -272,8 +273,9 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
                dds_write_vals.transindex = param[9].data.d_int32;
                dds_write_vals.mipmap_filter = param[10].data.d_int32;
                dds_write_vals.gamma_correct = param[11].data.d_int32;
-               dds_write_vals.gamma = param[12].data.d_float;
-               dds_write_vals.perceptual_metric = param[13].data.d_int32;
+               dds_write_vals.srgb = param[12].data.d_int32;
+               dds_write_vals.gamma = param[13].data.d_float;
+               dds_write_vals.perceptual_metric = param[14].data.d_int32;
 
 					if(dds_write_vals.compression < DDS_COMPRESS_NONE ||
 						dds_write_vals.compression >= DDS_COMPRESS_MAX)

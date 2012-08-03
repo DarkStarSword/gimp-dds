@@ -41,6 +41,7 @@ typedef struct
    int transindex;
    int mipmap_filter;
    int gamma_correct;
+   int srgb;
    float gamma;
    int perceptual_metric;
    int show_adv_opt;

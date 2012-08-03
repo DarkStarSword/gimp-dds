@@ -33,6 +33,7 @@
 #include "dds.h"
 #include "mipmap.h"
 #include "imath.h"
+#include "color.h"
 
 typedef void (*mipmapfunc_t)(unsigned char *, int, int, unsigned char *, int, int, int, int, float);
 typedef void (*volmipmapfunc_t)(unsigned char *, int, int, int, unsigned char *, int, int, int, int, int, float);
@@ -168,10 +169,29 @@ static void scale_image_nearest(unsigned char *dst, int dw, int dh,
    }
 }
 
-static inline int gamma_correct(int v, float gamma)
+static int linear_to_gamma(int gc, int v, float gamma)
 {
-   v = (int)(powf((float)v / 255.0f, gamma) * 255);
-   if(v > 255) v = 255;
+   if(gc == 1)
+   {
+      v = (int)(powf((float)v / 255.0f, gamma) * 255);
+      if(v > 255) v = 255;
+   }
+   else if(gc == 2)
+      v = linear_to_sRGB(v);
+
+   return(v);
+}
+
+static int gamma_to_linear(int gc, int v, float gamma)
+{
+   if(gc == 1)
+   {
+      v = (int)(powf((float)v / 255.0f, 1.0f / gamma) * 255);
+      if(v > 255) v = 255;
+   }
+   else if(gc == 2)
+      v = sRGB_to_linear(v);
+
    return(v);
 }
 
@@ -182,55 +202,27 @@ static void scale_image_box(unsigned char *dst, int dw, int dh,
    int x, y, n, ix, iy, v;
    int dstride = dw * bpp;
    unsigned char *s;
-   float invgamma;
 
-   if(gc)
+   for(y = 0; y < dh; ++y)
    {
-      invgamma = 1.0f / gamma;
-      for(y = 0; y < dh; ++y)
+      iy = ((y * sh + sh / 2) / dh) - 1;
+      if(iy < 0) iy = 0;
+
+      for(x = 0; x < dw; ++x)
       {
-         iy = ((y * sh + sh / 2) / dh) - 1;
-         if(iy < 0) iy = 0;
+         ix = ((x * sw + sw / 2) / dw) - 1;
+         if(ix < 0) ix = 0;
 
-         for(x = 0; x < dw; ++x)
+         s = src + (iy * sw + ix) * bpp;
+
+         for(n = 0; n < bpp; ++n)
          {
-            ix = ((x * sw + sw / 2) / dw) - 1;
-            if(ix < 0) ix = 0;
-
-            s = src + (iy * sw + ix) * bpp;
-
-            for(n = 0; n < bpp; ++n)
-            {
-               v = (gamma_correct(s[0], gamma) +
-                    gamma_correct(s[bpp], gamma) +
-                    gamma_correct(s[sw * bpp], gamma) +
-                    gamma_correct(s[(sw + 1) * bpp], gamma)) >> 2;
-               dst[(y * dstride) + (x * bpp) + n] = gamma_correct(v, invgamma);
-               ++s;
-            }
-         }
-      }
-   }
-   else
-   {
-      for(y = 0; y < dh; ++y)
-      {
-         iy = ((y * sh + sh / 2) / dh) - 1;
-         if(iy < 0) iy = 0;
-
-         for(x = 0; x < dw; ++x)
-         {
-            ix = ((x * sw + sw / 2) / dw) - 1;
-            if(ix < 0) ix = 0;
-
-            s = src + (iy * sw + ix) * bpp;
-
-            for(n = 0; n < bpp; ++n)
-            {
-               v = (s[0] + s[bpp] + s[sw * bpp] + s[(sw + 1) * bpp]) >> 2;
-               dst[(y * dstride) + (x * bpp) + n] = v;
-               ++s;
-            }
+            v = (linear_to_gamma(gc, s[0], gamma) +
+                 linear_to_gamma(gc, s[bpp], gamma) +
+                 linear_to_gamma(gc, s[sw * bpp], gamma) +
+                 linear_to_gamma(gc, s[(sw + 1) * bpp], gamma)) >> 2;
+            dst[(y * dstride) + (x * bpp) + n] = gamma_to_linear(gc, v, gamma);
+            ++s;
          }
       }
    }
@@ -243,89 +235,42 @@ static void scale_image_bilinear(unsigned char *dst, int dw, int dh,
    int x, y, n, ix, iy, wx, wy, v, v0, v1;
    int dstride = dw * bpp;
    unsigned char *s;
-   float invgamma;
 
-   if(gc)
+   for(y = 0; y < dh; ++y)
    {
-      invgamma = 1.0 / gamma;
-
-      for(y = 0; y < dh; ++y)
+      if(dh > 1)
       {
-         if(dh > 1)
-         {
-            iy = (((sh - 1) * y) << 8) / (dh - 1);
-            if(y == dh - 1) --iy;
-            wy = iy & 0xff;
-            iy >>= 8;
-         }
-         else
-            iy = wy = 0;
-
-         for(x = 0; x < dw; ++x)
-         {
-            if(dw > 1)
-            {
-               ix = (((sw - 1) * x) << 8) / (dw - 1);
-               if(x == dw - 1) --ix;
-               wx = ix & 0xff;
-               ix >>= 8;
-            }
-            else
-               ix = wx = 0;
-
-            s = src + (iy * sw + ix) * bpp;
-
-            for(n = 0; n < bpp; ++n)
-            {
-               v0 = blerp(gamma_correct(s[0], gamma),
-                          gamma_correct(s[bpp], gamma), wx);
-               v1 = blerp(gamma_correct(s[sw * bpp], gamma),
-                          gamma_correct(s[(sw + 1) * bpp], gamma), wx);
-               v = blerp(v0, v1, wy);
-               dst[(y * dstride) + (x * bpp) + n] = gamma_correct(v, invgamma);
-               ++s;
-            }
-         }
+         iy = (((sh - 1) * y) << 8) / (dh - 1);
+         if(y == dh - 1) --iy;
+         wy = iy & 0xff;
+         iy >>= 8;
       }
-   }
-   else
-   {
-      for(y = 0; y < dh; ++y)
+      else
+         iy = wy = 0;
+
+      for(x = 0; x < dw; ++x)
       {
-         if(dh > 1)
+         if(dw > 1)
          {
-            iy = (((sh - 1) * y) << 8) / (dh - 1);
-            if(y == dh - 1) --iy;
-            wy = iy & 0xff;
-            iy >>= 8;
+            ix = (((sw - 1) * x) << 8) / (dw - 1);
+            if(x == dw - 1) --ix;
+            wx = ix & 0xff;
+            ix >>= 8;
          }
          else
-            iy = wy = 0;
+            ix = wx = 0;
 
-         for(x = 0; x < dw; ++x)
+         s = src + (iy * sw + ix) * bpp;
+
+         for(n = 0; n < bpp; ++n)
          {
-            if(dw > 1)
-            {
-               ix = (((sw - 1) * x) << 8) / (dw - 1);
-               if(x == dw - 1) --ix;
-               wx = ix & 0xff;
-               ix >>= 8;
-            }
-            else
-               ix = wx = 0;
-
-            s = src + (iy * sw + ix) * bpp;
-
-            for(n = 0; n < bpp; ++n)
-            {
-               v0 = blerp(s[0], s[bpp], wx);
-               v1 = blerp(s[sw * bpp], s[(sw + 1) * bpp], wx);
-               v = blerp(v0, v1, wy);
-               if(v < 0) v = 0;
-               if(v > 255) v = 255;
-               dst[(y * dstride) + (x * bpp) + n] = v;
-               ++s;
-            }
+            v0 = blerp(linear_to_gamma(gc, s[0], gamma),
+                       linear_to_gamma(gc, s[bpp], gamma), wx);
+            v1 = blerp(linear_to_gamma(gc, s[sw * bpp], gamma),
+                       linear_to_gamma(gc, s[(sw + 1) * bpp], gamma), wx);
+            v = blerp(v0, v1, wy);
+            dst[(y * dstride) + (x * bpp) + n] = gamma_to_linear(gc, v, gamma);
+            ++s;
          }
       }
    }
@@ -339,141 +284,68 @@ static void scale_image_bicubic(unsigned char *dst, int dw, int dh,
    int a, b, c, d;
    int dstride = dw * bpp;
    unsigned char *s;
-   float invgamma;
 
-   if(gc)
+   for(y = 0; y < dh; ++y)
    {
-      invgamma = 1.0 / gamma;
-
-      for(y = 0; y < dh; ++y)
+      if(dh > 1)
       {
-         if(dh > 1)
-         {
-            iy = (((sh - 1) * y) << 7) / (dh - 1);
-            if(y == dh - 1) --iy;
-            wy = iy & 0x7f;
-            iy >>= 7;
-         }
-         else
-            iy = wy = 0;
-
-         for(x = 0; x < dw; ++x)
-         {
-            if(dw > 1)
-            {
-               ix = (((sw - 1) * x) << 7) / (dw - 1);
-               if(x == dw - 1) --ix;
-               wx = ix & 0x7f;
-               ix >>= 7;
-            }
-            else
-               ix = wx = 0;
-
-            s = src + ((iy - 1) * sw + (ix - 1)) * bpp;
-
-            for(n = 0; n < bpp; ++n)
-            {
-               b = icerp(gamma_correct(s[(sw + 0) * bpp], gamma),
-                         gamma_correct(s[(sw + 1) * bpp], gamma),
-                         gamma_correct(s[(sw + 2) * bpp], gamma),
-                         gamma_correct(s[(sw + 3) * bpp], gamma), wx);
-               if(iy > 0)
-               {
-                  a = icerp(gamma_correct(s[      0], gamma),
-                            gamma_correct(s[    bpp], gamma),
-                            gamma_correct(s[2 * bpp], gamma),
-                            gamma_correct(s[3 * bpp], gamma), wx);
-               }
-               else
-                  a = b;
-
-               c = icerp(gamma_correct(s[(2 * sw + 0) * bpp], gamma),
-                         gamma_correct(s[(2 * sw + 1) * bpp], gamma),
-                         gamma_correct(s[(2 * sw + 2) * bpp], gamma),
-                         gamma_correct(s[(2 * sw + 3) * bpp], gamma), wx);
-               if(iy < dh - 1)
-               {
-                  d = icerp(gamma_correct(s[(3 * sw + 0) * bpp], gamma),
-                            gamma_correct(s[(3 * sw + 1) * bpp], gamma),
-                            gamma_correct(s[(3 * sw + 2) * bpp], gamma),
-                            gamma_correct(s[(3 * sw + 3) * bpp], gamma), wx);
-               }
-               else
-                  d = c;
-
-               v = icerp(a, b, c, d, wy);
-               if(v < 0) v = 0;
-               if(v > 255) v = 255;
-               dst[(y * dstride) + (x * bpp) + n] = gamma_correct(v, invgamma);
-               ++s;
-            }
-         }
+         iy = (((sh - 1) * y) << 7) / (dh - 1);
+         if(y == dh - 1) --iy;
+         wy = iy & 0x7f;
+         iy >>= 7;
       }
-   }
-   else
-   {
-      for(y = 0; y < dh; ++y)
+      else
+         iy = wy = 0;
+
+      for(x = 0; x < dw; ++x)
       {
-         if(dh > 1)
+         if(dw > 1)
          {
-            iy = (((sh - 1) * y) << 7) / (dh - 1);
-            if(y == dh - 1) --iy;
-            wy = iy & 0x7f;
-            iy >>= 7;
+            ix = (((sw - 1) * x) << 7) / (dw - 1);
+            if(x == dw - 1) --ix;
+            wx = ix & 0x7f;
+            ix >>= 7;
          }
          else
-            iy = wy = 0;
+            ix = wx = 0;
 
-         for(x = 0; x < dw; ++x)
+         s = src + ((iy - 1) * sw + (ix - 1)) * bpp;
+
+         for(n = 0; n < bpp; ++n)
          {
-            if(dw > 1)
+            b = icerp(linear_to_gamma(gc, s[(sw + 0) * bpp], gamma),
+                      linear_to_gamma(gc, s[(sw + 1) * bpp], gamma),
+                      linear_to_gamma(gc, s[(sw + 2) * bpp], gamma),
+                      linear_to_gamma(gc, s[(sw + 3) * bpp], gamma), wx);
+            if(iy > 0)
             {
-               ix = (((sw - 1) * x) << 7) / (dw - 1);
-               if(x == dw - 1) --ix;
-               wx = ix & 0x7f;
-               ix >>= 7;
+               a = icerp(linear_to_gamma(gc, s[      0], gamma),
+                         linear_to_gamma(gc, s[    bpp], gamma),
+                         linear_to_gamma(gc, s[2 * bpp], gamma),
+                         linear_to_gamma(gc, s[3 * bpp], gamma), wx);
             }
             else
-               ix = wx = 0;
+               a = b;
 
-            s = src + ((iy - 1) * sw + (ix - 1)) * bpp;
-
-            for(n = 0; n < bpp; ++n)
+            c = icerp(linear_to_gamma(gc, s[(2 * sw + 0) * bpp], gamma),
+                      linear_to_gamma(gc, s[(2 * sw + 1) * bpp], gamma),
+                      linear_to_gamma(gc, s[(2 * sw + 2) * bpp], gamma),
+                      linear_to_gamma(gc, s[(2 * sw + 3) * bpp], gamma), wx);
+            if(iy < dh - 1)
             {
-               b = icerp(s[(sw + 0) * bpp],
-                         s[(sw + 1) * bpp],
-                         s[(sw + 2) * bpp],
-                         s[(sw + 3) * bpp], wx);
-               if(iy > 0)
-               {
-                  a = icerp(s[      0],
-                            s[    bpp],
-                            s[2 * bpp],
-                            s[3 * bpp], wx);
-               }
-               else
-                  a = b;
-
-               c = icerp(s[(2 * sw + 0) * bpp],
-                         s[(2 * sw + 1) * bpp],
-                         s[(2 * sw + 2) * bpp],
-                         s[(2 * sw + 3) * bpp], wx);
-               if(iy < dh - 1)
-               {
-                  d = icerp(s[(3 * sw + 0) * bpp],
-                            s[(3 * sw + 1) * bpp],
-                            s[(3 * sw + 2) * bpp],
-                            s[(3 * sw + 3) * bpp], wx);
-               }
-               else
-                  d = c;
-
-               v = icerp(a, b, c, d, wy);
-               if(v < 0) v = 0;
-               if(v > 255) v = 255;
-               dst[(y * dstride) + (x * bpp) + n] = v;
-               ++s;
+               d = icerp(linear_to_gamma(gc, s[(3 * sw + 0) * bpp], gamma),
+                         linear_to_gamma(gc, s[(3 * sw + 1) * bpp], gamma),
+                         linear_to_gamma(gc, s[(3 * sw + 2) * bpp], gamma),
+                         linear_to_gamma(gc, s[(3 * sw + 3) * bpp], gamma), wx);
             }
+            else
+               d = c;
+
+            v = icerp(a, b, c, d, wy);
+            if(v < 0) v = 0;
+            if(v > 255) v = 255;
+            dst[(y * dstride) + (x * bpp) + n] = gamma_to_linear(gc, v, gamma);
+            ++s;
          }
       }
    }
@@ -509,8 +381,6 @@ static void scale_image_lanczos(unsigned char *dst, int dw, int dh,
    float xsupport = FILTER_RADIUS / xscale;
    float ysupport = FILTER_RADIUS / yscale;
 
-   float invgamma;
-
    if(xsupport <= 0.5f)
    {
       xsupport = 0.5f + FLT_EPSILON;
@@ -521,8 +391,6 @@ static void scale_image_lanczos(unsigned char *dst, int dw, int dh,
       ysupport = 0.5f + FLT_EPSILON;
       yscale = 1.0f;
    }
-
-   invgamma = 1.0 / gamma;
 
    unsigned char *tmp;
 
@@ -563,8 +431,7 @@ static void scale_image_lanczos(unsigned char *dst, int dw, int dh,
             {
                contrib = lanczos(FILTER_RADIUS, (s + n) * yscale);
                density += contrib;
-               t = (float)col[((start + n) * sstride) + i];
-               if(gc) t = gamma_correct(t, gamma);
+               t = (float)linear_to_gamma(gc, col[((start + n) * sstride) + i], gamma);
                r += t * contrib;
             }
 
@@ -574,7 +441,7 @@ static void scale_image_lanczos(unsigned char *dst, int dw, int dh,
             if(r < 0) r = 0;
             if(r > 255) r = 255;
 
-            if(gc) r = gamma_correct(r, invgamma);
+            r = gamma_to_linear(gc, r, gamma);
 
             d[(x * bpp) + i] = (unsigned char)r;
          }
@@ -601,8 +468,7 @@ static void scale_image_lanczos(unsigned char *dst, int dw, int dh,
             {
                contrib = lanczos(FILTER_RADIUS, (s + n) * xscale);
                density += contrib;
-               t = (float)row[((start + n) * bpp) + i];
-               if(gc) t = gamma_correct(t, gamma);
+               t = (float)linear_to_gamma(gc, row[((start + n) * bpp) + i], gamma);
                r += t * contrib;
             }
 
@@ -612,7 +478,7 @@ static void scale_image_lanczos(unsigned char *dst, int dw, int dh,
             if(r < 0) r = 0;
             if(r > 255) r = 255;
 
-            if(gc) r = gamma_correct(r, invgamma);
+            r = gamma_to_linear(gc, r, gamma);
 
             d[(y * (dw * bpp)) + (x * bpp) + i] = (unsigned char)r;
          }
@@ -704,83 +570,41 @@ static void scale_volume_image_box(unsigned char *dst, int dw, int dh, int dd,
    int n, x, y, z, v;
    int ix, iy, iz;
    unsigned char *s1, *s2, *d = dst;
-   float invgamma;
 
-   if(gc)
+   for(z = 0; z < dd; ++z)
    {
-      invgamma = 1.0 / gamma;
+      iz = ((z * sd + sd / 2) / dd) - 1;
+      if(iz < 0) iz = 0;
 
-      for(z = 0; z < dd; ++z)
+      for(y = 0; y < dh; ++y)
       {
-         iz = ((z * sd + sd / 2) / dd) - 1;
-         if(iz < 0) iz = 0;
+         iy = ((y * sh + sh / 2) / dh) - 1;
+         if(iy < 0) iy = 0;
 
-         for(y = 0; y < dh; ++y)
+         for(x = 0; x < dw; ++x)
          {
-            iy = ((y * sh + sh / 2) / dh) - 1;
-            if(iy < 0) iy = 0;
+            ix = ((x * sw + sw / 2) / dw) - 1;
+            if(ix < 0) ix = 0;
 
-            for(x = 0; x < dw; ++x)
+            s1 = src + ((iz * (sw * sh)) + (iy * sw) + ix) * bpp;
+            if(iz < dd - 1)
+               s2 = src + (((iz + 1) * (sw * sh)) + (iy * sw) + ix) * bpp;
+            else
+               s2 = src;
+
+            for(n = 0; n < bpp; ++n)
             {
-               ix = ((x * sw + sw / 2) / dw) - 1;
-               if(ix < 0) ix = 0;
-
-               s1 = src + ((iz * (sw * sh)) + (iy * sw) + ix) * bpp;
-               if(iz < dd - 1)
-                  s2 = src + (((iz + 1) * (sw * sh)) + (iy * sw) + ix) * bpp;
-               else
-                  s2 = src;
-
-               for(n = 0; n < bpp; ++n)
-               {
-                  v = (gamma_correct(s1[0], gamma) +
-                       gamma_correct(s2[0], gamma) +
-                       gamma_correct(s1[bpp], gamma) +
-                       gamma_correct(s2[bpp], gamma) +
-                       gamma_correct(s1[sw * bpp], gamma) +
-                       gamma_correct(s2[sw * bpp], gamma) +
-                       gamma_correct(s1[(sw + 1) * bpp], gamma) +
-                       gamma_correct(s2[(sw + 1) * bpp], gamma)) >> 3;
-                  *d++ = gamma_correct(v, invgamma);
-                  ++s1;
-                  ++s2;
-               }
-            }
-         }
-      }
-   }
-   else
-   {
-      for(z = 0; z < dd; ++z)
-      {
-         iz = ((z * sd + sd / 2) / dd) - 1;
-         if(iz < 0) iz = 0;
-
-         for(y = 0; y < dh; ++y)
-         {
-            iy = ((y * sh + sh / 2) / dh) - 1;
-            if(iy < 0) iy = 0;
-
-            for(x = 0; x < dw; ++x)
-            {
-               ix = ((x * sw + sw / 2) / dw) - 1;
-               if(ix < 0) ix = 0;
-
-               s1 = src + ((iz * (sw * sh)) + (iy * sw) + ix) * bpp;
-               if(iz < dd - 1)
-                  s2 = src + (((iz + 1) * (sw * sh)) + (iy * sw) + ix) * bpp;
-               else
-                  s2 = src;
-
-               for(n = 0; n < bpp; ++n)
-               {
-                  v =
-                     ((s1[0] + s1[bpp] + s1[sw * bpp] + s1[(sw + 1) * bpp]) +
-                     (s2[0] + s2[bpp] + s2[sw * bpp] + s2[(sw + 1) * bpp])) >> 3;
-                  *d++ = v;
-                  ++s1;
-                  ++s2;
-               }
+               v = (linear_to_gamma(gc, s1[0], gamma) +
+                    linear_to_gamma(gc, s2[0], gamma) +
+                    linear_to_gamma(gc, s1[bpp], gamma) +
+                    linear_to_gamma(gc, s2[bpp], gamma) +
+                    linear_to_gamma(gc, s1[sw * bpp], gamma) +
+                    linear_to_gamma(gc, s2[sw * bpp], gamma) +
+                    linear_to_gamma(gc, s1[(sw + 1) * bpp], gamma) +
+                    linear_to_gamma(gc, s2[(sw + 1) * bpp], gamma)) >> 3;
+               *d++ = gamma_to_linear(gc, v, gamma);
+               ++s1;
+               ++s2;
             }
          }
       }
@@ -793,134 +617,66 @@ static void scale_volume_image_bilinear(unsigned char *dst, int dw, int dh, int 
 {
    int x, y, z, n, ix, iy, iz, wx, wy, wz, v, v0, v1, r0, r1;
    unsigned char *s1, *s2, *d = dst;
-   float invgamma;
 
-   if(gc)
+   for(z = 0; z < dd; ++z)
    {
-      invgamma = 1.0 / gamma;
-
-      for(z = 0; z < dd; ++z)
+      if(dd > 1)
       {
-         if(dd > 1)
-         {
-            iz = (((sd - 1) * z) << 8) / (dd - 1);
-            if(z == dd - 1) --iz;
-            wz = iz & 0xff;
-            iz >>= 8;
-         }
-         else
-            iz = wz = 0;
-
-         for(y = 0; y < dh; ++y)
-         {
-            if(dh > 1)
-            {
-               iy = (((sh - 1) * y) << 8) / (dh - 1);
-               if(y == dh - 1) --iy;
-               wy = iy & 0xff;
-               iy >>= 8;
-            }
-            else
-               iy = wy = 0;
-
-            for(x = 0; x < dw; ++x)
-            {
-               if(dw > 1)
-               {
-                  ix = (((sw - 1) * x) << 8) / (dw - 1);
-                  if(x == dw - 1) --ix;
-                  wx = ix & 0xff;
-                  ix >>= 8;
-               }
-               else
-                  ix = wx = 0;
-
-               s1 = src + ((iz * (sw * sh)) + (iy * sw) + ix) * bpp;
-               s2 = src + (((iz + 1) * (sw * sh)) + (iy * sw) + ix) * bpp;
-
-               for(n = 0; n < bpp; ++n)
-               {
-                  r0 = blerp(gamma_correct(s1[0], gamma),
-                             gamma_correct(s1[bpp], gamma), wx);
-                  r1 = blerp(gamma_correct(s1[sw * bpp], gamma),
-                             gamma_correct(s1[(sw + 1) * bpp], gamma), wx);
-                  v0 = blerp(r0, r1, wy);
-
-                  r0 = blerp(gamma_correct(s2[0], gamma),
-                             gamma_correct(s2[bpp], gamma), wx);
-                  r1 = blerp(gamma_correct(s2[sw * bpp], gamma),
-                             gamma_correct(s2[(sw + 1) * bpp], gamma), wx);
-                  v1 = blerp(r0, r1, wy);
-
-                  v = blerp(v0, v1, wz);
-                  if(v < 0) v = 0;
-                  if(v > 255) v = 255;
-                  *d++ = gamma_correct(v, invgamma);
-                  ++s1;
-                  ++s2;
-               }
-            }
-         }
+         iz = (((sd - 1) * z) << 8) / (dd - 1);
+         if(z == dd - 1) --iz;
+         wz = iz & 0xff;
+         iz >>= 8;
       }
-   }
-   else
-   {
-      for(z = 0; z < dd; ++z)
+      else
+         iz = wz = 0;
+
+      for(y = 0; y < dh; ++y)
       {
-         if(dd > 1)
+         if(dh > 1)
          {
-            iz = (((sd - 1) * z) << 8) / (dd - 1);
-            if(z == dd - 1) --iz;
-            wz = iz & 0xff;
-            iz >>= 8;
+            iy = (((sh - 1) * y) << 8) / (dh - 1);
+            if(y == dh - 1) --iy;
+            wy = iy & 0xff;
+            iy >>= 8;
          }
          else
-            iz = wz = 0;
+            iy = wy = 0;
 
-         for(y = 0; y < dh; ++y)
+         for(x = 0; x < dw; ++x)
          {
-            if(dh > 1)
+            if(dw > 1)
             {
-               iy = (((sh - 1) * y) << 8) / (dh - 1);
-               if(y == dh - 1) --iy;
-               wy = iy & 0xff;
-               iy >>= 8;
+               ix = (((sw - 1) * x) << 8) / (dw - 1);
+               if(x == dw - 1) --ix;
+               wx = ix & 0xff;
+               ix >>= 8;
             }
             else
-               iy = wy = 0;
+               ix = wx = 0;
 
-            for(x = 0; x < dw; ++x)
+            s1 = src + ((iz * (sw * sh)) + (iy * sw) + ix) * bpp;
+            s2 = src + (((iz + 1) * (sw * sh)) + (iy * sw) + ix) * bpp;
+
+            for(n = 0; n < bpp; ++n)
             {
-               if(dw > 1)
-               {
-                  ix = (((sw - 1) * x) << 8) / (dw - 1);
-                  if(x == dw - 1) --ix;
-                  wx = ix & 0xff;
-                  ix >>= 8;
-               }
-               else
-                  ix = wx = 0;
+               r0 = blerp(linear_to_gamma(gc, s1[0], gamma),
+                          linear_to_gamma(gc, s1[bpp], gamma), wx);
+               r1 = blerp(linear_to_gamma(gc, s1[sw * bpp], gamma),
+                          linear_to_gamma(gc, s1[(sw + 1) * bpp], gamma), wx);
+               v0 = blerp(r0, r1, wy);
 
-               s1 = src + ((iz * (sw * sh)) + (iy * sw) + ix) * bpp;
-               s2 = src + (((iz + 1) * (sw * sh)) + (iy * sw) + ix) * bpp;
+               r0 = blerp(linear_to_gamma(gc, s2[0], gamma),
+                          linear_to_gamma(gc, s2[bpp], gamma), wx);
+               r1 = blerp(linear_to_gamma(gc, s2[sw * bpp], gamma),
+                          linear_to_gamma(gc, s2[(sw + 1) * bpp], gamma), wx);
+               v1 = blerp(r0, r1, wy);
 
-               for(n = 0; n < bpp; ++n)
-               {
-                  r0 = blerp(s1[0], s1[bpp], wx);
-                  r1 = blerp(s1[sw * bpp], s1[(sw + 1) * bpp], wx);
-                  v0 = blerp(r0, r1, wy);
-
-                  r0 = blerp(s2[0], s2[bpp], wx);
-                  r1 = blerp(s2[sw * bpp], s2[(sw + 1) * bpp], wx);
-                  v1 = blerp(r0, r1, wy);
-
-                  v = blerp(v0, v1, wz);
-                  if(v < 0) v = 0;
-                  if(v > 255) v = 255;
-                  *d++ = v;
-                  ++s1;
-                  ++s2;
-               }
+               v = blerp(v0, v1, wz);
+               if(v < 0) v = 0;
+               if(v > 255) v = 255;
+               *d++ = gamma_to_linear(gc, v, gamma);
+               ++s1;
+               ++s2;
             }
          }
       }
@@ -940,389 +696,192 @@ static void scale_volume_image_cubic(unsigned char *dst, int dw, int dh, int dd,
    int sslice = sw * sh * bpp;
    int dslice = dw * dh * bpp;
    unsigned char *s0, *s1, *s2, *s3;
-   float invgamma;
 
-   if(gc)
+   for(z = 0; z < dd; ++z)
    {
-      invgamma = 1.0 / gamma;
-
-      for(z = 0; z < dd; ++z)
+      if(dd > 1)
       {
-         if(dd > 1)
-         {
-            iz = (((sd - 1) * z) << 7) / (dd - 1);
-            if(z == dd - 1) --iz;
-            wz = iz & 0x7f;
-            iz >>= 7;
-         }
-         else
-            iz = wz = 0;
-
-         for(y = 0; y < dh; ++y)
-         {
-            if(dh > 1)
-            {
-               iy = (((sh - 1) * y) << 7) / (dh - 1);
-               if(y == dh - 1) --iy;
-               wy = iy & 0x7f;
-               iy >>= 7;
-            }
-            else
-               iy = wy = 0;
-
-            for(x = 0; x < dw; ++x)
-            {
-               if(dw > 1)
-               {
-                  ix = (((sw - 1) * x) << 7) / (dw - 1);
-                  if(x == dw - 1) --ix;
-                  wx = ix & 0x7f;
-                  ix >>= 7;
-               }
-               else
-                  ix = wx = 0;
-
-               s0 = src + (((iz - 1) * (sw * sh)) + ((iy - 1) * sw) + (ix - 1)) * bpp;
-               s1 = s0 + sslice;
-               s2 = s1 + sslice;
-               s3 = s2 + sslice;
-
-               for(n = 0; n < bpp; ++n)
-               {
-                  b = icerp(gamma_correct(s1[(sw + 0) * bpp], gamma),
-                            gamma_correct(s1[(sw + 1) * bpp], gamma),
-                            gamma_correct(s1[(sw + 2) * bpp], gamma),
-                            gamma_correct(s1[(sw + 3) * bpp], gamma), wx);
-                  if(iy > 0)
-                  {
-                     a = icerp(gamma_correct(s1[      0], gamma),
-                               gamma_correct(s1[    bpp], gamma),
-                               gamma_correct(s1[2 * bpp], gamma),
-                               gamma_correct(s1[3 * bpp], gamma), wx);
-                  }
-                  else
-                     a = b;
-
-                  c = icerp(gamma_correct(s1[(2 * sw + 0) * bpp], gamma),
-                            gamma_correct(s1[(2 * sw + 1) * bpp], gamma),
-                            gamma_correct(s1[(2 * sw + 2) * bpp], gamma),
-                            gamma_correct(s1[(2 * sw + 3) * bpp], gamma), wx);
-                  if(iy < dh - 1)
-                  {
-                     d = icerp(gamma_correct(s1[(3 * sw + 0) * bpp], gamma),
-                               gamma_correct(s1[(3 * sw + 1) * bpp], gamma),
-                               gamma_correct(s1[(3 * sw + 2) * bpp], gamma),
-                               gamma_correct(s1[(3 * sw + 3) * bpp], gamma), wx);
-                  }
-                  else
-                     d = c;
-
-                  v1 = icerp(a, b, c, d, wy);
-
-                  if(iz > 0)
-                  {
-                     b = icerp(gamma_correct(s0[(sw + 0) * bpp], gamma),
-                               gamma_correct(s0[(sw + 1) * bpp], gamma),
-                               gamma_correct(s0[(sw + 2) * bpp], gamma),
-                               gamma_correct(s0[(sw + 3) * bpp], gamma), wx);
-                     if(iy > 0)
-                     {
-                        a = icerp(gamma_correct(s0[      0], gamma),
-                                  gamma_correct(s0[    bpp], gamma),
-                                  gamma_correct(s0[2 * bpp], gamma),
-                                  gamma_correct(s0[3 * bpp], gamma), wx);
-                     }
-                     else
-                        a = b;
-
-                     c = icerp(gamma_correct(s0[(2 * sw + 0) * bpp], gamma),
-                               gamma_correct(s0[(2 * sw + 1) * bpp], gamma),
-                               gamma_correct(s0[(2 * sw + 2) * bpp], gamma),
-                               gamma_correct(s0[(2 * sw + 3) * bpp], gamma), wx);
-                     if(iy < dh - 1)
-                     {
-                        d = icerp(gamma_correct(s0[(3 * sw + 0) * bpp], gamma),
-                                  gamma_correct(s0[(3 * sw + 1) * bpp], gamma),
-                                  gamma_correct(s0[(3 * sw + 2) * bpp], gamma),
-                                  gamma_correct(s0[(3 * sw + 3) * bpp], gamma), wx);
-                     }
-                     else
-                        d = c;
-
-                     v0 = icerp(a, b, c, d, wy);
-                  }
-                  else
-                     v0 = v1;
-
-                  b = icerp(gamma_correct(s2[(sw + 0) * bpp], gamma),
-                            gamma_correct(s2[(sw + 1) * bpp], gamma),
-                            gamma_correct(s2[(sw + 2) * bpp], gamma),
-                            gamma_correct(s2[(sw + 3) * bpp], gamma), wx);
-                  if(iy > 0)
-                  {
-                     a = icerp(gamma_correct(s2[      0], gamma),
-                               gamma_correct(s2[    bpp], gamma),
-                               gamma_correct(s2[2 * bpp], gamma),
-                               gamma_correct(s2[3 * bpp], gamma), wx);
-                  }
-                  else
-                     a = b;
-
-                  c = icerp(gamma_correct(s2[(2 * sw + 0) * bpp], gamma),
-                            gamma_correct(s2[(2 * sw + 1) * bpp], gamma),
-                            gamma_correct(s2[(2 * sw + 2) * bpp], gamma),
-                            gamma_correct(s2[(2 * sw + 3) * bpp], gamma), wx);
-                  if(iy < dh - 1)
-                  {
-                     d = icerp(gamma_correct(s2[(3 * sw + 0) * bpp], gamma),
-                               gamma_correct(s2[(3 * sw + 1) * bpp], gamma),
-                               gamma_correct(s2[(3 * sw + 2) * bpp], gamma),
-                               gamma_correct(s2[(3 * sw + 3) * bpp], gamma), wx);
-                  }
-                  else
-                     d = c;
-
-                  v2 = icerp(a, b, c, d, wy);
-
-                  if(iz < dd - 1)
-                  {
-                     b = icerp(gamma_correct(s3[(sw + 0) * bpp], gamma),
-                               gamma_correct(s3[(sw + 1) * bpp], gamma),
-                               gamma_correct(s3[(sw + 2) * bpp], gamma),
-                               gamma_correct(s3[(sw + 3) * bpp], gamma), wx);
-                     if(iy > 0)
-                     {
-                        a = icerp(gamma_correct(s3[      0], gamma),
-                                  gamma_correct(s3[    bpp], gamma),
-                                  gamma_correct(s3[2 * bpp], gamma),
-                                  gamma_correct(s3[3 * bpp], gamma), wx);
-                     }
-                     else
-                        a = b;
-
-                     c = icerp(gamma_correct(s3[(2 * sw + 0) * bpp], gamma),
-                               gamma_correct(s3[(2 * sw + 1) * bpp], gamma),
-                               gamma_correct(s3[(2 * sw + 2) * bpp], gamma),
-                               gamma_correct(s3[(2 * sw + 3) * bpp], gamma), wx);
-                     if(iy < dh - 1)
-                     {
-                        d = icerp(gamma_correct(s3[(3 * sw + 0) * bpp], gamma),
-                                  gamma_correct(s3[(3 * sw + 1) * bpp], gamma),
-                                  gamma_correct(s3[(3 * sw + 2) * bpp], gamma),
-                                  gamma_correct(s3[(3 * sw + 3) * bpp], gamma), wx);
-                     }
-                     else
-                        d = c;
-
-                     v3 = icerp(a, b, c, d, wy);
-                  }
-                  else
-                     v3 = v2;
-
-                  val = icerp(v0, v1, v2, v3, wz);
-
-                  if(val <   0) val = 0;
-                  if(val > 255) val = 255;
-
-                  dst[(z * dslice) + (y * dstride) + (x * bpp) + n] =
-                     gamma_correct(val, invgamma);
-
-                  ++s0;
-                  ++s1;
-                  ++s2;
-                  ++s3;
-               }
-            }
-         }
+         iz = (((sd - 1) * z) << 7) / (dd - 1);
+         if(z == dd - 1) --iz;
+         wz = iz & 0x7f;
+         iz >>= 7;
       }
-   }
-   else
-   {
-      for(z = 0; z < dd; ++z)
+      else
+         iz = wz = 0;
+
+      for(y = 0; y < dh; ++y)
       {
-         if(dd > 1)
+         if(dh > 1)
          {
-            iz = (((sd - 1) * z) << 7) / (dd - 1);
-            if(z == dd - 1) --iz;
-            wz = iz & 0x7f;
-            iz >>= 7;
+            iy = (((sh - 1) * y) << 7) / (dh - 1);
+            if(y == dh - 1) --iy;
+            wy = iy & 0x7f;
+            iy >>= 7;
          }
          else
-            iz = wz = 0;
+            iy = wy = 0;
 
-         for(y = 0; y < dh; ++y)
+         for(x = 0; x < dw; ++x)
          {
-            if(dh > 1)
+            if(dw > 1)
             {
-               iy = (((sh - 1) * y) << 7) / (dh - 1);
-               if(y == dh - 1) --iy;
-               wy = iy & 0x7f;
-               iy >>= 7;
+               ix = (((sw - 1) * x) << 7) / (dw - 1);
+               if(x == dw - 1) --ix;
+               wx = ix & 0x7f;
+               ix >>= 7;
             }
             else
-               iy = wy = 0;
+               ix = wx = 0;
 
-            for(x = 0; x < dw; ++x)
+            s0 = src + (((iz - 1) * (sw * sh)) + ((iy - 1) * sw) + (ix - 1)) * bpp;
+            s1 = s0 + sslice;
+            s2 = s1 + sslice;
+            s3 = s2 + sslice;
+
+            for(n = 0; n < bpp; ++n)
             {
-               if(dw > 1)
+               b = icerp(linear_to_gamma(gc, s1[(sw + 0) * bpp], gamma),
+                         linear_to_gamma(gc, s1[(sw + 1) * bpp], gamma),
+                         linear_to_gamma(gc, s1[(sw + 2) * bpp], gamma),
+                         linear_to_gamma(gc, s1[(sw + 3) * bpp], gamma), wx);
+               if(iy > 0)
                {
-                  ix = (((sw - 1) * x) << 7) / (dw - 1);
-                  if(x == dw - 1) --ix;
-                  wx = ix & 0x7f;
-                  ix >>= 7;
+                  a = icerp(linear_to_gamma(gc, s1[      0], gamma),
+                            linear_to_gamma(gc, s1[    bpp], gamma),
+                            linear_to_gamma(gc, s1[2 * bpp], gamma),
+                            linear_to_gamma(gc, s1[3 * bpp], gamma), wx);
                }
                else
-                  ix = wx = 0;
+                  a = b;
 
-               s0 = src + (((iz - 1) * (sw * sh)) + ((iy - 1) * sw) + (ix - 1)) * bpp;
-               s1 = s0 + sslice;
-               s2 = s1 + sslice;
-               s3 = s2 + sslice;
-
-               for(n = 0; n < bpp; ++n)
+               c = icerp(linear_to_gamma(gc, s1[(2 * sw + 0) * bpp], gamma),
+                         linear_to_gamma(gc, s1[(2 * sw + 1) * bpp], gamma),
+                         linear_to_gamma(gc, s1[(2 * sw + 2) * bpp], gamma),
+                         linear_to_gamma(gc, s1[(2 * sw + 3) * bpp], gamma), wx);
+               if(iy < dh - 1)
                {
-                  b = icerp(s1[(sw + 0) * bpp],
-                           s1[(sw + 1) * bpp],
-                           s1[(sw + 2) * bpp],
-                           s1[(sw + 3) * bpp], wx);
-                  if(iy > 0)
-                  {
-                     a = icerp(s1[      0],
-                              s1[    bpp],
-                              s1[2 * bpp],
-                              s1[3 * bpp], wx);
-                  }
-                  else
-                     a = b;
-
-                  c = icerp(s1[(2 * sw + 0) * bpp],
-                           s1[(2 * sw + 1) * bpp],
-                           s1[(2 * sw + 2) * bpp],
-                           s1[(2 * sw + 3) * bpp], wx);
-                  if(iy < dh - 1)
-                  {
-                     d = icerp(s1[(3 * sw + 0) * bpp],
-                              s1[(3 * sw + 1) * bpp],
-                              s1[(3 * sw + 2) * bpp],
-                              s1[(3 * sw + 3) * bpp], wx);
-                  }
-                  else
-                     d = c;
-
-                  v1 = icerp(a, b, c, d, wy);
-
-                  if(iz > 0)
-                  {
-                     b = icerp(s0[(sw + 0) * bpp],
-                              s0[(sw + 1) * bpp],
-                              s0[(sw + 2) * bpp],
-                              s0[(sw + 3) * bpp], wx);
-                     if(iy > 0)
-                     {
-                        a = icerp(s0[      0],
-                                 s0[    bpp],
-                                 s0[2 * bpp],
-                                 s0[3 * bpp], wx);
-                     }
-                     else
-                        a = b;
-
-                     c = icerp(s0[(2 * sw + 0) * bpp],
-                              s0[(2 * sw + 1) * bpp],
-                              s0[(2 * sw + 2) * bpp],
-                              s0[(2 * sw + 3) * bpp], wx);
-                     if(iy < dh - 1)
-                     {
-                        d = icerp(s0[(3 * sw + 0) * bpp],
-                                 s0[(3 * sw + 1) * bpp],
-                                 s0[(3 * sw + 2) * bpp],
-                                 s0[(3 * sw + 3) * bpp], wx);
-                     }
-                     else
-                        d = c;
-
-                     v0 = icerp(a, b, c, d, wy);
-                  }
-                  else
-                     v0 = v1;
-
-                  b = icerp(s2[(sw + 0) * bpp],
-                           s2[(sw + 1) * bpp],
-                           s2[(sw + 2) * bpp],
-                           s2[(sw + 3) * bpp], wx);
-                  if(iy > 0)
-                  {
-                     a = icerp(s2[      0],
-                              s2[    bpp],
-                              s2[2 * bpp],
-                              s2[3 * bpp], wx);
-                  }
-                  else
-                     a = b;
-
-                  c = icerp(s2[(2 * sw + 0) * bpp],
-                           s2[(2 * sw + 1) * bpp],
-                           s2[(2 * sw + 2) * bpp],
-                           s2[(2 * sw + 3) * bpp], wx);
-                  if(iy < dh - 1)
-                  {
-                     d = icerp(s2[(3 * sw + 0) * bpp],
-                              s2[(3 * sw + 1) * bpp],
-                              s2[(3 * sw + 2) * bpp],
-                              s2[(3 * sw + 3) * bpp], wx);
-                  }
-                  else
-                     d = c;
-
-                  v2 = icerp(a, b, c, d, wy);
-
-                  if(iz < dd - 1)
-                  {
-                     b = icerp(s3[(sw + 0) * bpp],
-                              s3[(sw + 1) * bpp],
-                              s3[(sw + 2) * bpp],
-                              s3[(sw + 3) * bpp], wx);
-                     if(iy > 0)
-                     {
-                        a = icerp(s3[      0],
-                                 s3[    bpp],
-                                 s3[2 * bpp],
-                                 s3[3 * bpp], wx);
-                     }
-                     else
-                        a = b;
-
-                     c = icerp(s3[(2 * sw + 0) * bpp],
-                              s3[(2 * sw + 1) * bpp],
-                              s3[(2 * sw + 2) * bpp],
-                              s3[(2 * sw + 3) * bpp], wx);
-                     if(iy < dh - 1)
-                     {
-                        d = icerp(s3[(3 * sw + 0) * bpp],
-                                 s3[(3 * sw + 1) * bpp],
-                                 s3[(3 * sw + 2) * bpp],
-                                 s3[(3 * sw + 3) * bpp], wx);
-                     }
-                     else
-                        d = c;
-
-                     v3 = icerp(a, b, c, d, wy);
-                  }
-                  else
-                     v3 = v2;
-
-                  val = icerp(v0, v1, v2, v3, wz);
-
-                  if(val <   0) val = 0;
-                  if(val > 255) val = 255;
-
-                  dst[(z * dslice) + (y * dstride) + (x * bpp) + n] = val;
-
-                  ++s0;
-                  ++s1;
-                  ++s2;
-                  ++s3;
+                  d = icerp(linear_to_gamma(gc, s1[(3 * sw + 0) * bpp], gamma),
+                            linear_to_gamma(gc, s1[(3 * sw + 1) * bpp], gamma),
+                            linear_to_gamma(gc, s1[(3 * sw + 2) * bpp], gamma),
+                            linear_to_gamma(gc, s1[(3 * sw + 3) * bpp], gamma), wx);
                }
+               else
+                  d = c;
+
+               v1 = icerp(a, b, c, d, wy);
+
+               if(iz > 0)
+               {
+                  b = icerp(linear_to_gamma(gc, s0[(sw + 0) * bpp], gamma),
+                            linear_to_gamma(gc, s0[(sw + 1) * bpp], gamma),
+                            linear_to_gamma(gc, s0[(sw + 2) * bpp], gamma),
+                            linear_to_gamma(gc, s0[(sw + 3) * bpp], gamma), wx);
+                  if(iy > 0)
+                  {
+                     a = icerp(linear_to_gamma(gc, s0[      0], gamma),
+                               linear_to_gamma(gc, s0[    bpp], gamma),
+                               linear_to_gamma(gc, s0[2 * bpp], gamma),
+                               linear_to_gamma(gc, s0[3 * bpp], gamma), wx);
+                  }
+                  else
+                     a = b;
+
+                  c = icerp(linear_to_gamma(gc, s0[(2 * sw + 0) * bpp], gamma),
+                            linear_to_gamma(gc, s0[(2 * sw + 1) * bpp], gamma),
+                            linear_to_gamma(gc, s0[(2 * sw + 2) * bpp], gamma),
+                            linear_to_gamma(gc, s0[(2 * sw + 3) * bpp], gamma), wx);
+                  if(iy < dh - 1)
+                  {
+                     d = icerp(linear_to_gamma(gc, s0[(3 * sw + 0) * bpp], gamma),
+                               linear_to_gamma(gc, s0[(3 * sw + 1) * bpp], gamma),
+                               linear_to_gamma(gc, s0[(3 * sw + 2) * bpp], gamma),
+                               linear_to_gamma(gc, s0[(3 * sw + 3) * bpp], gamma), wx);
+                  }
+                  else
+                     d = c;
+
+                  v0 = icerp(a, b, c, d, wy);
+               }
+               else
+                  v0 = v1;
+
+               b = icerp(linear_to_gamma(gc, s2[(sw + 0) * bpp], gamma),
+                         linear_to_gamma(gc, s2[(sw + 1) * bpp], gamma),
+                         linear_to_gamma(gc, s2[(sw + 2) * bpp], gamma),
+                         linear_to_gamma(gc, s2[(sw + 3) * bpp], gamma), wx);
+               if(iy > 0)
+               {
+                  a = icerp(linear_to_gamma(gc, s2[      0], gamma),
+                            linear_to_gamma(gc, s2[    bpp], gamma),
+                            linear_to_gamma(gc, s2[2 * bpp], gamma),
+                            linear_to_gamma(gc, s2[3 * bpp], gamma), wx);
+               }
+               else
+                  a = b;
+
+               c = icerp(linear_to_gamma(gc, s2[(2 * sw + 0) * bpp], gamma),
+                         linear_to_gamma(gc, s2[(2 * sw + 1) * bpp], gamma),
+                         linear_to_gamma(gc, s2[(2 * sw + 2) * bpp], gamma),
+                         linear_to_gamma(gc, s2[(2 * sw + 3) * bpp], gamma), wx);
+               if(iy < dh - 1)
+               {
+                  d = icerp(linear_to_gamma(gc, s2[(3 * sw + 0) * bpp], gamma),
+                            linear_to_gamma(gc, s2[(3 * sw + 1) * bpp], gamma),
+                            linear_to_gamma(gc, s2[(3 * sw + 2) * bpp], gamma),
+                            linear_to_gamma(gc, s2[(3 * sw + 3) * bpp], gamma), wx);
+               }
+               else
+                  d = c;
+
+               v2 = icerp(a, b, c, d, wy);
+
+               if(iz < dd - 1)
+               {
+                  b = icerp(linear_to_gamma(gc, s3[(sw + 0) * bpp], gamma),
+                            linear_to_gamma(gc, s3[(sw + 1) * bpp], gamma),
+                            linear_to_gamma(gc, s3[(sw + 2) * bpp], gamma),
+                            linear_to_gamma(gc, s3[(sw + 3) * bpp], gamma), wx);
+                  if(iy > 0)
+                  {
+                     a = icerp(linear_to_gamma(gc, s3[      0], gamma),
+                               linear_to_gamma(gc, s3[    bpp], gamma),
+                               linear_to_gamma(gc, s3[2 * bpp], gamma),
+                               linear_to_gamma(gc, s3[3 * bpp], gamma), wx);
+                  }
+                  else
+                     a = b;
+
+                  c = icerp(linear_to_gamma(gc, s3[(2 * sw + 0) * bpp], gamma),
+                            linear_to_gamma(gc, s3[(2 * sw + 1) * bpp], gamma),
+                            linear_to_gamma(gc, s3[(2 * sw + 2) * bpp], gamma),
+                            linear_to_gamma(gc, s3[(2 * sw + 3) * bpp], gamma), wx);
+                  if(iy < dh - 1)
+                  {
+                     d = icerp(linear_to_gamma(gc, s3[(3 * sw + 0) * bpp], gamma),
+                               linear_to_gamma(gc, s3[(3 * sw + 1) * bpp], gamma),
+                               linear_to_gamma(gc, s3[(3 * sw + 2) * bpp], gamma),
+                               linear_to_gamma(gc, s3[(3 * sw + 3) * bpp], gamma), wx);
+                  }
+                  else
+                     d = c;
+
+                  v3 = icerp(a, b, c, d, wy);
+               }
+               else
+                  v3 = v2;
+
+               val = icerp(v0, v1, v2, v3, wz);
+
+               if(val <   0) val = 0;
+               if(val > 255) val = 255;
+
+               dst[(z * dslice) + (y * dstride) + (x * bpp) + n] =
+                  gamma_to_linear(gc, val, gamma);
+
+               ++s0;
+               ++s1;
+               ++s2;
+               ++s3;
             }
          }
       }
