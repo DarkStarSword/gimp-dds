@@ -59,6 +59,7 @@ typedef struct
    unsigned int single;
    unsigned int alphamask;
    vec4_t points[16];
+   vec4_t palette[4];
    vec4_t max;
    vec4_t min;
    vec4_t metric;
@@ -282,6 +283,25 @@ static void dxtblock_init(dxtblock_t *dxtb, const unsigned char *block, int flag
    dxtb->min = vec4_trunc(V4GRID * min + V4HALF) * V4GRIDRCP;
 }
 
+static void construct_palette3(dxtblock_t *dxtb)
+{
+   dxtb->palette[0] = dxtb->max;
+   dxtb->palette[1] = dxtb->min;
+   dxtb->palette[2] = (dxtb->max * V4HALF) + (dxtb->min * V4HALF);
+   dxtb->palette[3] = vec4_zero();
+}
+
+static void construct_palette4(dxtblock_t *dxtb)
+{
+   dxtb->palette[0] = dxtb->max;
+   dxtb->palette[1] = dxtb->min;
+   dxtb->palette[2] = (dxtb->max * V4TWOTHIRDS) + (dxtb->min * V4ONETHIRD );
+   dxtb->palette[3] = (dxtb->max * V4ONETHIRD ) + (dxtb->min * V4TWOTHIRDS);
+}
+
+/*
+ * from nvidia-texture-tools; see LICENSE.nvtt for copyright information
+ */
 static void optimize_endpoints3(dxtblock_t *dxtb, unsigned int indices,
                                 vec4_t *max, vec4_t *min)
 {
@@ -332,6 +352,9 @@ static void optimize_endpoints3(dxtblock_t *dxtb, unsigned int indices,
    *min = b;
 }
 
+/*
+ * from nvidia-texture-tools; see LICENSE.nvtt for copyright information
+ */
 static void optimize_endpoints4(dxtblock_t *dxtb, unsigned int indices,
                                 vec4_t *max, vec4_t *min)
 {
@@ -379,81 +402,172 @@ static void optimize_endpoints4(dxtblock_t *dxtb, unsigned int indices,
    *min = b;
 }
 
-static unsigned int compress3(dxtblock_t *dxtb)
+static unsigned int match_colors3(dxtblock_t *dxtb)
 {
-   const int MAX_ITERATIONS = 8;
-   int i, iteration, idx;
-   unsigned int indices, bestindices = 0;
-   vec4_t palette[3], max, min, t0, t1, t2;
-   float error, besterror = FLT_MAX;
+   int i, idx;
+   unsigned int indices = 0;
+   vec4_t t0, t1, t2;
 #ifdef USE_SSE
    vec4_t d, zero = _mm_setzero_ps();
 #else
    float d[3];
 #endif
 
-   max = dxtb->max;
-   min = dxtb->min;
-
-   for(iteration = 0; ;)
+   // match each point to the closest color
+   for(i = 0; i < 16; ++i)
    {
-      // construct 3 color palette
-      palette[0] = max;
-      palette[1] = min;
-      palette[2] = (max * V4HALF) + (min * V4HALF);
-
-      indices = 0;
-      error = 0;
-
-      // match each point to the closest color
-      for(i = 0; i < 16; ++i)
+      // skip alpha pixels
+      if(((dxtb->alphamask >> (2 * i)) & 3) == 3)
       {
-         // skip alpha pixels
-         if(((dxtb->alphamask >> (2 * i)) & 3) == 3)
-         {
-            indices |= (3 << (2 * i));
-            continue;
-         }
+         indices |= (3 << (2 * i));
+         continue;
+      }
 
-         t0 = (dxtb->points[i] - palette[0]) * dxtb->metric;
-         t1 = (dxtb->points[i] - palette[1]) * dxtb->metric;
-         t2 = (dxtb->points[i] - palette[2]) * dxtb->metric;
+      t0 = (dxtb->points[i] - dxtb->palette[0]) * dxtb->metric;
+      t1 = (dxtb->points[i] - dxtb->palette[1]) * dxtb->metric;
+      t2 = (dxtb->points[i] - dxtb->palette[2]) * dxtb->metric;
 
 #ifdef USE_SSE
-         _MM_TRANSPOSE4_PS(t0, t1, t2, zero);
-         d = t0 * t0 + t1 * t1 + t2 * t2;
+      _MM_TRANSPOSE4_PS(t0, t1, t2, zero);
+      d = t0 * t0 + t1 * t1 + t2 * t2;
 #else
-         d[0] = vec4_dot(t0, t0);
-         d[1] = vec4_dot(t1, t1);
-         d[2] = vec4_dot(t2, t2);
+      d[0] = vec4_dot(t0, t0);
+      d[1] = vec4_dot(t1, t1);
+      d[2] = vec4_dot(t2, t2);
 #endif
 
-         if((d[0] < d[1]) && (d[0] < d[2]))
-            idx = 0;
-         else if(d[1] < d[2])
-            idx = 1;
-         else
-            idx = 2;
+      if((d[0] < d[1]) && (d[0] < d[2]))
+         idx = 0;
+      else if(d[1] < d[2])
+         idx = 1;
+      else
+         idx = 2;
 
-         indices |= (idx << (2 * i));
+      indices |= (idx << (2 * i));
+   }
 
-         error += d[idx];
-      }
+   return(indices);
+}
+
+static unsigned int match_colors4(dxtblock_t *dxtb)
+{
+   int i;
+   unsigned int idx, indices = 0;
+   unsigned int b0, b1, b2, b3, b4;
+   unsigned int x0, x1, x2;
+   vec4_t t0, t1, t2, t3;
+#ifdef USE_SSE
+   vec4_t d;
+#else
+   float d[4];
+#endif
+
+   // match each point to the closest color
+   for(i = 0; i < 16; ++i)
+   {
+      t0 = (dxtb->points[i] - dxtb->palette[0]) * dxtb->metric;
+      t1 = (dxtb->points[i] - dxtb->palette[1]) * dxtb->metric;
+      t2 = (dxtb->points[i] - dxtb->palette[2]) * dxtb->metric;
+      t3 = (dxtb->points[i] - dxtb->palette[3]) * dxtb->metric;
+
+#ifdef USE_SSE
+      _MM_TRANSPOSE4_PS(t0, t1, t2, t3);
+      d = t0 * t0 + t1 * t1 + t2 * t2;
+#else
+      d[0] = vec4_dot(t0, t0);
+      d[1] = vec4_dot(t1, t1);
+      d[2] = vec4_dot(t2, t2);
+      d[3] = vec4_dot(t3, t3);
+#endif
+
+      b0 = d[0] > d[3];
+      b1 = d[1] > d[2];
+      b2 = d[0] > d[2];
+      b3 = d[1] > d[3];
+      b4 = d[2] > d[3];
+
+      x0 = b1 & b2;
+      x1 = b0 & b3;
+      x2 = b0 & b4;
+
+      idx = x2 | ((x0 | x1) << 1);
+
+      indices |= (idx << (2 * i));
+   }
+
+   return(indices);
+}
+
+static float compute_error3(dxtblock_t *dxtb, unsigned int indices)
+{
+   int i, idx;
+   float error = 0;
+   vec4_t t;
+
+   // compute error
+   for(i = 0; i < 16; ++i)
+   {
+      idx = (indices >> (2 * i)) & 3;
+      // skip alpha pixels
+      if(idx == 3) continue;
+      t = (dxtb->points[i] - dxtb->palette[idx]) * dxtb->metric;
+      error += vec4_dot(t, t);
+   }
+
+   return(error);
+}
+
+static float compute_error4(dxtblock_t *dxtb, unsigned int indices)
+{
+   int i, idx;
+   float error = 0;
+   vec4_t t;
+
+   // compute error
+   for(i = 0; i < 16; ++i)
+   {
+      idx = (indices >> (2 * i)) & 3;
+      t = (dxtb->points[i] - dxtb->palette[idx]) * dxtb->metric;
+      error += vec4_dot(t, t);
+   }
+
+   return(error);
+}
+
+static unsigned int compress3(dxtblock_t *dxtb)
+{
+   const int MAX_ITERATIONS = 8;
+   int i;
+   unsigned int indices, bestindices;
+   float error, besterror = FLT_MAX;
+   vec4_t oldmax, oldmin;
+
+   construct_palette3(dxtb);
+
+   indices = match_colors3(dxtb);
+   bestindices = indices;
+
+   for(i = 0; i < MAX_ITERATIONS; ++i)
+   {
+      oldmax = dxtb->max;
+      oldmin = dxtb->min;
+
+      optimize_endpoints3(dxtb, indices, &dxtb->max, &dxtb->min);
+      construct_palette3(dxtb);
+      indices = match_colors3(dxtb);
+      error = compute_error3(dxtb, indices);
 
       if(error < besterror)
       {
          besterror = error;
          bestindices = indices;
-         dxtb->max = max;
-         dxtb->min = min;
       }
-      else break;
-
-      ++iteration;
-      if(iteration == MAX_ITERATIONS) break;
-
-      // optimize endpoints
-      optimize_endpoints3(dxtb, indices, &max, &min);
+      else
+      {
+         dxtb->max = oldmax;
+         dxtb->min = oldmin;
+         break;
+      }
    }
 
    return(bestindices);
@@ -462,81 +576,37 @@ static unsigned int compress3(dxtblock_t *dxtb)
 static unsigned int compress4(dxtblock_t *dxtb)
 {
    const int MAX_ITERATIONS = 8;
-   int i, iteration;
-   vec4_t palette[4], max, min, t0, t1, t2, t3;
+   int i;
+   unsigned int indices, bestindices;
    float error, besterror = FLT_MAX;
-   unsigned int b0, b1, b2, b3, b4;
-   unsigned int x0, x1, x2;
-   unsigned int idx, indices, bestindices = 0;
-#ifdef USE_SSE
-   vec4_t d;
-#else
-   float d[4];
-#endif
+   vec4_t oldmax, oldmin;
 
-   max = dxtb->max;
-   min = dxtb->min;
+   construct_palette4(dxtb);
 
-   for(iteration = 0; ;)
+   indices = match_colors4(dxtb);
+   bestindices = indices;
+
+   for(i = 0; i < MAX_ITERATIONS; ++i)
    {
-      // construct 4 color palette
-      palette[0] = max;
-      palette[1] = min;
-      palette[2] = (max * V4TWOTHIRDS) + (min * V4ONETHIRD );
-      palette[3] = (max * V4ONETHIRD ) + (min * V4TWOTHIRDS);
+      oldmax = dxtb->max;
+      oldmin = dxtb->min;
 
-      indices = 0;
-      error = 0;
-
-      // match each point to the closest color
-      for(i = 0; i < 16; ++i)
-      {
-         t0 = (dxtb->points[i] - palette[0]) * dxtb->metric;
-         t1 = (dxtb->points[i] - palette[1]) * dxtb->metric;
-         t2 = (dxtb->points[i] - palette[2]) * dxtb->metric;
-         t3 = (dxtb->points[i] - palette[3]) * dxtb->metric;
-
-#ifdef USE_SSE
-         _MM_TRANSPOSE4_PS(t0, t1, t2, t3);
-         d = t0 * t0 + t1 * t1 + t2 * t2;
-#else
-         d[0] = vec4_dot(t0, t0);
-         d[1] = vec4_dot(t1, t1);
-         d[2] = vec4_dot(t2, t2);
-         d[3] = vec4_dot(t3, t3);
-#endif
-
-         b0 = d[0] > d[3];
-         b1 = d[1] > d[2];
-         b2 = d[0] > d[2];
-         b3 = d[1] > d[3];
-         b4 = d[2] > d[3];
-
-         x0 = b1 & b2;
-         x1 = b0 & b3;
-         x2 = b0 & b4;
-
-         idx = x2 | ((x0 | x1) << 1);
-
-         indices |= (idx << (2 * i));
-
-         error += d[idx];
-      }
+      optimize_endpoints4(dxtb, indices, &dxtb->max, &dxtb->min);
+      construct_palette4(dxtb);
+      indices = match_colors4(dxtb);
+      error = compute_error4(dxtb, indices);
 
       if(error < besterror)
       {
          besterror = error;
          bestindices = indices;
-         dxtb->max = max;
-         dxtb->min = min;
       }
-      else break;
-
-      ++iteration;
-      if(iteration == MAX_ITERATIONS) break;
-
-      // optimize endpoints
-      optimize_endpoints4(dxtb, indices, &max, &min);
+      else
+      {
+         dxtb->max = oldmax;
+         dxtb->min = oldmin;
+         break;
+      }
    }
 
    return(bestindices);
@@ -787,9 +857,9 @@ static void encode_alpha_block_DXT3(unsigned char *dst,
 
    for(i = 0; i < 8; ++i)
    {
-      a1 = block[8 * i + 0];
-      a2 = block[8 * i + 4];
-      *dst++ = ((a2 >> 4) << 4) | (a1 >> 4);
+      a1 = mul8bit(block[8 * i + 0], 0x0f);
+      a2 = mul8bit(block[8 * i + 4], 0x0f);
+      *dst++ = (a2 << 4) | a1;
    }
 }
 
@@ -1272,16 +1342,14 @@ int dxt_decompress(unsigned char *dst, unsigned char *src, int format,
          else if(format == DDS_COMPRESS_BC2)
          {
             decode_alpha_block_DXT3(block + 3, s);
-            s += 8;
-            decode_color_block(block, s, format);
-            s += 8;
+            decode_color_block(block, s + 8, format);
+            s += 16;
          }
          else if(format == DDS_COMPRESS_BC3)
          {
             decode_alpha_block_DXT5(block + 3, s, width);
-            s += 8;
-            decode_color_block(block, s, format);
-            s += 8;
+            decode_color_block(block, s + 8, format);
+            s += 16;
          }
          else if(format == DDS_COMPRESS_BC4)
          {
