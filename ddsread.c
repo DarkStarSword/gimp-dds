@@ -101,15 +101,12 @@ GimpPDBStatusType read_dds(gchar *filename, gint32 *imageID)
       return(GIMP_PDB_EXECUTION_ERROR);
    }
 
-   if(interactive_dds)
-   {
-      if(strrchr(filename, '/'))
-         tmp = g_strdup_printf("Loading %s:", strrchr(filename, '/') + 1);
-      else
-         tmp = g_strdup_printf("Loading %s:", filename);
-      gimp_progress_init(tmp);
-      g_free(tmp);
-   }
+   if(strrchr(filename, '/'))
+      tmp = g_strdup_printf("Loading %s:", strrchr(filename, '/') + 1);
+   else
+      tmp = g_strdup_printf("Loading %s:", filename);
+   gimp_progress_init(tmp);
+   g_free(tmp);
 
    /* read header */
    read_header(&hdr, fp);
@@ -423,6 +420,8 @@ GimpPDBStatusType read_dds(gchar *filename, gint32 *imageID)
          g_free(elem);
       }
    }
+
+   gimp_progress_update(1.0);
 
    if(hdr.pixelfmt.flags & DDPF_PALETTEINDEXED8)
       g_free(d.palette);
@@ -903,8 +902,7 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
             gimp_pixel_rgn_set_rect(&pixel_region, pixels, 0, y - n,
                                     drawable->width, n);
             n = 0;
-            if(interactive_dds)
-               gimp_progress_update((double)y / (double)hdr->height);
+            gimp_progress_update((double)y / (double)hdr->height);
          }
 
          if((hdr->flags & DDSD_PITCH) &&
@@ -1051,8 +1049,7 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
             gimp_pixel_rgn_set_rect(&pixel_region, pixels, 0, y - n,
                                     drawable->width, n);
             n = 0;
-            if(interactive_dds)
-               gimp_progress_update((double)y / (double)hdr->height);
+            gimp_progress_update((double)y / (double)hdr->height);
          }
 
          memcpy(pixels + n * drawable->width * d->gimp_bpp,

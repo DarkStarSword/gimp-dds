@@ -207,6 +207,7 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
 			   interactive_dds = 0;
             dds_read_vals.show_dialog = 0;
             dds_read_vals.mipmaps = param[3].data.d_int32;
+            dds_read_vals.decode_images = param[4].data.d_int32;
 			   if(nparams != G_N_ELEMENTS(load_args))
 				   status = GIMP_PDB_CALLING_ERROR;
 			   break;

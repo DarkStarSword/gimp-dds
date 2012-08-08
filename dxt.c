@@ -45,6 +45,7 @@
 
 #define SWAP(a, b)  do { typeof(a) t; t = a; a = b; b = t; } while(0)
 
+/* SIMD constants */
 static const vec4_t V4ZERO      = VEC4_CONST1(0.0f);
 static const vec4_t V4ONE       = VEC4_CONST1(1.0f);
 static const vec4_t V4HALF      = VEC4_CONST1(0.5f);
@@ -521,6 +522,32 @@ static float compute_error4(dxtblock_t *dxtb, unsigned int indices)
 {
    int i, idx;
    float error = 0;
+
+#ifdef USE_SSE
+   vec4_t a0, a1, a2, a3;
+   vec4_t b0, b1, b2, b3;
+   vec4_t d;
+
+   for(i = 0; i < 4; ++i)
+   {
+      idx = indices >> (8 * i);
+      a0 = dxtb->points[4 * i + 0];
+      a1 = dxtb->points[4 * i + 1];
+      a2 = dxtb->points[4 * i + 2];
+      a3 = dxtb->points[4 * i + 3];
+      b0 = dxtb->palette[(idx     ) & 3];
+      b1 = dxtb->palette[(idx >> 2) & 3];
+      b2 = dxtb->palette[(idx >> 4) & 3];
+      b3 = dxtb->palette[(idx >> 6) & 3];
+      a0 = (a0 - b0) * dxtb->metric;
+      a1 = (a1 - b1) * dxtb->metric;
+      a2 = (a2 - b2) * dxtb->metric;
+      a3 = (a3 - b3) * dxtb->metric;
+      _MM_TRANSPOSE4_PS(a0, a1, a2, a3);
+      d = a0 * a0 + a1 * a1 + a2 * a2;
+      error += vec4_accum(d);
+   }
+#else
    vec4_t t;
 
    // compute error
@@ -530,7 +557,7 @@ static float compute_error4(dxtblock_t *dxtb, unsigned int indices)
       t = (dxtb->points[i] - dxtb->palette[idx]) * dxtb->metric;
       error += vec4_dot(t, t);
    }
-
+#endif
    return(error);
 }
 
@@ -1165,7 +1192,7 @@ static void decode_color_block(unsigned char *block, unsigned char *src,
 {
    int i, x, y;
    unsigned char *d = block;
-   unsigned int indexes, idx;
+   unsigned int indices, idx;
    unsigned char colors[4][3];
    unsigned short c0, c1;
 
@@ -1192,16 +1219,16 @@ static void decode_color_block(unsigned char *block, unsigned char *src,
    src += 4;
    for(y = 0; y < 4; ++y)
    {
-      indexes = src[y];
+      indices = src[y];
       for(x = 0; x < 4; ++x)
       {
-         idx = indexes & 0x03;
+         idx = indices & 0x03;
          d[0] = colors[idx][2];
          d[1] = colors[idx][1];
          d[2] = colors[idx][0];
          if(format == DDS_COMPRESS_BC1)
             d[3] = ((c0 <= c1) && idx == 3) ? 0 : 255;
-         indexes >>= 2;
+         indices >>= 2;
          d += 4;
       }
    }
