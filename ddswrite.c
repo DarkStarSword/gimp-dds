@@ -138,12 +138,15 @@ static string_value_t mipmap_strings[] =
 
 static string_value_t mipmap_filter_strings[] =
 {
-   {DDS_MIPMAP_FILTER_DEFAULT,  "Default"},
-   {DDS_MIPMAP_FILTER_NEAREST,  "Nearest"},
-   {DDS_MIPMAP_FILTER_BOX,      "Box"},
-   {DDS_MIPMAP_FILTER_BILINEAR, "Bilinear"},
-   {DDS_MIPMAP_FILTER_BICUBIC,  "Bicubic"},
-   {DDS_MIPMAP_FILTER_LANCZOS,  "Lanczos"},
+   {DDS_MIPMAP_FILTER_DEFAULT,   "Default"},
+   {DDS_MIPMAP_FILTER_NEAREST,   "Nearest"},
+   {DDS_MIPMAP_FILTER_BOX,       "Box"},
+   {DDS_MIPMAP_FILTER_TRIANGLE,  "Triangle"},
+   {DDS_MIPMAP_FILTER_QUADRATIC, "Quadratic"},
+   {DDS_MIPMAP_FILTER_BSPLINE,   "B-Spline"},
+   {DDS_MIPMAP_FILTER_MITCHELL,  "Mitchell"},
+   {DDS_MIPMAP_FILTER_LANCZOS,   "Lanczos"},
+   {DDS_MIPMAP_FILTER_KAISER,    "Kaiser"},
    {-1, 0}
 };
 
@@ -1556,22 +1559,12 @@ static void savetype_selected(GtkWidget *widget, gpointer data)
       case DDS_SAVE_CUBEMAP:
       case DDS_SAVE_ARRAY:
          gtk_widget_set_sensitive(compress_opt, 1);
-         string_value_combo_set_item_sensitive(mipmap_filter_opt,
-                                               DDS_MIPMAP_FILTER_LANCZOS,
-                                               1);
          break;
       case DDS_SAVE_VOLUMEMAP:
          dds_write_vals.compression = DDS_COMPRESS_NONE;
          gtk_combo_box_set_active(GTK_COMBO_BOX(compress_opt),
                                   DDS_COMPRESS_NONE);
          gtk_widget_set_sensitive(compress_opt, 0);
-         if(dds_write_vals.mipmap_filter == DDS_MIPMAP_FILTER_LANCZOS)
-            dds_write_vals.mipmap_filter = DDS_MIPMAP_FILTER_DEFAULT;
-         string_value_combo_set_active(mipmap_filter_opt,
-                                       dds_write_vals.mipmap_filter);
-         string_value_combo_set_item_sensitive(mipmap_filter_opt,
-                                               DDS_MIPMAP_FILTER_LANCZOS,
-                                               0);
          break;
    }
 }
