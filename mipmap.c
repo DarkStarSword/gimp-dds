@@ -350,12 +350,12 @@ static void scale_image(unsigned char *dst, int dw, int dh,
 
    if(xsupport <= 0.5f)
    {
-      xsupport = 0.5f + FLT_EPSILON;
+      xsupport = 0.5f + 1e-10f;
       xscale = 1.0f;
    }
    if(ysupport <= 0.5f)
    {
-      ysupport = 0.5f + FLT_EPSILON;
+      ysupport = 0.5f + 1e-10f;
       yscale = 1.0f;
    }
 
@@ -575,7 +575,7 @@ static void scale_volume_image(unsigned char *dst, int dw, int dh, int dd,
 
    int x, y, z, start, stop, nmax, n, i;
    int sstride = sw * bpp;
-   int zstride = dh * dw * bpp;
+   int zstride = sh * sw * bpp;
    float center, contrib, density, s, r, t;
 
    unsigned char *d, *row, *col, *slice;
@@ -589,32 +589,76 @@ static void scale_volume_image(unsigned char *dst, int dw, int dh, int dd,
 
    if(xsupport <= 0.5f)
    {
-      xsupport = 0.5f + FLT_EPSILON;
+      xsupport = 0.5f + 1e-10f;
       xscale = 1.0f;
    }
    if(ysupport <= 0.5f)
    {
-      ysupport = 0.5f + FLT_EPSILON;
+      ysupport = 0.5f + 1e-10f;
       yscale = 1.0f;
    }
    if(zsupport <= 0.5f)
    {
-      zsupport = 0.5f + FLT_EPSILON;
+      zsupport = 0.5f + 1e-10f;
       zscale = 1.0f;
    }
 
    unsigned char *tmp1, *tmp2;
 
-   tmp1 = g_malloc(dh * sw * sd * bpp);
-   tmp2 = g_malloc(dh * dw * sd * bpp);
+   tmp1 = g_malloc(sh * sw * bpp);
+   tmp2 = g_malloc(dh * sw * bpp);
 
-   /* resample in Y direction */
-   d = tmp1;
-   for(z = 0; z < sd; ++z)
+   for(z = 0; z < dd; ++z)
    {
+      /* resample in Z direction */
+      d = tmp1;
+
+      center = ((float)z + 0.5f) / zfactor;
+      start = (int)MAX(center - zsupport + 0.5f, 0);
+      stop = (int)MIN(center + zsupport + 0.5f, sd);
+      nmax = stop - start;
+      s = (float)start - center + 0.5f;
+
 #ifdef _OPENMP
-#pragma omp parallel for schedule(dynamic) \
-   private(x, y, col, center, start, stop, nmax, s, i, n, density, r, t, contrib)
+      #pragma omp parallel for schedule(dynamic) \
+         private(x, y, slice, i, n, density, r, t, contrib)
+#endif
+      for(y = 0; y < sh; ++y)
+      {
+         for(x = 0; x < sw; ++x)
+         {
+            slice = src + (y * (sw * bpp)) + (x * bpp);
+
+            for(i = 0; i < bpp; ++i)
+            {
+               density = 0.0f;
+               r = 0.0f;
+
+               for(n = 0; n < nmax; ++n)
+               {
+                  contrib = filter((s + n) * zscale);
+                  density += contrib;
+                  t = (float)linear_to_gamma(gc, slice[((start + n) * zstride) + i], gamma);
+                  r += t * contrib;
+               }
+
+               if(density != 0.0f && density != 1.0f)
+                  r /= density;
+
+               r = MIN(255, MAX(0, r));
+
+               r = gamma_to_linear(gc, r, gamma);
+
+               d[((y * sw) + x) * bpp + i] = (unsigned char)r;
+            }
+         }
+      }
+
+      /* resample in Y direction */
+      d = tmp2;
+#ifdef _OPENMP
+      #pragma omp parallel for schedule(dynamic) \
+         private(x, y, col, center, start, stop, nmax, s, i, n, density, r, t, contrib)
 #endif
       for(y = 0; y < dh; ++y)
       {
@@ -626,7 +670,7 @@ static void scale_volume_image(unsigned char *dst, int dw, int dh, int dd,
 
          for(x = 0; x < sw; ++x)
          {
-            col = src + (z * sh * sw * bpp) + (x * bpp);
+            col = tmp1 + (x * bpp);
 
             for(i = 0; i < bpp; ++i)
             {
@@ -648,23 +692,20 @@ static void scale_volume_image(unsigned char *dst, int dw, int dh, int dd,
 
                r = gamma_to_linear(gc, r, gamma);
 
-               d[((z * dh * sw) + (y * sw) + x) * bpp + i] = (unsigned char)r;
+               d[((y * sw) + x) * bpp + i] = (unsigned char)r;
             }
          }
       }
-   }
 
-   /* resample in X direction */
-   d = tmp2;
-   for(z = 0; z < sd; ++z)
-   {
+      /* resample in X direction */
+      d = dst;
 #ifdef _OPENMP
-#pragma omp parallel for schedule(dynamic) \
-   private(x, y, row, center, start, stop, nmax, s, i, n, density, r, t, contrib)
+      #pragma omp parallel for schedule(dynamic) \
+         private(x, y, row, center, start, stop, nmax, s, i, n, density, r, t, contrib)
 #endif
       for(y = 0; y < dh; ++y)
       {
-         row = tmp1 + (z * dh * sw * bpp) + (y * sstride);
+         row = tmp2 + (y * sstride);
 
          for(x = 0; x < dw; ++x)
          {
@@ -684,52 +725,6 @@ static void scale_volume_image(unsigned char *dst, int dw, int dh, int dd,
                   contrib = filter((s + n) * xscale);
                   density += contrib;
                   t = (float)linear_to_gamma(gc, row[((start + n) * bpp) + i], gamma);
-                  r += t * contrib;
-               }
-
-               if(density != 0.0f && density != 1.0f)
-                  r /= density;
-
-               r = MIN(255, MAX(0, r));
-
-               r = gamma_to_linear(gc, r, gamma);
-
-               d[((z * dh * dw) + (y * dw) + x) * bpp + i] = (unsigned char)r;
-            }
-         }
-      }
-   }
-
-   /* resample in Z direction */
-   d = dst;
-   for(z = 0; z < dd; ++z)
-   {
-      center = ((float)z + 0.5f) / zfactor;
-      start = (int)MAX(center - zsupport + 0.5f, 0);
-      stop = (int)MIN(center + zsupport + 0.5f, sd);
-      nmax = stop - start;
-      s = (float)start - center + 0.5f;
-
-#ifdef _OPENMP
-#pragma omp parallel for schedule(dynamic) \
-   private(x, y, slice, i, n, density, r, t, contrib)
-#endif
-      for(y = 0; y < dh; ++y)
-      {
-         for(x = 0; x < dw; ++x)
-         {
-            slice = tmp2 + (y * (dw * bpp)) + (x * bpp);
-
-            for(i = 0; i < bpp; ++i)
-            {
-               density = 0.0f;
-               r = 0.0f;
-
-               for(n = 0; n < nmax; ++n)
-               {
-                  contrib = filter((s + n) * zscale);
-                  density += contrib;
-                  t = (float)linear_to_gamma(gc, slice[((start + n) * zstride) + i], gamma);
                   r += t * contrib;
                }
 
