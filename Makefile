@@ -36,7 +36,7 @@ install: all
 color.o: color.c color.h imath.h
 dds.o: dds.c ddsplugin.h dds.h misc.h
 ddsread.o: ddsread.c ddsplugin.h dds.h dxt.h endian.h
-ddswrite.o: ddswrite.c ddsplugin.h dds.h dxt.h endian.h imath.h mipmap.h
+ddswrite.o: ddswrite.c ddsplugin.h dds.h dxt.h endian.h imath.h mipmap.h color.h
 dxt.o: dxt.c dxt.h dxt_tables.h dds.h endian.h mipmap.h imath.h vec.h
 mipmap.o: mipmap.c mipmap.h dds.h imath.h
 misc.o: misc.c misc.h

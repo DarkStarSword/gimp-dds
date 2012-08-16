@@ -201,6 +201,7 @@ static void dxtblock_init(dxtblock_t *dxtb, const unsigned char *block, int flag
    dxtb->alphamask = 0;
 
    if(flags & DXT_PERCEPTUAL)
+      /* ITU-R BT.709 luma coefficents */
       dxtb->metric = vec4_set(0.2126f, 0.7152f, 0.0722f, 0.0f);
    else
       dxtb->metric = vec4_set(1.0f, 1.0f, 1.0f, 0.0f);
@@ -642,8 +643,8 @@ static unsigned int compress4(dxtblock_t *dxtb)
 static void encode_color_block(unsigned char *dst, unsigned char *block, int flags)
 {
    dxtblock_t dxtb;
-   int i, max16, min16, bits;
-   unsigned int indices, remapped;
+   int max16, min16;
+   unsigned int indices, mask;
 
    dxtblock_init(&dxtb, block, flags);
 
@@ -658,7 +659,7 @@ static void encode_color_block(unsigned char *dst, unsigned char *block, int fla
 
       indices = 0xaaaaaaaa; // 101010...
 
-      if(dxtb.alphamask)
+      if((flags & DXT_DXT1) && dxtb.alphamask)
       {
          indices |= dxtb.alphamask;
          if(max16 > min16)
@@ -680,14 +681,9 @@ static void encode_color_block(unsigned char *dst, unsigned char *block, int fla
       {
          SWAP(max16, min16);
          // remap indices 0 -> 1, 1 -> 0
-         remapped = 0;
-         for(i = 0; i < 16; ++i)
-         {
-            bits = (indices >> (2 * i)) & 3;
-            if(!(bits & 2)) bits ^= 1;
-            remapped |= (bits << (2 * i));
-         }
-         indices = remapped;
+         mask = indices & 0xaaaaaaaa;
+         mask = mask | (mask >> 1);
+         indices = (indices & mask) | ((indices ^ 0x55555555) & ~mask);
       }
    }
    else

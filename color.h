@@ -35,7 +35,7 @@ static inline void RGB_to_YCoCg(unsigned char *dst, int r, int g, int b)
    int y  = ((r +     (g << 1) + b) + 2) >> 2;
    int co = ((((r << 1) - (b << 1)) + 2) >> 2) + 128;
    int cg = (((-r +   (g << 1) - b) + 2) >> 2) + 128;
-   
+
    dst[0] = 255;
    dst[1] = (cg > 255 ? 255 : (cg < 0 ? 0 : cg));
    dst[2] = (co > 255 ? 255 : (co < 0 ? 0 : co));
@@ -46,8 +46,8 @@ static inline void RGB_to_YCoCg(unsigned char *dst, int r, int g, int b)
 
 static inline int rgb_to_luminance(int r, int g, int b)
 {
-   /* ITU-R BT.709 luma coefficents, scaled by 255 */
-   return((r * 54 + g * 182 + b * 20) >> 8);
+   /* ITU-R BT.709 luma coefficents, scaled by 256 */
+   return(((r * 54 + g * 182 + b * 20) + 128) >> 8);
 }
 
 static inline unsigned short pack_r5g6b5(int r, int g, int b)
