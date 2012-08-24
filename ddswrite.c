@@ -1178,19 +1178,23 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    PUTL32(hdr + 12,  h);
    PUTL32(hdr + 16,  w);
    PUTL32(hdr + 76,  32);
-   PUTL32(hdr + 88,  fmtbpp << 3);
-   PUTL32(hdr + 92,  rmask);
-   PUTL32(hdr + 96,  gmask);
-   PUTL32(hdr + 100, bmask);
-   PUTL32(hdr + 104, amask);
+
+   if(dds_write_vals.compression == DDS_COMPRESS_NONE)
+   {
+      PUTL32(hdr + 88,  fmtbpp << 3);
+      PUTL32(hdr + 92,  rmask);
+      PUTL32(hdr + 96,  gmask);
+      PUTL32(hdr + 100, bmask);
+      PUTL32(hdr + 104, amask);
+   }
 
    /*
     put some information in the reserved area to identify the origin
     of the image
    */
-   PUTL32(hdr + 32,  FOURCC('G','I','M','P'));
-   PUTL32(hdr + 36,  FOURCC('-','D','D','S'));
-   PUTL32(hdr + 40,  DDS_PLUGIN_VERSION);
+   PUTL32(hdr + 32, FOURCC('G','I','M','P'));
+   PUTL32(hdr + 36, FOURCC('-','D','D','S'));
+   PUTL32(hdr + 40, DDS_PLUGIN_VERSION);
 
    flags = DDSD_CAPS | DDSD_PIXELFORMAT | DDSD_WIDTH | DDSD_HEIGHT;
 
@@ -1207,14 +1211,14 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    else
       num_mipmaps = 1;
 
-   if(dds_write_vals.savetype == DDS_SAVE_CUBEMAP && is_cubemap)
+   if((dds_write_vals.savetype == DDS_SAVE_CUBEMAP) && is_cubemap)
    {
       caps |= DDSCAPS_COMPLEX;
       caps2 |= (DDSCAPS2_CUBEMAP | DDSCAPS2_CUBEMAP_ALL_FACES);
    }
-   else if(dds_write_vals.savetype == DDS_SAVE_VOLUMEMAP && is_volume)
+   else if((dds_write_vals.savetype == DDS_SAVE_VOLUMEMAP) && is_volume)
    {
-      PUTL32(hdr + 24, num_layers);
+      PUTL32(hdr + 24, num_layers); /* depth */
       flags |= DDSD_DEPTH;
       caps |= DDSCAPS_COMPLEX;
       caps2 |= DDSCAPS2_VOLUME;
@@ -1234,7 +1238,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
             pflags |= DDPF_ALPHA;
          else
          {
-            if((fmtbpp == 1 || dds_write_vals.format == DDS_FORMAT_L8A8) &&
+            if(((fmtbpp == 1) || (dds_write_vals.format == DDS_FORMAT_L8A8)) &&
                (dds_write_vals.format != DDS_FORMAT_R3G3B2))
                pflags |= DDPF_LUMINANCE;
             else
@@ -1250,7 +1254,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
             else
                pflags |= DDPF_LUMINANCE;
          }
-         else if(bpp == 2 && basetype == GIMP_INDEXED)
+         else if((bpp == 2) && (basetype == GIMP_INDEXED))
             pflags |= DDPF_PALETTEINDEXED8;
          else
             pflags |= DDPF_RGB;
@@ -1258,8 +1262,8 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
 
       if(has_alpha) pflags |= DDPF_ALPHAPIXELS;
 
-      PUTL32(hdr + 8, flags);
-      PUTL32(hdr + 20, w * fmtbpp);
+      PUTL32(hdr + 8,  flags);
+      PUTL32(hdr + 20, w * fmtbpp); /* pitch */
       PUTL32(hdr + 80, pflags);
 
       /*
@@ -1304,14 +1308,14 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
             dxgi_format = DXGI_FORMAT_BC3_UNORM;
             break;
          case DDS_COMPRESS_BC4:
-            fourcc = FOURCC('B','C','4','U');
+            fourcc = FOURCC('A','T','I','1');
             dxgi_format = DXGI_FORMAT_BC4_UNORM;
-            is_dx10 = 1;
+            //is_dx10 = 1;
             break;
          case DDS_COMPRESS_BC5:
             fourcc = FOURCC('A','T','I','2');
             dxgi_format = DXGI_FORMAT_BC5_UNORM;
-            is_dx10 = 1;
+            //is_dx10 = 1;
             break;
       }
 
@@ -1324,13 +1328,13 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
       PUTL32(hdr + 84, fourcc);
 
       size = ((w + 3) >> 2) * ((h + 3) >> 2);
-      if(dds_write_vals.compression == DDS_COMPRESS_BC1 ||
-         dds_write_vals.compression == DDS_COMPRESS_BC4)
+      if((dds_write_vals.compression == DDS_COMPRESS_BC1) ||
+         (dds_write_vals.compression == DDS_COMPRESS_BC4))
          size *= 8;
       else
          size *= 16;
 
-      PUTL32(hdr + 20, size);
+      PUTL32(hdr + 20, size); /* linear size */
 
       /*
        write extra fourcc info - this is special to GIMP DDS. When the image
@@ -1375,8 +1379,10 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    if(is_dx10)
       fwrite(hdr10, DDS_HEADERSIZE_DX10, 1, fp);
 
-   if(basetype == GIMP_INDEXED && dds_write_vals.format == DDS_FORMAT_DEFAULT &&
-      dds_write_vals.compression == DDS_COMPRESS_NONE)
+   /* write palette for indexed images */
+   if((basetype == GIMP_INDEXED) &&
+      (dds_write_vals.format == DDS_FORMAT_DEFAULT) &&
+      (dds_write_vals.compression == DDS_COMPRESS_NONE))
    {
       cmap = gimp_image_get_colormap(image_id, &colors);
       for(i = 0; i < colors; ++i)

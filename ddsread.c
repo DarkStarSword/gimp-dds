@@ -289,10 +289,10 @@ GimpPDBStatusType read_dds(gchar *filename, gint32 *imageID)
    d.gbits = color_bits(hdr.pixelfmt.gmask);
    d.bbits = color_bits(hdr.pixelfmt.bmask);
    d.abits = color_bits(hdr.pixelfmt.amask);
-   d.rmask = hdr.pixelfmt.rmask >> d.rshift << (8 - d.rbits);
-   d.gmask = hdr.pixelfmt.gmask >> d.gshift << (8 - d.gbits);
-   d.bmask = hdr.pixelfmt.bmask >> d.bshift << (8 - d.bbits);
-   d.amask = hdr.pixelfmt.amask >> d.ashift << (8 - d.abits);
+   d.rmask = (hdr.pixelfmt.rmask >> d.rshift) << (8 - d.rbits);
+   d.gmask = (hdr.pixelfmt.gmask >> d.gshift) << (8 - d.gbits);
+   d.bmask = (hdr.pixelfmt.bmask >> d.bshift) << (8 - d.bbits);
+   d.amask = (hdr.pixelfmt.amask >> d.ashift) << (8 - d.abits);
 
    if(!(hdr.caps.caps2 & DDSCAPS2_CUBEMAP) &&
       !(hdr.caps.caps2 & DDSCAPS2_VOLUME) &&
@@ -551,7 +551,7 @@ static int validate_header(dds_header_t *hdr)
       fourcc != FOURCC('B','C','5','S') &&
       fourcc != FOURCC('D','X','1','0'))
    {
-      g_message("Invalid compression format (FOURCC: %c%c%c%c, hex: %08x).\n",
+      g_message("Unsupported format (FOURCC: %c%c%c%c, hex: %08x).\n",
                 hdr->pixelfmt.fourcc[0],
                 hdr->pixelfmt.fourcc[1],
                 hdr->pixelfmt.fourcc[2],
@@ -879,7 +879,7 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
       }
 
       size = w * h;
-      if(format == DDS_COMPRESS_BC1 || format == DDS_COMPRESS_BC4)
+      if((format == DDS_COMPRESS_BC1) || (format == DDS_COMPRESS_BC4))
          size *= 8;
       else
          size *= 16;
@@ -892,7 +892,7 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
       return(0);
    }
 
-   if(hdr->pixelfmt.flags & DDPF_RGB || hdr->pixelfmt.flags & DDPF_ALPHA)
+   if((hdr->pixelfmt.flags & DDPF_RGB) || (hdr->pixelfmt.flags & DDPF_ALPHA))
    {
       z = 0;
       for(y = 0, n = 0; y < height; ++y, ++n)

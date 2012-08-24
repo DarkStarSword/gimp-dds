@@ -193,7 +193,7 @@ static void vec4_endpoints_to_565(int *start, int *end, const vec4_t a, const ve
 static void dxtblock_init(dxtblock_t *dxtb, const unsigned char *block, int flags)
 {
    int i, c0, c;
-   int dxt1 = (flags & DXT_DXT1);
+   int bc1 = (flags & DXT_BC1);
    float x, y, z;
    vec4_t min, max, center, t, cov, inset;
 
@@ -210,7 +210,7 @@ static void dxtblock_init(dxtblock_t *dxtb, const unsigned char *block, int flag
 
    for(i = 0; i < 16; ++i)
    {
-      if(dxt1 && block[4 * i + 3] < 128)
+      if(bc1 && block[4 * i + 3] < 128)
          dxtb->alphamask |= (3 << (2 * i));
 
       x = (float)block[4 * i + 0] / 255.0f;
@@ -648,7 +648,7 @@ static void encode_color_block(unsigned char *dst, unsigned char *block, int fla
 
    dxtblock_init(&dxtb, block, flags);
 
-   if(dxtb.single)
+   if(dxtb.single) // single color block
    {
       max16 = (omatch5[block[2]][0] << 11) |
               (omatch6[block[1]][0] <<  5) |
@@ -659,8 +659,9 @@ static void encode_color_block(unsigned char *dst, unsigned char *block, int fla
 
       indices = 0xaaaaaaaa; // 101010...
 
-      if((flags & DXT_DXT1) && dxtb.alphamask)
+      if((flags & DXT_BC1) && dxtb.alphamask)
       {
+         // DXT1 compression, non-opaque block.  Add alpha indices.
          indices |= dxtb.alphamask;
          if(max16 > min16)
             SWAP(max16, min16);
@@ -671,7 +672,7 @@ static void encode_color_block(unsigned char *dst, unsigned char *block, int fla
          indices ^= 0x55555555; // 010101...
       }
    }
-   else if((flags & DXT_DXT1) && dxtb.alphamask)
+   else if((flags & DXT_BC1) && dxtb.alphamask) // DXT1 compression, non-opaque block
    {
       indices = compress3(&dxtb);
 
@@ -871,8 +872,8 @@ static void encode_YCoCg_block(unsigned char *dst, unsigned char *block)
 }
 
 /* write DXT3 alpha block */
-static void encode_alpha_block_DXT3(unsigned char *dst,
-                                    const unsigned char *block)
+static void encode_alpha_block_BC2(unsigned char *dst,
+                                   const unsigned char *block)
 {
    int i, a1, a2;
 
@@ -887,9 +888,9 @@ static void encode_alpha_block_DXT3(unsigned char *dst,
 }
 
 /* Write DXT5 alpha block */
-static void encode_alpha_block_DXT5(unsigned char *dst,
-                                    const unsigned char *block,
-                                    const int offset)
+static void encode_alpha_block_BC3(unsigned char *dst,
+                                   const unsigned char *block,
+                                   const int offset)
 {
    int i, v, mn, mx;
    int dist, bias, dist2, dist4, bits, mask;
@@ -950,127 +951,133 @@ static void encode_alpha_block_DXT5(unsigned char *dst,
 
 #define BLOCK_OFFSET(x, y, w, bs)  (((y) >> 2) * ((bs) * (((w) + 3) >> 2)) + ((bs) * ((x) >> 2)))
 
-static void compress_DXT1(unsigned char *dst, const unsigned char *src,
-                          int w, int h, int flags)
+static void compress_BC1(unsigned char *dst, const unsigned char *src,
+                         int w, int h, int flags)
 {
+   const unsigned int block_count = ((h + 3) >> 2) * ((w + 3) >> 2);
+   unsigned int i;
    unsigned char block[64], *p;
    int x, y;
 
 #ifdef _OPENMP
-#pragma omp parallel for schedule(dynamic) private(block, p, x)
+   #pragma omp parallel for schedule(dynamic, 256) private(block, p, x, y)
 #endif
-   for(y = 0; y < h; y += 4)
+   for(i = 0; i < block_count; ++i)
    {
-      for(x = 0; x < w; x += 4)
-      {
-         p = dst + BLOCK_OFFSET(x, y, w, 8);
-         extract_block(src, x, y, w, h, block);
-         encode_color_block(p, block, DXT_DXT1 | flags);
-      }
+      x = (i % ((w + 3) >> 2)) << 2;
+      y = (i / ((w + 3) >> 2)) << 2;
+      p = dst + BLOCK_OFFSET(x, y, w, 8);
+      extract_block(src, x, y, w, h, block);
+      encode_color_block(p, block, DXT_BC1 | flags);
    }
 }
 
-static void compress_DXT3(unsigned char *dst, const unsigned char *src,
-                          int w, int h, int flags)
+static void compress_BC2(unsigned char *dst, const unsigned char *src,
+                         int w, int h, int flags)
 {
+   const unsigned int block_count = ((h + 3) >> 2) * ((w + 3) >> 2);
+   unsigned int i;
    unsigned char block[64], *p;
    int x, y;
 
 #ifdef _OPENMP
-#pragma omp parallel for schedule(dynamic) private(block, p, x)
+   #pragma omp parallel for schedule(dynamic, 256) private(block, p, x, y)
 #endif
-   for(y = 0; y < h; y += 4)
+   for(i = 0; i < block_count; ++i)
    {
-      for(x = 0; x < w; x += 4)
-      {
-         p = dst + BLOCK_OFFSET(x, y, w, 16);
-         extract_block(src, x, y, w, h, block);
-         encode_alpha_block_DXT3(p, block);
-         encode_color_block(p + 8, block, DXT_DXT3 | flags);
-      }
+      x = (i % ((w + 3) >> 2)) << 2;
+      y = (i / ((w + 3) >> 2)) << 2;
+      p = dst + BLOCK_OFFSET(x, y, w, 16);
+      extract_block(src, x, y, w, h, block);
+      encode_alpha_block_BC2(p, block);
+      encode_color_block(p + 8, block, DXT_BC2 | flags);
    }
 }
 
-static void compress_DXT5(unsigned char *dst, const unsigned char *src,
-                          int w, int h, int flags)
+static void compress_BC3(unsigned char *dst, const unsigned char *src,
+                         int w, int h, int flags)
 {
+   const unsigned int block_count = ((h + 3) >> 2) * ((w + 3) >> 2);
+   unsigned int i;
    unsigned char block[64], *p;
    int x, y;
 
 #ifdef _OPENMP
-#pragma omp parallel for schedule(dynamic) private(block, p, x)
+   #pragma omp parallel for schedule(dynamic, 256) private(block, p, x, y)
 #endif
-   for(y = 0; y < h; y += 4)
+   for(i = 0; i < block_count; ++i)
    {
-      for(x = 0; x < w; x += 4)
-      {
-         p = dst + BLOCK_OFFSET(x, y, w, 16);
-         extract_block(src, x, y, w, h, block);
-         encode_alpha_block_DXT5(p, block, 0);
-         encode_color_block(p + 8, block, DXT_DXT5 | flags);
-      }
+      x = (i % ((w + 3) >> 2)) << 2;
+      y = (i / ((w + 3) >> 2)) << 2;
+      p = dst + BLOCK_OFFSET(x, y, w, 16);
+      extract_block(src, x, y, w, h, block);
+      encode_alpha_block_BC3(p, block, 0);
+      encode_color_block(p + 8, block, DXT_BC3 | flags);
    }
 }
 
 static void compress_BC4(unsigned char *dst, const unsigned char *src,
                          int w, int h)
 {
+   const unsigned int block_count = ((h + 3) >> 2) * ((w + 3) >> 2);
+   unsigned int i;
    unsigned char block[64], *p;
    int x, y;
 
 #ifdef _OPENMP
-#pragma omp parallel for schedule(dynamic) private(block, p, x)
+   #pragma omp parallel for schedule(dynamic, 256) private(block, p, x, y)
 #endif
-   for(y = 0; y < h; y += 4)
+   for(i = 0; i < block_count; ++i)
    {
-      for(x = 0; x < w; x += 4)
-      {
-         p = dst + BLOCK_OFFSET(x, y, w, 8);
-         extract_block(src, x, y, w, h, block);
-         encode_alpha_block_DXT5(p, block, -1);
-      }
+      x = (i % ((w + 3) >> 2)) << 2;
+      y = (i / ((w + 3) >> 2)) << 2;
+      p = dst + BLOCK_OFFSET(x, y, w, 8);
+      extract_block(src, x, y, w, h, block);
+      encode_alpha_block_BC3(p, block, -1);
    }
 }
 
 static void compress_BC5(unsigned char *dst, const unsigned char *src,
                          int w, int h)
 {
+   const unsigned int block_count = ((h + 3) >> 2) * ((w + 3) >> 2);
+   unsigned int i;
    unsigned char block[64], *p;
    int x, y;
 
 #ifdef _OPENMP
-#pragma omp parallel for schedule(dynamic) private(block, p, x)
+   #pragma omp parallel for schedule(dynamic, 256) private(block, p, x, y)
 #endif
-   for(y = 0; y < h; y += 4)
+   for(i = 0; i < block_count; ++i)
    {
-      for(x = 0; x < w; x += 4)
-      {
-         p = dst + BLOCK_OFFSET(x, y, w, 16);
-         extract_block(src, x, y, w, h, block);
-         encode_alpha_block_DXT5(p, block, -2);
-         encode_alpha_block_DXT5(p + 8, block, -1);
-      }
+      x = (i % ((w + 3) >> 2)) << 2;
+      y = (i / ((w + 3) >> 2)) << 2;
+      p = dst + BLOCK_OFFSET(x, y, w, 16);
+      extract_block(src, x, y, w, h, block);
+      encode_alpha_block_BC3(p, block, -2);
+      encode_alpha_block_BC3(p + 8, block, -1);
    }
 }
 
 static void compress_YCoCg(unsigned char *dst, const unsigned char *src,
                            int w, int h)
 {
+   const unsigned int block_count = ((h + 3) >> 2) * ((w + 3) >> 2);
+   unsigned int i;
    unsigned char block[64], *p;
    int x, y;
 
 #ifdef _OPENMP
-#pragma omp parallel for schedule(dynamic) private(block, p, x)
+   #pragma omp parallel for schedule(dynamic, 256) private(block, p, x, y)
 #endif
-   for(y = 0; y < h; y += 4)
+   for(i = 0; i < block_count; ++i)
    {
-      for(x = 0; x < w; x += 4)
-      {
-         p = dst + BLOCK_OFFSET(x, y, w, 16);
-         extract_block(src, x, y, w, h, block);
-         encode_alpha_block_DXT5(p, block, 0);
-         encode_YCoCg_block(p + 8, block);
-      }
+      x = (i % ((w + 3) >> 2)) << 2;
+      y = (i / ((w + 3) >> 2)) << 2;
+      p = dst + BLOCK_OFFSET(x, y, w, 16);
+      extract_block(src, x, y, w, h, block);
+      encode_alpha_block_BC3(p, block, 0);
+      encode_YCoCg_block(p + 8, block);
    }
 }
 
@@ -1147,17 +1154,17 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
       switch(format)
       {
          case DDS_COMPRESS_BC1:
-            compress_DXT1(dst + offset, s, w, h, flags);
+            compress_BC1(dst + offset, s, w, h, flags);
             break;
          case DDS_COMPRESS_BC2:
-            compress_DXT3(dst + offset, s, w, h, flags);
+            compress_BC2(dst + offset, s, w, h, flags);
             break;
          case DDS_COMPRESS_BC3:
          case DDS_COMPRESS_BC3N:
          case DDS_COMPRESS_RXGB:
          case DDS_COMPRESS_AEXP:
          case DDS_COMPRESS_YCOCG:
-            compress_DXT5(dst + offset, s, w, h, flags);
+            compress_BC3(dst + offset, s, w, h, flags);
             break;
          case DDS_COMPRESS_BC4:
             compress_BC4(dst + offset, s, w, h);
@@ -1169,7 +1176,7 @@ int dxt_compress(unsigned char *dst, unsigned char *src, int format,
             compress_YCoCg(dst + offset, s, w, h);
             break;
          default:
-            compress_DXT5(dst + offset, s, w, h, flags);
+            compress_BC3(dst + offset, s, w, h, flags);
             break;
       }
       s += (w * h * bpp);
@@ -1230,7 +1237,7 @@ static void decode_color_block(unsigned char *block, unsigned char *src,
    }
 }
 
-static void decode_alpha_block_DXT3(unsigned char *block, unsigned char *src)
+static void decode_alpha_block_BC2(unsigned char *block, unsigned char *src)
 {
    int x, y;
    unsigned char *d = block;
@@ -1248,7 +1255,7 @@ static void decode_alpha_block_DXT3(unsigned char *block, unsigned char *src)
    }
 }
 
-static void decode_alpha_block_DXT5(unsigned char *block, unsigned char *src, int w)
+static void decode_alpha_block_BC3(unsigned char *block, unsigned char *src, int w)
 {
    int x, y, code;
    unsigned char *d = block;
@@ -1364,25 +1371,25 @@ int dxt_decompress(unsigned char *dst, unsigned char *src, int format,
          }
          else if(format == DDS_COMPRESS_BC2)
          {
-            decode_alpha_block_DXT3(block + 3, s);
+            decode_alpha_block_BC2(block + 3, s);
             decode_color_block(block, s + 8, format);
             s += 16;
          }
          else if(format == DDS_COMPRESS_BC3)
          {
-            decode_alpha_block_DXT5(block + 3, s, width);
+            decode_alpha_block_BC3(block + 3, s, width);
             decode_color_block(block, s + 8, format);
             s += 16;
          }
          else if(format == DDS_COMPRESS_BC4)
          {
-            decode_alpha_block_DXT5(block, s, width);
+            decode_alpha_block_BC3(block, s, width);
             s += 8;
          }
          else if(format == DDS_COMPRESS_BC5)
          {
-            decode_alpha_block_DXT5(block, s + 8, width);
-            decode_alpha_block_DXT5(block + 1, s, width);
+            decode_alpha_block_BC3(block, s + 8, width);
+            decode_alpha_block_BC3(block + 1, s, width);
             s += 16;
          }
 

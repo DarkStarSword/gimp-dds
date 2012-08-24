@@ -23,9 +23,9 @@
 #ifndef DXT_H
 #define DXT_H
 
-#define DXT_DXT1        0x00000001
-#define DXT_DXT3        0x00000002
-#define DXT_DXT5        0x00000004
+#define DXT_BC1         0x00000001
+#define DXT_BC2         0x00000002
+#define DXT_BC3         0x00000004
 #define DXT_PERCEPTUAL  0x00000008
 
 int dxt_compress(unsigned char *dst, unsigned char *src, int format,

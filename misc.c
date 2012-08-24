@@ -33,8 +33,8 @@ void decode_ycocg_image(gint32 drawableID)
 {
    GimpDrawable *drawable;
    GimpPixelRgn srgn, drgn;
-   unsigned char *src, *dst;
-   int x, y, w, h;
+   unsigned char *data;
+   unsigned int i, w, h, num_pixels;
 
    const float offset = 0.5f * 256.0f / 255.0f;
    float Y, Co, Cg, R, G, B;
@@ -43,49 +43,43 @@ void decode_ycocg_image(gint32 drawableID)
 
    w = drawable->width;
    h = drawable->height;
+   num_pixels = w * h;
 
-   src = g_malloc(w * 4);
-   dst = g_malloc(w * 4);
+   data = g_malloc(num_pixels * 4);
 
    gimp_pixel_rgn_init(&srgn, drawable, 0, 0, w, h, 0, 0);
    gimp_pixel_rgn_init(&drgn, drawable, 0, 0, w, h, 1, 1);
 
+   gimp_pixel_rgn_get_rect(&srgn, data, 0, 0, w, h);
+
    gimp_progress_init("Decoding YCoCg pixels...");
 
-   for(y = 0; y < h; ++y)
+   for(i = 0; i < num_pixels; ++i)
    {
-      gimp_pixel_rgn_get_row(&srgn, src, 0, y, w);
+      Y  = (float)data[4 * i + 3] / 255.0f;
+      Co = (float)data[4 * i + 0] / 255.0f;
+      Cg = (float)data[4 * i + 1] / 255.0f;
 
-#ifdef _OPENMP
-#pragma omp parallel for schedule(dynamic) private(Y, Co, Cg, R, G, B)
-#endif
-      for(x = 0; x < w; ++x)
-      {
-         Y  = (float)src[4 * x + 3] / 255.0f;
-         Co = (float)src[4 * x + 0] / 255.0f;
-         Cg = (float)src[4 * x + 1] / 255.0f;
+      /* convert YCoCg to RGB */
+      Co -= offset;
+      Cg -= offset;
 
-         /* convert YCoCg to RGB */
-         Co -= offset;
-         Cg -= offset;
+      R = saturate(Y + Co - Cg);
+      G = saturate(Y + Cg);
+      B = saturate(Y - Co - Cg);
 
-         R = saturate(Y + Co - Cg);
-         G = saturate(Y + Cg);
-         B = saturate(Y - Co - Cg);
+      /* copy new alpha from blue */
+      data[4 * i + 3] = data[4 * i + 2];
 
-         /* copy new alpha from blue */
-         dst[4 * x + 3] = src[4 * x + 2];
+      data[4 * i + 0] = (unsigned char)(R * 255.0f);
+      data[4 * i + 1] = (unsigned char)(G * 255.0f);
+      data[4 * i + 2] = (unsigned char)(B * 255.0f);
 
-         dst[4 * x + 0] = (unsigned char)(R * 255.0f);
-         dst[4 * x + 1] = (unsigned char)(G * 255.0f);
-         dst[4 * x + 2] = (unsigned char)(B * 255.0f);
-      }
-
-      gimp_pixel_rgn_set_row(&drgn, dst, 0, y, w);
-
-      if((y & 31) == 0)
-         gimp_progress_update((gdouble)y / (gdouble)h);
+      if((i & 255) == 0)
+         gimp_progress_update((float)i / (float)num_pixels);
    }
+
+   gimp_pixel_rgn_set_rect(&drgn, data, 0, 0, w, h);
 
    gimp_progress_update(1.0);
 
@@ -94,16 +88,15 @@ void decode_ycocg_image(gint32 drawableID)
    gimp_drawable_update(drawable->drawable_id, 0, 0, w, h);
    gimp_drawable_detach(drawable);
 
-   g_free(src);
-   g_free(dst);
+   g_free(data);
 }
 
 void decode_ycocg_scaled_image(gint32 drawableID)
 {
    GimpDrawable *drawable;
    GimpPixelRgn srgn, drgn;
-   unsigned char *src, *dst;
-   int x, y, w, h;
+   unsigned char *data;
+   unsigned int i, w, h, num_pixels;
 
    const float offset = 0.5f * 256.0f / 255.0f;
    float Y, Co, Cg, R, G, B, s;
@@ -112,52 +105,46 @@ void decode_ycocg_scaled_image(gint32 drawableID)
 
    w = drawable->width;
    h = drawable->height;
+   num_pixels = w * h;
 
-   src = g_malloc(w * 4);
-   dst = g_malloc(w * 4);
+   data = g_malloc(num_pixels * 4);
 
    gimp_pixel_rgn_init(&srgn, drawable, 0, 0, w, h, 0, 0);
    gimp_pixel_rgn_init(&drgn, drawable, 0, 0, w, h, 1, 1);
 
+   gimp_pixel_rgn_get_rect(&srgn, data, 0, 0, w, h);
+
    gimp_progress_init("Decoding YCoCg (scaled) pixels...");
 
-   for(y = 0; y < h; ++y)
+   for(i = 0; i < num_pixels; ++i)
    {
-      gimp_pixel_rgn_get_row(&srgn, src, 0, y, w);
+      Y  = (float)data[4 * i + 3] / 255.0f;
+      Co = (float)data[4 * i + 0] / 255.0f;
+      Cg = (float)data[4 * i + 1] / 255.0f;
+      s  = (float)data[4 * i + 2] / 255.0f;
 
-#ifdef _OPENMP
-#pragma omp parallel for schedule(dynamic) private(Y, Co, Cg, R, G, B)
-#endif
-      for(x = 0; x < w; ++x)
-      {
-         Y  = (float)src[4 * x + 3] / 255.0f;
-         Co = (float)src[4 * x + 0] / 255.0f;
-         Cg = (float)src[4 * x + 1] / 255.0f;
-         s  = (float)src[4 * x + 2] / 255.0f;
+      /* convert YCoCg to RGB */
+      s = 1.0f / ((255.0f / 8.0f) * s + 1.0f);
 
-         /* convert YCoCg to RGB */
-         s = 1.0f / ((255.0f / 8.0f) * s + 1.0f);
+      Co = (Co - offset) * s;
+      Cg = (Cg - offset) * s;
 
-         Co = (Co - offset) * s;
-         Cg = (Cg - offset) * s;
+      R = saturate(Y + Co - Cg);
+      G = saturate(Y + Cg);
+      B = saturate(Y - Co - Cg);
 
-         R = saturate(Y + Co - Cg);
-         G = saturate(Y + Cg);
-         B = saturate(Y - Co - Cg);
+      data[4 * i + 0] = (unsigned char)(R * 255.0f);
+      data[4 * i + 1] = (unsigned char)(G * 255.0f);
+      data[4 * i + 2] = (unsigned char)(B * 255.0f);
 
-         dst[4 * x + 0] = (unsigned char)(R * 255.0f);
-         dst[4 * x + 1] = (unsigned char)(G * 255.0f);
-         dst[4 * x + 2] = (unsigned char)(B * 255.0f);
+      /* set alpha to 1 */
+      data[4 * i + 3] = 255;
 
-         /* set alpha to 1 */
-         dst[4 * x + 3] = 255;
-      }
-
-      gimp_pixel_rgn_set_row(&drgn, dst, 0, y, w);
-
-      if((y & 31) == 0)
-         gimp_progress_update((gdouble)y / (gdouble)h);
+      if((i & 255) == 0)
+         gimp_progress_update((float)i / (float)num_pixels);
    }
+
+   gimp_pixel_rgn_set_rect(&drgn, data, 0, 0, w, h);
 
    gimp_progress_update(1.0);
 
@@ -166,66 +153,54 @@ void decode_ycocg_scaled_image(gint32 drawableID)
    gimp_drawable_update(drawable->drawable_id, 0, 0, w, h);
    gimp_drawable_detach(drawable);
 
-   g_free(src);
-   g_free(dst);
+   g_free(data);
 }
 
 void decode_alpha_exp_image(gint32 drawableID)
 {
    GimpDrawable *drawable;
    GimpPixelRgn srgn, drgn;
-   unsigned char *src, *dst;
-   int x, y, w, h;
-   float R, G, B, A;
+   unsigned char *data;
+   unsigned int i, w, h, num_pixels;
+   int R, G, B, A;
 
    drawable = gimp_drawable_get(drawableID);
 
    w = drawable->width;
    h = drawable->height;
+   num_pixels = w * h;
 
-   src = g_malloc(w * 4);
-   dst = g_malloc(w * 4);
+   data = g_malloc(num_pixels * 4);
 
    gimp_pixel_rgn_init(&srgn, drawable, 0, 0, w, h, 0, 0);
    gimp_pixel_rgn_init(&drgn, drawable, 0, 0, w, h, 1, 1);
 
+   gimp_pixel_rgn_get_rect(&srgn, data, 0, 0, w, h);
+
    gimp_progress_init("Decoding Alpha-exponent pixels...");
 
-   for(y = 0; y < h; ++y)
+   for(i = 0; i < num_pixels; ++i)
    {
-      gimp_pixel_rgn_get_row(&srgn, src, 0, y, w);
+      R = data[4 * i + 0];
+      G = data[4 * i + 1];
+      B = data[4 * i + 2];
+      A = data[4 * i + 3];
 
-#ifdef _OPENMP
-#pragma omp parallel for schedule(dynamic) private(R, G, B, A)
-#endif
-      for(x = 0; x < w; ++x)
-      {
-         R = src[4 * x + 0];
-         G = src[4 * x + 1];
-         B = src[4 * x + 2];
-         A = (float)src[4 * x + 3] / 255.0f;
+      R = (R * A + 1) >> 8;
+      G = (G * A + 1) >> 8;
+      B = (B * A + 1) >> 8;
+      A = 255;
 
-         R *= A;
-         G *= A;
-         B *= A;
+      data[4 * i + 0] = R & 0xff;
+      data[4 * i + 1] = G & 0xff;
+      data[4 * i + 2] = B & 0xff;
+      data[4 * i + 3] = A;
 
-         R = MIN(R, 255);
-         G = MIN(G, 255);
-         B = MIN(B, 255);
-
-         dst[4 * x + 0] = (unsigned char)R;
-         dst[4 * x + 1] = (unsigned char)G;
-         dst[4 * x + 2] = (unsigned char)B;
-
-         /* set alpha to 1 */
-         dst[4 * x + 3] = 255;
-      }
-
-      gimp_pixel_rgn_set_row(&drgn, dst, 0, y, w);
-
-      if((y & 31) == 0)
-         gimp_progress_update((gdouble)y / (gdouble)h);
+      if((i & 255) == 0)
+         gimp_progress_update((float)i / (float)num_pixels);
    }
+
+   gimp_pixel_rgn_set_rect(&drgn, data, 0, 0, w, h);
 
    gimp_progress_update(1.0);
 
@@ -234,6 +209,5 @@ void decode_alpha_exp_image(gint32 drawableID)
    gimp_drawable_update(drawable->drawable_id, 0, 0, w, h);
    gimp_drawable_detach(drawable);
 
-   g_free(src);
-   g_free(dst);
+   g_free(data);
 }
