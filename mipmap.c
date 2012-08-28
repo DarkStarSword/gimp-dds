@@ -398,7 +398,10 @@ static void scale_image(unsigned char *dst, int dw, int dh,
             {
                contrib = filter((s + n) * yscale);
                density += contrib;
-               t = (float)linear_to_gamma(gc, col[((start + n) * sstride) + i], gamma);
+               if(i == 3)
+                  t = col[((start + n) * sstride) + i];
+               else
+                  t = linear_to_gamma(gc, col[((start + n) * sstride) + i], gamma);
                r += t * contrib;
             }
 
@@ -407,7 +410,8 @@ static void scale_image(unsigned char *dst, int dw, int dh,
 
             r = MIN(255, MAX(0, r));
 
-            r = gamma_to_linear(gc, r, gamma);
+            if(i != 3)
+               r = gamma_to_linear(gc, r, gamma);
 
             d[(x * bpp) + i] = (unsigned char)r;
          }
@@ -434,7 +438,10 @@ static void scale_image(unsigned char *dst, int dw, int dh,
             {
                contrib = filter((s + n) * xscale);
                density += contrib;
-               t = (float)linear_to_gamma(gc, row[((start + n) * bpp) + i], gamma);
+               if(i == 3)
+                  t = row[((start + n) * bpp) + i];
+               else
+                  t = linear_to_gamma(gc, row[((start + n) * bpp) + i], gamma);
                r += t * contrib;
             }
 
@@ -443,7 +450,8 @@ static void scale_image(unsigned char *dst, int dw, int dh,
 
             r = MIN(255, MAX(0, r));
 
-            r = gamma_to_linear(gc, r, gamma);
+            if(i != 3)
+               r = gamma_to_linear(gc, r, gamma);
 
             d[(y * (dw * bpp)) + (x * bpp) + i] = (unsigned char)r;
          }
@@ -638,7 +646,10 @@ static void scale_volume_image(unsigned char *dst, int dw, int dh, int dd,
                {
                   contrib = filter((s + n) * zscale);
                   density += contrib;
-                  t = (float)linear_to_gamma(gc, slice[((start + n) * zstride) + i], gamma);
+                  if(i == 3)
+                     t = slice[((start + n) * zstride) + i];
+                  else
+                     t = linear_to_gamma(gc, slice[((start + n) * zstride) + i], gamma);
                   r += t * contrib;
                }
 
@@ -647,7 +658,8 @@ static void scale_volume_image(unsigned char *dst, int dw, int dh, int dd,
 
                r = MIN(255, MAX(0, r));
 
-               r = gamma_to_linear(gc, r, gamma);
+               if(i != 3)
+                  r = gamma_to_linear(gc, r, gamma);
 
                d[((y * sw) + x) * bpp + i] = (unsigned char)r;
             }
@@ -681,7 +693,10 @@ static void scale_volume_image(unsigned char *dst, int dw, int dh, int dd,
                {
                   contrib = filter((s + n) * yscale);
                   density += contrib;
-                  t = (float)linear_to_gamma(gc, col[((start + n) * sstride) + i], gamma);
+                  if(i == 3)
+                     t = col[((start + n) * sstride) + i];
+                  else
+                     t = linear_to_gamma(gc, col[((start + n) * sstride) + i], gamma);
                   r += t * contrib;
                }
 
@@ -690,7 +705,8 @@ static void scale_volume_image(unsigned char *dst, int dw, int dh, int dd,
 
                r = MIN(255, MAX(0, r));
 
-               r = gamma_to_linear(gc, r, gamma);
+               if(i != 3)
+                  r = gamma_to_linear(gc, r, gamma);
 
                d[((y * sw) + x) * bpp + i] = (unsigned char)r;
             }
@@ -724,7 +740,10 @@ static void scale_volume_image(unsigned char *dst, int dw, int dh, int dd,
                {
                   contrib = filter((s + n) * xscale);
                   density += contrib;
-                  t = (float)linear_to_gamma(gc, row[((start + n) * bpp) + i], gamma);
+                  if(i == 3)
+                     t = row[((start + n) * bpp) + i];
+                  else
+                     t = linear_to_gamma(gc, row[((start + n) * bpp) + i], gamma);
                   r += t * contrib;
                }
 
@@ -733,7 +752,8 @@ static void scale_volume_image(unsigned char *dst, int dw, int dh, int dd,
 
                r = MIN(255, MAX(0, r));
 
-               r = gamma_to_linear(gc, r, gamma);
+               if(i != 3)
+                  r = gamma_to_linear(gc, r, gamma);
 
                d[((z * dh * dw) + (y * dw) + x) * bpp + i] = (unsigned char)r;
             }

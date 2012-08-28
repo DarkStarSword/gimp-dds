@@ -1645,13 +1645,14 @@ static void gamma_changed(GtkWidget *widget, gpointer data)
 static gint save_dialog(gint32 image_id, gint32 drawable_id)
 {
    GtkWidget *dlg;
-   GtkWidget *vbox, *hbox;
+   GtkWidget *vbox, *vbox2, *hbox;
    GtkWidget *table;
    GtkWidget *label;
    GtkWidget *opt;
    GtkWidget *check;
    GtkWidget *spin;
    GtkWidget *expander;
+   GtkWidget *frame;
    GimpImageBaseType basetype;
 
    if(is_cubemap || is_volume)
@@ -1820,10 +1821,42 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    gtk_box_pack_start(GTK_BOX(vbox), expander, 1, 1, 0);
    gtk_widget_show(expander);
 
-   table = gtk_table_new(5, 2, 0);
+
+   vbox2 = gtk_vbox_new(0, 8);
+   gtk_container_add(GTK_CONTAINER(expander), vbox2);
+   gtk_widget_show(vbox2);
+
+   frame = gtk_frame_new("Compression");
+   gtk_box_pack_start(GTK_BOX(vbox2), frame, 1, 1, 0);
+   gtk_widget_show(frame);
+
+   table = gtk_table_new(1, 2, 0);
    gtk_table_set_row_spacings(GTK_TABLE(table), 8);
    gtk_table_set_col_spacings(GTK_TABLE(table), 8);
-   gtk_container_add(GTK_CONTAINER(expander), table);
+   gtk_container_set_border_width(GTK_CONTAINER(table), 8);
+   gtk_container_add(GTK_CONTAINER(frame), table);
+   gtk_widget_show(table);
+
+   check = gtk_check_button_new_with_label("Use perceptual error metric");
+   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check), dds_write_vals.perceptual_metric);
+   gtk_table_attach(GTK_TABLE(table), check, 0, 2, 0, 1,
+                    (GtkAttachOptions)(GTK_FILL),
+                    (GtkAttachOptions)(0), 0, 0);
+   gtk_signal_connect(GTK_OBJECT(check), "clicked",
+                      GTK_SIGNAL_FUNC(toggle_clicked), &dds_write_vals.perceptual_metric);
+   gtk_widget_show(check);
+
+   pm_chk = check;
+
+   frame = gtk_frame_new("Mipmaps");
+   gtk_box_pack_start(GTK_BOX(vbox2), frame, 1, 1, 0);
+   gtk_widget_show(frame);
+
+   table = gtk_table_new(4, 2, 0);
+   gtk_table_set_row_spacings(GTK_TABLE(table), 8);
+   gtk_table_set_col_spacings(GTK_TABLE(table), 8);
+   gtk_container_set_border_width(GTK_CONTAINER(table), 8);
+   gtk_container_add(GTK_CONTAINER(frame), table);
    gtk_widget_show(table);
 
    label = gtk_label_new("Mipmap filter:");
@@ -1888,17 +1921,6 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    gtk_widget_show(spin);
 
    gamma_spin = spin;
-
-   check = gtk_check_button_new_with_label("Use perceptual error metric");
-   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check), dds_write_vals.perceptual_metric);
-   gtk_table_attach(GTK_TABLE(table), check, 1, 2, 4, 5,
-                    (GtkAttachOptions)(GTK_FILL),
-                    (GtkAttachOptions)(0), 0, 0);
-   gtk_signal_connect(GTK_OBJECT(check), "clicked",
-                      GTK_SIGNAL_FUNC(toggle_clicked), &dds_write_vals.perceptual_metric);
-   gtk_widget_show(check);
-
-   pm_chk = check;
 
    gtk_widget_set_sensitive(mipmap_filter_opt, dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE);
    gtk_widget_set_sensitive(gamma_chk, dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE);

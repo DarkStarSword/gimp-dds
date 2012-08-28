@@ -276,7 +276,7 @@ static void dxtblock_init(dxtblock_t *dxtb, const unsigned char *block, int flag
 #endif
 
    // inset bounding box and clamp to [0,1]
-   inset = (max - min) * vec4_set1(1.0f / 16.0f);
+   inset = (max - min) * vec4_set1(1.0f / 16.0f) - vec4_set1((8.0f / 255.0f) / 16.0f);
    max = vec4_min(V4ONE, vec4_max(V4ZERO, max - inset));
    min = vec4_min(V4ONE, vec4_max(V4ZERO, min + inset));
 
