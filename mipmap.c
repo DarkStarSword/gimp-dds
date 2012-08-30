@@ -41,6 +41,10 @@ typedef int   (*wrapfunc_t)(int, int);
 typedef void  (*mipmapfunc_t)(unsigned char *, int, int, unsigned char *, int, int, int, filterfunc_t, float, wrapfunc_t, int, float);
 typedef void  (*volmipmapfunc_t)(unsigned char *, int, int, int, unsigned char *, int, int, int, int, filterfunc_t, float, wrapfunc_t, int, float);
 
+/******************************************************************************
+ * size functions                                                             *
+ ******************************************************************************/
+
 int get_num_mipmaps(int width, int height)
 {
    int w = width << 1;
@@ -148,6 +152,10 @@ int get_next_mipmap_dimensions(int *next_w, int *next_h,
    return(1);
 }
 
+/******************************************************************************
+ * wrap modes                                                                 *
+ ******************************************************************************/
+
 static int wrap_mirror(int x, int max)
 {
    if(max == 1) x = 0;
@@ -167,6 +175,10 @@ static int wrap_clamp(int x, int max)
 {
    return(MAX(0, MIN(max - 1, x)));
 }
+
+/******************************************************************************
+ * gamma-correction                                                           *
+ ******************************************************************************/
 
 static int linear_to_gamma(int gc, int v, float gamma)
 {
@@ -193,6 +205,10 @@ static int gamma_to_linear(int gc, int v, float gamma)
 
    return(v);
 }
+
+/******************************************************************************
+ * filters                                                                    *
+ ******************************************************************************/
 
 static float box_filter(float t)
 {
@@ -324,6 +340,10 @@ static float kaiser_filter(float t)
    }
    return(0.0f);
 }
+
+/******************************************************************************
+ * 2D image scaling                                                           *
+ ******************************************************************************/
 
 static void scale_image_nearest(unsigned char *dst, int dw, int dh,
                                 unsigned char *src, int sw, int sh,
@@ -485,90 +505,9 @@ static void scale_image(unsigned char *dst, int dw, int dh,
    g_free(tmp);
 }
 
-static struct
-{
-   int filter;
-   filterfunc_t func;
-   float support;
-} filters[] =
-{
-   {DDS_MIPMAP_FILTER_BOX,       box_filter,       0.5f},
-   {DDS_MIPMAP_FILTER_TRIANGLE,  triangle_filter,  1.0f},
-   {DDS_MIPMAP_FILTER_QUADRATIC, quadratic_filter, 1.5f},
-   {DDS_MIPMAP_FILTER_BSPLINE,   bspline_filter,   2.0f},
-   {DDS_MIPMAP_FILTER_MITCHELL,  mitchell_filter,  2.0f},
-   {DDS_MIPMAP_FILTER_LANCZOS,   lanczos_filter,   3.0f},
-   {DDS_MIPMAP_FILTER_KAISER,    kaiser_filter,    3.0f},
-   {DDS_MIPMAP_FILTER_MAX,       NULL,             0.0f}
-};
-
-int generate_mipmaps(unsigned char *dst, unsigned char *src,
-                     unsigned int width, unsigned int height, int bpp,
-                     int indexed, int mipmaps, int filter, int wrap,
-                     int gc, float gamma)
-{
-   int i;
-   unsigned int sw, sh, dw, dh;
-   unsigned char *s, *d;
-   mipmapfunc_t mipmap_func = NULL;
-   filterfunc_t filter_func = NULL;
-   wrapfunc_t wrap_func = NULL;
-   float support = 0.0f;
-
-   if(indexed || filter == DDS_MIPMAP_FILTER_NEAREST)
-   {
-      mipmap_func = scale_image_nearest;
-   }
-   else
-   {
-      if(filter <= DDS_MIPMAP_FILTER_DEFAULT ||
-         filter >= DDS_MIPMAP_FILTER_MAX)
-         filter = DDS_MIPMAP_FILTER_BOX;
-
-      mipmap_func = scale_image;
-
-      for(i = 0; filters[i].filter != DDS_MIPMAP_FILTER_MAX; ++i)
-      {
-         if(filter == filters[i].filter)
-         {
-            filter_func = filters[i].func;
-            support = filters[i].support;
-            break;
-         }
-      }
-   }
-
-   switch(wrap)
-   {
-      case DDS_MIPMAP_WRAP_MIRROR: wrap_func = wrap_mirror; break;
-      case DDS_MIPMAP_WRAP_REPEAT: wrap_func = wrap_repeat; break;
-      case DDS_MIPMAP_WRAP_CLAMP:  wrap_func = wrap_clamp;  break;
-      default:                     wrap_func = wrap_clamp;  break;
-   }
-
-   memcpy(dst, src, width * height * bpp);
-
-   s = dst;
-   d = dst + (width * height * bpp);
-
-   sw = width;
-   sh = height;
-
-   for(i = 1; i < mipmaps; ++i)
-   {
-      dw = MAX(1, sw >> 1);
-      dh = MAX(1, sh >> 1);
-
-      mipmap_func(d, dw, dh, s, sw, sh, bpp, filter_func, support, wrap_func, gc, gamma);
-
-      s = d;
-      sw = dw;
-      sh = dh;
-      d += (dw * dh * bpp);
-   }
-
-   return(1);
-}
+/******************************************************************************
+ * 3D image scaling                                                           *
+ ******************************************************************************/
 
 static void scale_volume_image_nearest(unsigned char *dst, int dw, int dh, int dd,
                                        unsigned char *src, int sw, int sh, int sd,
@@ -662,10 +601,10 @@ static void scale_volume_image(unsigned char *dst, int dw, int dh, int dd,
       nmax = stop - start;
       s = (float)start - center + 0.5f;
 
-#ifdef _OPENMP
+      #ifdef _OPENMP
       #pragma omp parallel for schedule(dynamic) \
-         private(x, y, slice, i, n, density, r, t, contrib)
-#endif
+      private(x, y, slice, i, n, density, r, t, contrib)
+      #endif
       for(y = 0; y < sh; ++y)
       {
          for(x = 0; x < sw; ++x)
@@ -703,10 +642,10 @@ static void scale_volume_image(unsigned char *dst, int dw, int dh, int dd,
 
       /* resample in Y direction */
       d = tmp2;
-#ifdef _OPENMP
+      #ifdef _OPENMP
       #pragma omp parallel for schedule(dynamic) \
-         private(x, y, col, center, start, stop, nmax, s, i, n, density, r, t, contrib)
-#endif
+      private(x, y, col, center, start, stop, nmax, s, i, n, density, r, t, contrib)
+      #endif
       for(y = 0; y < dh; ++y)
       {
          center = ((float)y + 0.5f) / yfactor;
@@ -750,10 +689,10 @@ static void scale_volume_image(unsigned char *dst, int dw, int dh, int dd,
 
       /* resample in X direction */
       d = dst;
-#ifdef _OPENMP
+      #ifdef _OPENMP
       #pragma omp parallel for schedule(dynamic) \
-         private(x, y, row, center, start, stop, nmax, s, i, n, density, r, t, contrib)
-#endif
+      private(x, y, row, center, start, stop, nmax, s, i, n, density, r, t, contrib)
+      #endif
       for(y = 0; y < dh; ++y)
       {
          row = tmp2 + (y * sstride);
@@ -800,6 +739,99 @@ static void scale_volume_image(unsigned char *dst, int dw, int dh, int dd,
    g_free(tmp2);
 }
 
+/******************************************************************************
+ * filter lookup table                                                        *
+ ******************************************************************************/
+
+static struct
+{
+   int filter;
+   filterfunc_t func;
+   float support;
+} filters[] =
+{
+   {DDS_MIPMAP_FILTER_BOX,       box_filter,       0.5f},
+   {DDS_MIPMAP_FILTER_TRIANGLE,  triangle_filter,  1.0f},
+   {DDS_MIPMAP_FILTER_QUADRATIC, quadratic_filter, 1.5f},
+   {DDS_MIPMAP_FILTER_BSPLINE,   bspline_filter,   2.0f},
+   {DDS_MIPMAP_FILTER_MITCHELL,  mitchell_filter,  2.0f},
+   {DDS_MIPMAP_FILTER_LANCZOS,   lanczos_filter,   3.0f},
+   {DDS_MIPMAP_FILTER_KAISER,    kaiser_filter,    3.0f},
+   {DDS_MIPMAP_FILTER_MAX,       NULL,             0.0f}
+};
+
+/******************************************************************************
+ * mipmap generation                                                          *
+ ******************************************************************************/
+
+int generate_mipmaps(unsigned char *dst, unsigned char *src,
+                     unsigned int width, unsigned int height, int bpp,
+                     int indexed, int mipmaps, int filter, int wrap,
+                     int gc, float gamma)
+{
+   int i;
+   unsigned int sw, sh, dw, dh;
+   unsigned char *s, *d;
+   mipmapfunc_t mipmap_func = NULL;
+   filterfunc_t filter_func = NULL;
+   wrapfunc_t wrap_func = NULL;
+   float support = 0.0f;
+
+   if(indexed || filter == DDS_MIPMAP_FILTER_NEAREST)
+   {
+      mipmap_func = scale_image_nearest;
+   }
+   else
+   {
+      if((filter <= DDS_MIPMAP_FILTER_DEFAULT) ||
+         (filter >= DDS_MIPMAP_FILTER_MAX))
+         filter = DDS_MIPMAP_FILTER_BOX;
+
+      mipmap_func = scale_image;
+
+      for(i = 0; filters[i].filter != DDS_MIPMAP_FILTER_MAX; ++i)
+      {
+         if(filter == filters[i].filter)
+         {
+            filter_func = filters[i].func;
+            support = filters[i].support;
+            break;
+         }
+      }
+   }
+
+   switch(wrap)
+   {
+      case DDS_MIPMAP_WRAP_MIRROR: wrap_func = wrap_mirror; break;
+      case DDS_MIPMAP_WRAP_REPEAT: wrap_func = wrap_repeat; break;
+      case DDS_MIPMAP_WRAP_CLAMP:  wrap_func = wrap_clamp;  break;
+      default:                     wrap_func = wrap_clamp;  break;
+   }
+
+   memcpy(dst, src, width * height * bpp);
+
+   s = dst;
+   d = dst + (width * height * bpp);
+
+   sw = width;
+   sh = height;
+
+   for(i = 1; i < mipmaps; ++i)
+   {
+      dw = MAX(1, sw >> 1);
+      dh = MAX(1, sh >> 1);
+
+      mipmap_func(d, dw, dh, s, sw, sh, bpp, filter_func, support, wrap_func, gc, gamma);
+
+      s = d;
+      sw = dw;
+      sh = dh;
+      d += (dw * dh * bpp);
+   }
+
+   return(1);
+}
+
 int generate_volume_mipmaps(unsigned char *dst, unsigned char *src,
                             unsigned int width, unsigned int height,
                             unsigned int depth, int bpp, int indexed,
@@ -821,8 +853,8 @@ int generate_volume_mipmaps(unsigned char *dst, unsigned char *src,
    }
    else
    {
-      if(filter <= DDS_MIPMAP_FILTER_DEFAULT ||
-         filter >= DDS_MIPMAP_FILTER_MAX)
+      if((filter <= DDS_MIPMAP_FILTER_DEFAULT) ||
+         (filter >= DDS_MIPMAP_FILTER_MAX))
          filter = DDS_MIPMAP_FILTER_BOX;
 
       mipmap_func = scale_volume_image;
