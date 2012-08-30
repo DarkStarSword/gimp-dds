@@ -52,7 +52,7 @@ DDSWriteVals dds_write_vals =
 {
 	DDS_COMPRESS_NONE, DDS_MIPMAP_NONE, DDS_SAVE_SELECTED_LAYER,
    DDS_FORMAT_DEFAULT, -1, DDS_MIPMAP_FILTER_DEFAULT, DDS_MIPMAP_WRAP_DEFAULT,
-   0, 0, 2.2, 0, 0
+   0, 0, 0.0, 0, 0
 };
 
 DDSReadVals dds_read_vals =
@@ -308,6 +308,9 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
 			default:
 			   break;
 		}
+
+      if(dds_write_vals.gamma < 1e-04f)
+         dds_write_vals.gamma = gimp_gamma();
 
 		if(status == GIMP_PDB_SUCCESS)
 		{
