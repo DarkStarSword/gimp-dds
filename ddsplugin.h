@@ -40,6 +40,7 @@ typedef struct
    int format;
    int transindex;
    int mipmap_filter;
+   int mipmap_wrap;
    int gamma_correct;
    int srgb;
    float gamma;

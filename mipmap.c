@@ -20,6 +20,7 @@
 	Boston, MA 02110-1301, USA.
 */
 
+#include <stdlib.h>
 #include <string.h>
 #include <math.h>
 #include <float.h>
@@ -36,8 +37,9 @@
 #include "color.h"
 
 typedef float (*filterfunc_t)(float);
-typedef void (*mipmapfunc_t)(unsigned char *, int, int, unsigned char *, int, int, int, filterfunc_t, float, int, float);
-typedef void (*volmipmapfunc_t)(unsigned char *, int, int, int, unsigned char *, int, int, int, int, filterfunc_t, float, int, float);
+typedef int   (*wrapfunc_t)(int, int);
+typedef void  (*mipmapfunc_t)(unsigned char *, int, int, unsigned char *, int, int, int, filterfunc_t, float, wrapfunc_t, int, float);
+typedef void  (*volmipmapfunc_t)(unsigned char *, int, int, int, unsigned char *, int, int, int, int, filterfunc_t, float, wrapfunc_t, int, float);
 
 int get_num_mipmaps(int width, int height)
 {
@@ -144,6 +146,26 @@ int get_next_mipmap_dimensions(int *next_w, int *next_h,
    if(next_h) *next_h = curr_h >> 1;
 
    return(1);
+}
+
+static int wrap_mirror(int x, int max)
+{
+   if(max == 1) x = 0;
+   x = abs(x);
+   while(x >= max)
+      x = abs(max + max - x - 2);
+   return(x);
+}
+
+static int wrap_repeat(int x, int max)
+{
+   if(x >= 0) return(x % max);
+   return((x + 1) % max + max - 1);
+}
+
+static int wrap_clamp(int x, int max)
+{
+   return(MAX(0, MIN(max - 1, x)));
 }
 
 static int linear_to_gamma(int gc, int v, float gamma)
@@ -306,6 +328,7 @@ static float kaiser_filter(float t)
 static void scale_image_nearest(unsigned char *dst, int dw, int dh,
                                 unsigned char *src, int sw, int sh,
                                 int bpp, filterfunc_t filter, float support,
+                                wrapfunc_t wrap,
                                 int gc, float gamma)
 {
    int n, x, y;
@@ -331,6 +354,7 @@ static void scale_image_nearest(unsigned char *dst, int dw, int dh,
 static void scale_image(unsigned char *dst, int dw, int dh,
                         unsigned char *src, int sw, int sh,
                         int bpp, filterfunc_t filter, float support,
+                        wrapfunc_t wrap,
                         int gc, float gamma)
 {
    const float blur = 1.0f;
@@ -380,8 +404,8 @@ static void scale_image(unsigned char *dst, int dw, int dh,
 #endif
 
       center = ((float)y + 0.5f) / yfactor;
-      start = (int)MAX(center - ysupport + 0.5f, 0);
-      stop = (int)MIN(center + ysupport + 0.5f, sh);
+      start = (int)(center - ysupport + 0.5f);
+      stop  = (int)(center + ysupport + 0.5f);
       nmax = stop - start;
       s = (float)start - center + 0.5f;
 
@@ -399,9 +423,9 @@ static void scale_image(unsigned char *dst, int dw, int dh,
                contrib = filter((s + n) * yscale);
                density += contrib;
                if(i == 3)
-                  t = col[((start + n) * sstride) + i];
+                  t = col[(wrap(start + n, sh) * sstride) + i];
                else
-                  t = linear_to_gamma(gc, col[((start + n) * sstride) + i], gamma);
+                  t = linear_to_gamma(gc, col[(wrap(start + n, sh) * sstride) + i], gamma);
                r += t * contrib;
             }
 
@@ -424,8 +448,8 @@ static void scale_image(unsigned char *dst, int dw, int dh,
       for(x = 0; x < dw; ++x)
       {
          center = ((float)x + 0.5f) / xfactor;
-         start = (int)MAX(center - xsupport + 0.5f, 0);
-         stop = (int)MIN(center + xsupport + 0.5f, sw);
+         start = (int)(center - xsupport + 0.5f);
+         stop  = (int)(center + xsupport + 0.5f);
          nmax = stop - start;
          s = (float)start - center + 0.5f;
 
@@ -439,9 +463,9 @@ static void scale_image(unsigned char *dst, int dw, int dh,
                contrib = filter((s + n) * xscale);
                density += contrib;
                if(i == 3)
-                  t = row[((start + n) * bpp) + i];
+                  t = row[(wrap(start + n, sw) * bpp) + i];
                else
-                  t = linear_to_gamma(gc, row[((start + n) * bpp) + i], gamma);
+                  t = linear_to_gamma(gc, row[(wrap(start + n, sw) * bpp) + i], gamma);
                r += t * contrib;
             }
 
@@ -480,7 +504,7 @@ static struct
 
 int generate_mipmaps(unsigned char *dst, unsigned char *src,
                      unsigned int width, unsigned int height, int bpp,
-                     int indexed, int mipmaps, int filter,
+                     int indexed, int mipmaps, int filter, int wrap,
                      int gc, float gamma)
 {
    int i;
@@ -488,6 +512,7 @@ int generate_mipmaps(unsigned char *dst, unsigned char *src,
    unsigned char *s, *d;
    mipmapfunc_t mipmap_func = NULL;
    filterfunc_t filter_func = NULL;
+   wrapfunc_t wrap_func = NULL;
    float support = 0.0f;
 
    if(indexed || filter == DDS_MIPMAP_FILTER_NEAREST)
@@ -513,6 +538,14 @@ int generate_mipmaps(unsigned char *dst, unsigned char *src,
       }
    }
 
+   switch(wrap)
+   {
+      case DDS_MIPMAP_WRAP_MIRROR: wrap_func = wrap_mirror; break;
+      case DDS_MIPMAP_WRAP_REPEAT: wrap_func = wrap_repeat; break;
+      case DDS_MIPMAP_WRAP_CLAMP:  wrap_func = wrap_clamp;  break;
+      default:                     wrap_func = wrap_clamp;  break;
+   }
+
    memcpy(dst, src, width * height * bpp);
 
    s = dst;
@@ -526,7 +559,7 @@ int generate_mipmaps(unsigned char *dst, unsigned char *src,
       dw = MAX(1, sw >> 1);
       dh = MAX(1, sh >> 1);
 
-      mipmap_func(d, dw, dh, s, sw, sh, bpp, filter_func, support, gc, gamma);
+      mipmap_func(d, dw, dh, s, sw, sh, bpp, filter_func, support, wrap_func, gc, gamma);
 
       s = d;
       sw = dw;
@@ -540,6 +573,7 @@ int generate_mipmaps(unsigned char *dst, unsigned char *src,
 static void scale_volume_image_nearest(unsigned char *dst, int dw, int dh, int dd,
                                        unsigned char *src, int sw, int sh, int sd,
                                        int bpp, filterfunc_t filter, float support,
+                                       wrapfunc_t wrap,
                                        int gc, float gamma)
 {
    int n, x, y, z;
@@ -567,12 +601,13 @@ static void scale_volume_image_nearest(unsigned char *dst, int dw, int dh, int d
 static void scale_volume_image(unsigned char *dst, int dw, int dh, int dd,
                                unsigned char *src, int sw, int sh, int sd,
                                int bpp, filterfunc_t filter, float support,
+                               wrapfunc_t wrap,
                                int gc, float gamma)
 {
    /* down to a 2D image, use the faster 2D image resampler */
    if(dd == 1 && sd == 1)
    {
-      scale_image(dst, dw, dh, src, sw, sh, bpp, filter, support, gc, gamma);
+      scale_image(dst, dw, dh, src, sw, sh, bpp, filter, support, wrap, gc, gamma);
       return;
    }
 
@@ -622,8 +657,8 @@ static void scale_volume_image(unsigned char *dst, int dw, int dh, int dd,
       d = tmp1;
 
       center = ((float)z + 0.5f) / zfactor;
-      start = (int)MAX(center - zsupport + 0.5f, 0);
-      stop = (int)MIN(center + zsupport + 0.5f, sd);
+      start = (int)(center - zsupport + 0.5f);
+      stop =  (int)(center + zsupport + 0.5f);
       nmax = stop - start;
       s = (float)start - center + 0.5f;
 
@@ -647,9 +682,9 @@ static void scale_volume_image(unsigned char *dst, int dw, int dh, int dd,
                   contrib = filter((s + n) * zscale);
                   density += contrib;
                   if(i == 3)
-                     t = slice[((start + n) * zstride) + i];
+                     t = slice[(wrap(start + n, sd) * zstride) + i];
                   else
-                     t = linear_to_gamma(gc, slice[((start + n) * zstride) + i], gamma);
+                     t = linear_to_gamma(gc, slice[(wrap(start + n, sd) * zstride) + i], gamma);
                   r += t * contrib;
                }
 
@@ -675,8 +710,8 @@ static void scale_volume_image(unsigned char *dst, int dw, int dh, int dd,
       for(y = 0; y < dh; ++y)
       {
          center = ((float)y + 0.5f) / yfactor;
-         start = (int)MAX(center - ysupport + 0.5f, 0);
-         stop = (int)MIN(center + ysupport + 0.5f, sh);
+         start = (int)(center - ysupport + 0.5f);
+         stop =  (int)(center + ysupport + 0.5f);
          nmax = stop - start;
          s = (float)start - center + 0.5f;
 
@@ -694,9 +729,9 @@ static void scale_volume_image(unsigned char *dst, int dw, int dh, int dd,
                   contrib = filter((s + n) * yscale);
                   density += contrib;
                   if(i == 3)
-                     t = col[((start + n) * sstride) + i];
+                     t = col[(wrap(start + n, sh) * sstride) + i];
                   else
-                     t = linear_to_gamma(gc, col[((start + n) * sstride) + i], gamma);
+                     t = linear_to_gamma(gc, col[(wrap(start + n, sh) * sstride) + i], gamma);
                   r += t * contrib;
                }
 
@@ -726,8 +761,8 @@ static void scale_volume_image(unsigned char *dst, int dw, int dh, int dd,
          for(x = 0; x < dw; ++x)
          {
             center = ((float)x + 0.5f) / xfactor;
-            start = (int)MAX(center - xsupport + 0.5f, 0);
-            stop = (int)MIN(center + xsupport + 0.5f, sw);
+            start = (int)(center - xsupport + 0.5f);
+            stop =  (int)(center + xsupport + 0.5f);
             nmax = stop - start;
             s = (float)start - center + 0.5f;
 
@@ -741,9 +776,9 @@ static void scale_volume_image(unsigned char *dst, int dw, int dh, int dd,
                   contrib = filter((s + n) * xscale);
                   density += contrib;
                   if(i == 3)
-                     t = row[((start + n) * bpp) + i];
+                     t = row[(wrap(start + n, sw) * bpp) + i];
                   else
-                     t = linear_to_gamma(gc, row[((start + n) * bpp) + i], gamma);
+                     t = linear_to_gamma(gc, row[(wrap(start + n, sw) * bpp) + i], gamma);
                   r += t * contrib;
                }
 
@@ -768,7 +803,8 @@ static void scale_volume_image(unsigned char *dst, int dw, int dh, int dd,
 int generate_volume_mipmaps(unsigned char *dst, unsigned char *src,
                             unsigned int width, unsigned int height,
                             unsigned int depth, int bpp, int indexed,
-                            int mipmaps, int filter, int gc, float gamma)
+                            int mipmaps, int filter, int wrap,
+                            int gc, float gamma)
 {
    int i;
    unsigned int sw, sh, sd;
@@ -776,6 +812,7 @@ int generate_volume_mipmaps(unsigned char *dst, unsigned char *src,
    unsigned char *s, *d;
    volmipmapfunc_t mipmap_func = NULL;
    filterfunc_t filter_func = NULL;
+   wrapfunc_t wrap_func = NULL;
    float support = 0.0f;
 
    if(indexed || filter == DDS_MIPMAP_FILTER_NEAREST)
@@ -801,6 +838,14 @@ int generate_volume_mipmaps(unsigned char *dst, unsigned char *src,
       }
    }
 
+   switch(wrap)
+   {
+      case DDS_MIPMAP_WRAP_MIRROR: wrap_func = wrap_mirror; break;
+      case DDS_MIPMAP_WRAP_REPEAT: wrap_func = wrap_repeat; break;
+      case DDS_MIPMAP_WRAP_CLAMP:  wrap_func = wrap_clamp;  break;
+      default:                     wrap_func = wrap_clamp;  break;
+   }
+
    memcpy(dst, src, width * height * depth * bpp);
 
    s = dst;
@@ -816,7 +861,7 @@ int generate_volume_mipmaps(unsigned char *dst, unsigned char *src,
       dh = MAX(1, sh >> 1);
       dd = MAX(1, sd >> 1);
 
-      mipmap_func(d, dw, dh, dd, s, sw, sh, sd, bpp, filter_func, support, gc, gamma);
+      mipmap_func(d, dw, dh, dd, s, sw, sh, sd, bpp, filter_func, support, wrap_func, gc, gamma);
 
       s = d;
       sw = dw;

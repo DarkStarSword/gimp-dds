@@ -35,12 +35,12 @@ int get_next_mipmap_dimensions(int *next_w, int *next_h,
 float cubic_interpolate(float a, float b, float c, float d, float x);
 int generate_mipmaps(unsigned char *dst, unsigned char *src,
                      unsigned int width, unsigned int height, int bpp,
-                     int indexed, int mipmaps, int filter,
+                     int indexed, int mipmaps, int filter, int wrap,
                      int gamma_correct, float gamma);
 int generate_volume_mipmaps(unsigned char *dst, unsigned char *src,
                             unsigned int width, unsigned int height,
                             unsigned int depth, int bpp, int indexed,
-                            int mipmaps, int filter,
+                            int mipmaps, int filter, int wrap,
                             int gamma_correct, float gamma);
 
 #endif

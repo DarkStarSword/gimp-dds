@@ -51,7 +51,8 @@ GimpPlugInInfo PLUG_IN_INFO =
 DDSWriteVals dds_write_vals =
 {
 	DDS_COMPRESS_NONE, DDS_MIPMAP_NONE, DDS_SAVE_SELECTED_LAYER,
-   DDS_FORMAT_DEFAULT, -1, DDS_MIPMAP_FILTER_DEFAULT, 0, 0, 2.2, 0, 0
+   DDS_FORMAT_DEFAULT, -1, DDS_MIPMAP_FILTER_DEFAULT, DDS_MIPMAP_WRAP_DEFAULT,
+   0, 0, 2.2, 0, 0
 };
 
 DDSReadVals dds_read_vals =
@@ -85,6 +86,7 @@ static GimpParamDef save_args[] =
    {GIMP_PDB_INT32, "format", "Custom pixel format (0 = default, 1 = R5G6B5, 2 = RGBA4, 3 = RGB5A1, 4 = RGB10A2)"},
    {GIMP_PDB_INT32, "transparent_index", "Index of transparent color or -1 to disable (for indexed images only)."},
    {GIMP_PDB_INT32, "mipmap_filter", "Filtering to use when generating mipmaps (0 = default, 1 = nearest, 2 = box, 3 = triangle, 4 = quadratic, 5 = bspline, 6 = mitchell, 7 = lanczos, 8 = kaiser)"},
+   {GIMP_PDB_INT32, "mipmap_wrap", "Wrap mode to use when generating mipmaps (0 = default, 1 = mirror, 2 = repeat, 3 = clamp)"},
    {GIMP_PDB_INT32, "gamma_correct", "Use gamma correct mipmap filtering"},
    {GIMP_PDB_INT32, "srgb", "Use sRGB colorspace for gamma correction"},
    {GIMP_PDB_FLOAT, "gamma", "Gamma value to use for gamma correction (i.e. 2.2)"},
@@ -273,25 +275,29 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
                dds_write_vals.format = param[8].data.d_int32;
                dds_write_vals.transindex = param[9].data.d_int32;
                dds_write_vals.mipmap_filter = param[10].data.d_int32;
-               dds_write_vals.gamma_correct = param[11].data.d_int32;
-               dds_write_vals.srgb = param[12].data.d_int32;
-               dds_write_vals.gamma = param[13].data.d_float;
-               dds_write_vals.perceptual_metric = param[14].data.d_int32;
+               dds_write_vals.mipmap_wrap = param[11].data.d_int32;
+               dds_write_vals.gamma_correct = param[12].data.d_int32;
+               dds_write_vals.srgb = param[13].data.d_int32;
+               dds_write_vals.gamma = param[14].data.d_float;
+               dds_write_vals.perceptual_metric = param[15].data.d_int32;
 
-					if(dds_write_vals.compression < DDS_COMPRESS_NONE ||
-						dds_write_vals.compression >= DDS_COMPRESS_MAX)
+					if((dds_write_vals.compression <  DDS_COMPRESS_NONE) ||
+						(dds_write_vals.compression >= DDS_COMPRESS_MAX))
 						status = GIMP_PDB_CALLING_ERROR;
-               if(dds_write_vals.mipmaps < DDS_MIPMAP_NONE ||
-                  dds_write_vals.mipmaps >= DDS_MIPMAP_MAX)
+               if((dds_write_vals.mipmaps <  DDS_MIPMAP_NONE) ||
+                  (dds_write_vals.mipmaps >= DDS_MIPMAP_MAX))
                   status = GIMP_PDB_CALLING_ERROR;
-               if(dds_write_vals.savetype < DDS_SAVE_SELECTED_LAYER ||
-                  dds_write_vals.savetype >= DDS_SAVE_MAX)
+               if((dds_write_vals.savetype <  DDS_SAVE_SELECTED_LAYER) ||
+                  (dds_write_vals.savetype >= DDS_SAVE_MAX))
                   status = GIMP_PDB_CALLING_ERROR;
-               if(dds_write_vals.format < DDS_FORMAT_DEFAULT ||
-                  dds_write_vals.format >= DDS_FORMAT_MAX)
+               if((dds_write_vals.format <  DDS_FORMAT_DEFAULT) ||
+                  (dds_write_vals.format >= DDS_FORMAT_MAX))
                   status = GIMP_PDB_CALLING_ERROR;
-               if(dds_write_vals.mipmap_filter < DDS_MIPMAP_FILTER_DEFAULT ||
-                  dds_write_vals.mipmap_filter >= DDS_MIPMAP_FILTER_MAX)
+               if((dds_write_vals.mipmap_filter <  DDS_MIPMAP_FILTER_DEFAULT) ||
+                  (dds_write_vals.mipmap_filter >= DDS_MIPMAP_FILTER_MAX))
+                  status = GIMP_PDB_CALLING_ERROR;
+               if((dds_write_vals.mipmap_wrap <  DDS_MIPMAP_WRAP_DEFAULT) ||
+                  (dds_write_vals.mipmap_wrap >= DDS_MIPMAP_WRAP_MAX))
                   status = GIMP_PDB_CALLING_ERROR;
 				}
 			   break;
