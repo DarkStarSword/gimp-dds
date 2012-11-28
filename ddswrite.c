@@ -1913,7 +1913,7 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
 
    mipmap_wrap_opt = opt;
 
-   check = gtk_check_button_new_with_label("Gamma-correct mipmaps");
+   check = gtk_check_button_new_with_label("Apply gamma correction");
    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check), dds_write_vals.gamma_correct && dds_write_vals.mipmaps);
    gtk_table_attach(GTK_TABLE(table), check, 1, 2, 2, 3,
                     (GtkAttachOptions)(GTK_FILL),

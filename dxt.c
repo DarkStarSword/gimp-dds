@@ -210,7 +210,7 @@ static void dxtblock_init(dxtblock_t *dxtb, const unsigned char *block, int flag
 
    for(i = 0; i < 16; ++i)
    {
-      if(bc1 && block[4 * i + 3] < 128)
+      if(bc1 && (block[4 * i + 3] < 128))
          dxtb->alphamask |= (3 << (2 * i));
 
       x = (float)block[4 * i + 0] / 255.0f;
@@ -410,9 +410,10 @@ static unsigned int match_colors3(dxtblock_t *dxtb)
    unsigned int indices = 0;
    vec4_t t0, t1, t2;
 #ifdef USE_SSE
-   vec4_t d, zero = _mm_setzero_ps();
+   vec4_t d, bits, zero = _mm_setzero_ps();
+   int mask;
 #else
-   float d[3];
+   float d0, d1, d2;
 #endif
 
    // match each point to the closest color
@@ -432,18 +433,24 @@ static unsigned int match_colors3(dxtblock_t *dxtb)
 #ifdef USE_SSE
       _MM_TRANSPOSE4_PS(t0, t1, t2, zero);
       d = t0 * t0 + t1 * t1 + t2 * t2;
+      bits = _mm_cmplt_ps(_mm_shuffle_ps(d, d, _MM_SHUFFLE(3, 1, 0, 0)),
+                          _mm_shuffle_ps(d, d, _MM_SHUFFLE(3, 2, 2, 1)));
+      mask = _mm_movemask_ps(bits);
+      if((mask & 3) == 3) idx = 0;
+      else if(mask & 4)   idx = 1;
+      else                idx = 2;
 #else
-      d[0] = vec4_dot(t0, t0);
-      d[1] = vec4_dot(t1, t1);
-      d[2] = vec4_dot(t2, t2);
-#endif
+      d0 = vec4_dot(t0, t0);
+      d1 = vec4_dot(t1, t1);
+      d2 = vec4_dot(t2, t2);
 
-      if((d[0] < d[1]) && (d[0] < d[2]))
+      if((d0 < d1) && (d0 < d2))
          idx = 0;
-      else if(d[1] < d[2])
+      else if(d1 < d2)
          idx = 1;
       else
          idx = 2;
+#endif
 
       indices |= (idx << (2 * i));
    }

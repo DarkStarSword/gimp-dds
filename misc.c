@@ -191,9 +191,9 @@ void decode_alpha_exp_image(gint32 drawableID)
       B = (B * A + 1) >> 8;
       A = 255;
 
-      data[4 * i + 0] = R & 0xff;
-      data[4 * i + 1] = G & 0xff;
-      data[4 * i + 2] = B & 0xff;
+      data[4 * i + 0] = R;
+      data[4 * i + 1] = G;
+      data[4 * i + 2] = B;
       data[4 * i + 3] = A;
 
       if((i & 255) == 0)
