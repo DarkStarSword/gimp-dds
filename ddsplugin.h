@@ -25,7 +25,7 @@
 
 #define DDS_PLUGIN_VERSION_MAJOR     2
 #define DDS_PLUGIN_VERSION_MINOR     9
-#define DDS_PLUGIN_VERSION_REVISION  80
+#define DDS_PLUGIN_VERSION_REVISION  98
 
 #define DDS_PLUGIN_VERSION  \
    ((unsigned int)(DDS_PLUGIN_VERSION_MAJOR << 16) | \
@@ -34,8 +34,8 @@
 
 typedef struct
 {
-	int compression;
-	int mipmaps;
+   int compression;
+   int mipmaps;
    int savetype;
    int format;
    int transindex;
@@ -46,6 +46,8 @@ typedef struct
    float gamma;
    int perceptual_metric;
    int show_adv_opt;
+   int preserve_alpha_coverage;
+   float alpha_test_threshold;
 } DDSWriteVals;
 
 typedef struct

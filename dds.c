@@ -52,7 +52,8 @@ DDSWriteVals dds_write_vals =
 {
 	DDS_COMPRESS_NONE, DDS_MIPMAP_NONE, DDS_SAVE_SELECTED_LAYER,
    DDS_FORMAT_DEFAULT, -1, DDS_MIPMAP_FILTER_DEFAULT, DDS_MIPMAP_WRAP_DEFAULT,
-   0, 0, 0.0, 0, 0
+   0, 0, 0.0, 0, 0,
+   0, 0.5
 };
 
 DDSReadVals dds_read_vals =
@@ -90,7 +91,9 @@ static GimpParamDef save_args[] =
    {GIMP_PDB_INT32, "gamma_correct", "Use gamma correct mipmap filtering"},
    {GIMP_PDB_INT32, "srgb", "Use sRGB colorspace for gamma correction"},
    {GIMP_PDB_FLOAT, "gamma", "Gamma value to use for gamma correction (i.e. 2.2)"},
-   {GIMP_PDB_INT32, "perceptual_metric", "Use a perceptual error metric during compression"}
+   {GIMP_PDB_INT32, "perceptual_metric", "Use a perceptual error metric during compression"},
+   {GIMP_PDB_INT32, "preserve_alpha_coverage", "Preserve alpha test converage for alpha channel maps"},
+   {GIMP_PDB_FLOAT, "alpha_test_threshold", "Alpha test threshold value for which alpha test converage should be preserved"}
 };
 
 static GimpParamDef decode_args[] =
@@ -280,6 +283,8 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
                dds_write_vals.srgb = param[13].data.d_int32;
                dds_write_vals.gamma = param[14].data.d_float;
                dds_write_vals.perceptual_metric = param[15].data.d_int32;
+               dds_write_vals.preserve_alpha_coverage = param[16].data.d_int32;
+               dds_write_vals.alpha_test_threshold = param[17].data.d_float;
 
 					if((dds_write_vals.compression <  DDS_COMPRESS_NONE) ||
 						(dds_write_vals.compression >= DDS_COMPRESS_MAX))

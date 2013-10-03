@@ -86,6 +86,8 @@ static GtkWidget *srgb_chk;
 static GtkWidget *gamma_chk;
 static GtkWidget *gamma_spin;
 static GtkWidget *pm_chk;
+static GtkWidget *alpha_coverage_chk;
+static GtkWidget *alpha_test_threshold_spin;
 
 typedef struct string_value_s
 {
@@ -873,7 +875,9 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
                              dds_write_vals.mipmap_filter,
                              dds_write_vals.mipmap_wrap,
                              dds_write_vals.gamma_correct + dds_write_vals.srgb,
-                             dds_write_vals.gamma);
+                             dds_write_vals.gamma,
+                             dds_write_vals.preserve_alpha_coverage,
+                             dds_write_vals.alpha_test_threshold);
          }
          else
          {
@@ -950,7 +954,9 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
                              dds_write_vals.mipmap_filter,
                              dds_write_vals.mipmap_wrap,
                              dds_write_vals.gamma_correct + dds_write_vals.srgb,
-                             dds_write_vals.gamma);
+                             dds_write_vals.gamma,
+                             dds_write_vals.preserve_alpha_coverage,
+                             dds_write_vals.alpha_test_threshold);
          }
          else
          {
@@ -1603,6 +1609,9 @@ static void mipmaps_selected(GtkWidget *widget, gpointer data)
    gtk_widget_set_sensitive(srgb_chk, (dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE) && dds_write_vals.gamma_correct);
    gtk_widget_set_sensitive(gamma_spin, (dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE) &&
                             dds_write_vals.gamma_correct && !dds_write_vals.srgb);
+   gtk_widget_set_sensitive(alpha_coverage_chk, dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE);
+   gtk_widget_set_sensitive(alpha_test_threshold_spin, (dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE) &&
+                            dds_write_vals.preserve_alpha_coverage);
 }
 
 static void toggle_clicked(GtkWidget *widget, gpointer data)
@@ -1654,6 +1663,17 @@ static void srgb_clicked(GtkWidget *widget, gpointer data)
 static void gamma_changed(GtkWidget *widget, gpointer data)
 {
    dds_write_vals.gamma = gtk_spin_button_get_value(GTK_SPIN_BUTTON(widget));
+}
+
+static void alpha_coverage_clicked(GtkWidget *widget, gpointer data)
+{
+   dds_write_vals.preserve_alpha_coverage = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget));
+   gtk_widget_set_sensitive(alpha_test_threshold_spin, dds_write_vals.preserve_alpha_coverage);
+}
+
+static void alpha_test_threshold_changed(GtkWidget *widget, gpointer data)
+{
+   dds_write_vals.alpha_test_threshold = gtk_spin_button_get_value(GTK_SPIN_BUTTON(widget));
 }
 
 static gint save_dialog(gint32 image_id, gint32 drawable_id)
@@ -1866,7 +1886,7 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    gtk_box_pack_start(GTK_BOX(vbox2), frame, 1, 1, 0);
    gtk_widget_show(frame);
 
-   table = gtk_table_new(5, 2, 0);
+   table = gtk_table_new(7, 2, 0);
    gtk_table_set_row_spacings(GTK_TABLE(table), 4);
    gtk_table_set_col_spacings(GTK_TABLE(table), 8);
    gtk_container_set_border_width(GTK_CONTAINER(table), 8);
@@ -1953,6 +1973,35 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
 
    gamma_spin = spin;
 
+   check = gtk_check_button_new_with_label("Preserve alpha test coverage");
+   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check), dds_write_vals.preserve_alpha_coverage && dds_write_vals.mipmaps);
+   gtk_table_attach(GTK_TABLE(table), check, 1, 2, 5, 6,
+                    (GtkAttachOptions)(GTK_FILL),
+                    (GtkAttachOptions)(0), 0, 0);
+   gtk_signal_connect(GTK_OBJECT(check), "clicked",
+                      GTK_SIGNAL_FUNC(alpha_coverage_clicked), NULL);
+   gtk_widget_show(check);
+
+   alpha_coverage_chk = check;
+
+   label = gtk_label_new("Alpha test threshold:");
+   gtk_widget_show(label);
+   gtk_table_attach(GTK_TABLE(table), label, 0, 1, 6, 7,
+                    (GtkAttachOptions)(GTK_FILL),
+                    (GtkAttachOptions)(0), 0, 0);
+   gtk_misc_set_alignment(GTK_MISC(label), 1, 0.5);
+
+   spin = gtk_spin_button_new(GTK_ADJUSTMENT(gtk_adjustment_new(dds_write_vals.alpha_test_threshold, 0, 1, 0.01, 0.1, 0)), 1, 2);
+   gtk_table_attach(GTK_TABLE(table), spin, 1, 2, 6, 7,
+                    (GtkAttachOptions)(GTK_EXPAND | GTK_FILL),
+                    (GtkAttachOptions)(GTK_EXPAND), 0, 0);
+   gtk_spin_button_set_update_policy(GTK_SPIN_BUTTON(spin), GTK_UPDATE_IF_VALID);
+   gtk_signal_connect(GTK_OBJECT(spin), "value_changed",
+                      GTK_SIGNAL_FUNC(alpha_test_threshold_changed), 0);
+   gtk_widget_show(spin);
+
+   alpha_test_threshold_spin = spin;
+
    gtk_widget_set_sensitive(mipmap_filter_opt, dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE);
    gtk_widget_set_sensitive(mipmap_wrap_opt, dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE);
    gtk_widget_set_sensitive(gamma_chk, dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE);
@@ -1960,6 +2009,9 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    gtk_widget_set_sensitive(gamma_spin, (dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE) &&
                             dds_write_vals.gamma_correct && !dds_write_vals.srgb);
    gtk_widget_set_sensitive(pm_chk, dds_write_vals.compression != DDS_COMPRESS_NONE);
+   gtk_widget_set_sensitive(alpha_coverage_chk, dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE);
+   gtk_widget_set_sensitive(alpha_test_threshold_spin, (dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE) &&
+                            dds_write_vals.preserve_alpha_coverage);
 
    gtk_widget_show(dlg);
 

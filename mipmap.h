@@ -36,7 +36,8 @@ float cubic_interpolate(float a, float b, float c, float d, float x);
 int generate_mipmaps(unsigned char *dst, unsigned char *src,
                      unsigned int width, unsigned int height, int bpp,
                      int indexed, int mipmaps, int filter, int wrap,
-                     int gamma_correct, float gamma);
+                     int gamma_correct, float gamma,
+                     int preserve_alpha_test_coverage, float alpha_test_threshold);
 int generate_volume_mipmaps(unsigned char *dst, unsigned char *src,
                             unsigned int width, unsigned int height,
                             unsigned int depth, int bpp, int indexed,

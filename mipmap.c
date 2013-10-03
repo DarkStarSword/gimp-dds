@@ -760,6 +760,98 @@ static struct
    {DDS_MIPMAP_FILTER_MAX,       NULL,             0.0f}
 };
 
+/*
+ * Alpha test coverage - portion of visible texels after alpha test:
+ *   if (texel_alpha < alpha_test_threshold)
+ *      discard;
+ */
+float calc_alpha_test_coverage(unsigned char *src,
+                               unsigned int width, unsigned int height, int bpp,
+                               float alpha_test_threshold,
+                               float alpha_scale)
+{
+   unsigned int x, y;
+   int rowbytes = width * bpp;
+   int coverage = 0;
+   const int alpha_channel_idx = 3;
+
+   if(bpp <= alpha_channel_idx)
+   {
+      /* No alpha channel */
+      return 1.f;
+   }
+
+   for(y = 0; y < height; ++y)
+   {
+      for(x = 0; x < width; ++x)
+      {
+         const float alpha = src[y * rowbytes + (x * bpp) + alpha_channel_idx];
+         if((alpha * alpha_scale) >= (alpha_test_threshold * 255))
+         {
+            ++coverage;
+         }
+      }
+   }
+
+   return (float)coverage / (width * height);
+}
+
+void scale_alpha_to_coverage(unsigned char *img,
+                             unsigned int width, unsigned int height, int bpp,
+                             float desired_coverage,
+                             float alpha_test_threshold)
+{
+   int i;
+   unsigned int x, y;
+   const int rowbytes = width * bpp;
+   const int alpha_channel_idx = 3;
+   float min_alpha_scale = 0.0f;
+   float max_alpha_scale = 4.0f;
+   float alpha_scale = 1.0f;
+
+   if(bpp <= alpha_channel_idx)
+   {
+      /* No alpha channel */
+      return;
+   }
+
+   /* Binary search */
+   for(i = 0; i < 10; i++)
+   {
+      float cur_coverage = calc_alpha_test_coverage(img, width, height, bpp, alpha_test_threshold, alpha_scale);
+
+      if(cur_coverage < desired_coverage)
+      {
+         min_alpha_scale = alpha_scale;
+      }
+      else if (cur_coverage > desired_coverage)
+      {
+         max_alpha_scale = alpha_scale;
+      }
+      else
+      {
+         break;
+      }
+
+      alpha_scale = (min_alpha_scale + max_alpha_scale) / 2;
+   }
+
+   /* Scale alpha channel */
+   for(y = 0; y < height; ++y)
+   {
+      for(x = 0; x < width; ++x)
+      {
+         float new_alpha = img[y * rowbytes + (x * bpp) + alpha_channel_idx] * alpha_scale;
+         if(new_alpha > 255.0f)
+         {
+            new_alpha = 255.0f;
+         }
+
+         img[y * rowbytes + (x * bpp) + alpha_channel_idx] = (unsigned char)new_alpha;
+      }
+   }
+}
+
 /******************************************************************************
  * mipmap generation                                                          *
  ******************************************************************************/
@@ -767,7 +859,8 @@ static struct
 int generate_mipmaps(unsigned char *dst, unsigned char *src,
                      unsigned int width, unsigned int height, int bpp,
                      int indexed, int mipmaps, int filter, int wrap,
-                     int gc, float gamma)
+                     int gc, float gamma,
+                     int preserve_alpha_coverage, float alpha_test_threshold)
 {
    int i;
    unsigned int sw, sh, dw, dh;
@@ -776,6 +869,8 @@ int generate_mipmaps(unsigned char *dst, unsigned char *src,
    filterfunc_t filter_func = NULL;
    wrapfunc_t wrap_func = NULL;
    float support = 0.0f;
+   const int has_alpha = (bpp >= 3);
+   float alpha_test_coverage = 1;
 
    if(indexed || filter == DDS_MIPMAP_FILTER_NEAREST)
    {
@@ -808,6 +903,13 @@ int generate_mipmaps(unsigned char *dst, unsigned char *src,
       default:                     wrap_func = wrap_clamp;  break;
    }
 
+   if(has_alpha && preserve_alpha_coverage)
+   {
+      alpha_test_coverage = calc_alpha_test_coverage(src, width, height, bpp,
+                                                     alpha_test_threshold,
+                                                     1.0f);
+   }
+
    memcpy(dst, src, width * height * bpp);
 
    s = dst;
@@ -822,6 +924,11 @@ int generate_mipmaps(unsigned char *dst, unsigned char *src,
       dh = MAX(1, sh >> 1);
 
       mipmap_func(d, dw, dh, s, sw, sh, bpp, filter_func, support, wrap_func, gc, gamma);
+
+      if(has_alpha && preserve_alpha_coverage)
+      {
+         scale_alpha_to_coverage(d, dw, dh, bpp, alpha_test_coverage, alpha_test_threshold);
+      }
 
       s = d;
       sw = dw;
