@@ -2,7 +2,7 @@
 GIMPTOOL=gimptool-2.0
 
 CC=gcc
-CFLAGS=-pipe -O2 -g -Wall -fopenmp $(shell pkg-config --cflags gtk+-2.0 gimp-2.0)
+CFLAGS+=-pipe -O2 -g -Wall -fopenmp $(shell pkg-config --cflags gtk+-2.0 gimp-2.0)
 LDFLAGS=-fopenmp
 
 OS=$(shell uname -s)
