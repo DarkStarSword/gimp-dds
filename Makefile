@@ -1,8 +1,8 @@
 
-GIMPTOOL=gimptool-2.0
+GIMPTOOL=/opt/gimp-2.9/bin/gimptool-2.0
 
 CC=gcc
-CFLAGS+=-pipe -O2 -g -Wall -fopenmp $(shell pkg-config --cflags gtk+-2.0 gimp-2.0)
+CFLAGS+=-pipe -O2 -g -Wall -fopenmp $(shell PKG_CONFIG_PATH=/opt/gimp-2.9/lib/pkgconfig pkg-config --cflags gtk+-2.0 gimp-2.0)
 LDFLAGS=-fopenmp
 
 OS=$(shell uname -s)
@@ -17,7 +17,7 @@ TARGET=dds$(EXT)
 SRCS=color.c dds.c ddsread.c ddswrite.c dxt.c mipmap.c misc.c
 OBJS=$(SRCS:.c=.o)
 
-LIBS=$(shell pkg-config --libs gtk+-2.0 gimp-2.0 gimpui-2.0) -lm
+LIBS=$(shell PKG_CONFIG_PATH=/opt/gimp-2.9/lib/pkgconfig pkg-config --libs gtk+-2.0 gimp-2.0 gimpui-2.0) -lm
 
 ifdef VERBOSE
 Q=
