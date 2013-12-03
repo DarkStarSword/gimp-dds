@@ -956,12 +956,13 @@ static void encode_alpha_block_BC3(unsigned char *dst,
    }
 }
 
+#define BLOCK_COUNT(w, h)          ((((h) + 3) >> 2) * (((w) + 3) >> 2))
 #define BLOCK_OFFSET(x, y, w, bs)  (((y) >> 2) * ((bs) * (((w) + 3) >> 2)) + ((bs) * ((x) >> 2)))
 
 static void compress_BC1(unsigned char *dst, const unsigned char *src,
                          int w, int h, int flags)
 {
-   const unsigned int block_count = ((h + 3) >> 2) * ((w + 3) >> 2);
+   const unsigned int block_count = BLOCK_COUNT(w, h);
    unsigned int i;
    unsigned char block[64], *p;
    int x, y;
@@ -982,7 +983,7 @@ static void compress_BC1(unsigned char *dst, const unsigned char *src,
 static void compress_BC2(unsigned char *dst, const unsigned char *src,
                          int w, int h, int flags)
 {
-   const unsigned int block_count = ((h + 3) >> 2) * ((w + 3) >> 2);
+   const unsigned int block_count = BLOCK_COUNT(w, h);
    unsigned int i;
    unsigned char block[64], *p;
    int x, y;
@@ -1004,7 +1005,7 @@ static void compress_BC2(unsigned char *dst, const unsigned char *src,
 static void compress_BC3(unsigned char *dst, const unsigned char *src,
                          int w, int h, int flags)
 {
-   const unsigned int block_count = ((h + 3) >> 2) * ((w + 3) >> 2);
+   const unsigned int block_count = BLOCK_COUNT(w, h);
    unsigned int i;
    unsigned char block[64], *p;
    int x, y;
@@ -1026,7 +1027,7 @@ static void compress_BC3(unsigned char *dst, const unsigned char *src,
 static void compress_BC4(unsigned char *dst, const unsigned char *src,
                          int w, int h)
 {
-   const unsigned int block_count = ((h + 3) >> 2) * ((w + 3) >> 2);
+   const unsigned int block_count = BLOCK_COUNT(w, h);
    unsigned int i;
    unsigned char block[64], *p;
    int x, y;
@@ -1047,7 +1048,7 @@ static void compress_BC4(unsigned char *dst, const unsigned char *src,
 static void compress_BC5(unsigned char *dst, const unsigned char *src,
                          int w, int h)
 {
-   const unsigned int block_count = ((h + 3) >> 2) * ((w + 3) >> 2);
+   const unsigned int block_count = BLOCK_COUNT(w, h);
    unsigned int i;
    unsigned char block[64], *p;
    int x, y;
@@ -1069,7 +1070,7 @@ static void compress_BC5(unsigned char *dst, const unsigned char *src,
 static void compress_YCoCg(unsigned char *dst, const unsigned char *src,
                            int w, int h)
 {
-   const unsigned int block_count = ((h + 3) >> 2) * ((w + 3) >> 2);
+   const unsigned int block_count = BLOCK_COUNT(w, h);
    unsigned int i;
    unsigned char block[64], *p;
    int x, y;
