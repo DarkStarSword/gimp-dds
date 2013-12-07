@@ -799,8 +799,8 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
                       gint32 image, unsigned int level, char *prefix,
                       unsigned int *l, guchar *pixels, unsigned char *buf)
 {
-   GimpDrawable *drawable;
-   GimpPixelRgn pixel_region;
+   GeglBuffer *buffer;
+   const Babl *bablfmt = NULL;
    GimpImageType type = GIMP_RGBA_IMAGE;
    gchar *layer_name;
    gint x, y, z, n;
@@ -808,6 +808,7 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
    unsigned int width = hdr->width >> level;
    unsigned int height = hdr->height >> level;
    unsigned int size = hdr->pitch_or_linsize >> (2 * level);
+   unsigned int layerw;
    int format = DDS_COMPRESS_NONE;
 
    if(width < 1) width = 1;
@@ -817,26 +818,50 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
    {
       case 1:
          if(hdr->pixelfmt.flags & DDPF_PALETTEINDEXED8)
+         {
             type = GIMP_INDEXED_IMAGE;
+            bablfmt = babl_format("R'G'B' u8");
+         }
          else if(hdr->pixelfmt.rmask == 0xe0)
+         {
             type = GIMP_RGB_IMAGE;
+            bablfmt = babl_format("R'G'B' u8");
+         }
          else if(hdr->pixelfmt.flags & DDPF_ALPHA)
+         {
             type = GIMP_GRAYA_IMAGE;
+            bablfmt = babl_format("Y'A u8");
+         }
          else
+         {
             type = GIMP_GRAY_IMAGE;
+            bablfmt = babl_format("Y' u8");
+         }
          break;
       case 2:
          if(hdr->pixelfmt.amask == 0xf000) //RGBA4
+         {
             type = GIMP_RGBA_IMAGE;
+            bablfmt = babl_format("R'G'B'A u8");
+         }
          else if(hdr->pixelfmt.amask == 0xff00) //L8A8
+         {
             type = GIMP_GRAYA_IMAGE;
+            bablfmt = babl_format("Y'A u8");
+         }
          else if(hdr->pixelfmt.bmask == 0x1f) //R5G6B5 or RGB5A1
+         {
             type = (hdr->pixelfmt.amask == 0x8000) ? GIMP_RGBA_IMAGE : GIMP_RGB_IMAGE;
+            bablfmt = (hdr->pixelfmt.amask == 0x8000) ? babl_format("R'G'B'A u8") : babl_format("R'G'B' u8");
+         }
          else //L16
+         {
             type = GIMP_GRAY_IMAGE;
+            bablfmt = babl_format("Y' u8");
+         }
          break;
-      case 3: type = GIMP_RGB_IMAGE;   break;
-      case 4: type = GIMP_RGBA_IMAGE;  break;
+      case 3: type = GIMP_RGB_IMAGE;  bablfmt = babl_format("R'G'B' u8");  break;
+      case 4: type = GIMP_RGBA_IMAGE; bablfmt = babl_format("R'G'B'A u8"); break;
    }
 
    layer_name = (level) ? g_strdup_printf("mipmap %d %s", level, prefix) :
@@ -846,18 +871,13 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
                           GIMP_NORMAL_MODE);
    g_free(layer_name);
 
-#if GIMP_CHECK_VERSION(2, 8, 0)
    gimp_image_insert_layer(image, layer, 0, *l);
-#else
-   gimp_image_add_layer(image, layer, *l);
-#endif
 
-   if((*l)++) gimp_drawable_set_visible(layer, FALSE);
+   if((*l)++) gimp_item_set_visible(layer, FALSE);
 
-   drawable = gimp_drawable_get(layer);
-
-   gimp_pixel_rgn_init(&pixel_region, drawable, 0, 0, drawable->width,
-                       drawable->height, TRUE, FALSE);
+   buffer = gimp_drawable_get_buffer(layer);
+   
+   layerw = gegl_buffer_get_width(buffer);
 
    if(hdr->pixelfmt.flags & DDPF_FOURCC)
    {
@@ -899,8 +919,8 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
       {
          if(n >= d->tile_height)
          {
-            gimp_pixel_rgn_set_rect(&pixel_region, pixels, 0, y - n,
-                                    drawable->width, n);
+            gegl_buffer_set(buffer, GEGL_RECTANGLE(0, y - n, layerw, n), 1.0,
+                            bablfmt, pixels, GEGL_AUTO_ROWSTRIDE);
             n = 0;
             gimp_progress_update((double)y / (double)hdr->height);
          }
@@ -914,10 +934,10 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
 
          if(!(hdr->flags & DDSD_LINEARSIZE)) z = 0;
 
-         for(x = 0; x < drawable->width; ++x)
+         for(x = 0; x < layerw; ++x)
          {
             unsigned int pixel = buf[z];
-            unsigned int pos = (n * drawable->width + x) * d->gimp_bpp;
+            unsigned int pos = (n * layerw + x) * d->gimp_bpp;
 
             if(d->bpp > 1) pixel += ((unsigned int)buf[z + 1] <<  8);
             if(d->bpp > 2) pixel += ((unsigned int)buf[z + 2] << 16);
@@ -1015,8 +1035,8 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
          }
       }
 
-      gimp_pixel_rgn_set_rect(&pixel_region, pixels, 0, y - n,
-                              drawable->width, n);
+      gegl_buffer_set(buffer, GEGL_RECTANGLE(0, y - n, layerw, n), 1.0,
+                      bablfmt, pixels, GEGL_AUTO_ROWSTRIDE);
    }
    else if(hdr->pixelfmt.flags & DDPF_FOURCC)
    {
@@ -1046,23 +1066,27 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
       {
          if(n >= d->tile_height)
          {
-            gimp_pixel_rgn_set_rect(&pixel_region, pixels, 0, y - n,
-                                    drawable->width, n);
+            gegl_buffer_set(buffer, GEGL_RECTANGLE(0, y - n, layerw, n), 1.0,
+                            bablfmt, pixels, GEGL_AUTO_ROWSTRIDE);
             n = 0;
             gimp_progress_update((double)y / (double)hdr->height);
          }
 
-         memcpy(pixels + n * drawable->width * d->gimp_bpp,
-                dst + y * drawable->width * d->gimp_bpp,
+         memcpy(pixels + n * layerw * d->gimp_bpp,
+                dst + y * layerw * d->gimp_bpp,
                 width * d->gimp_bpp);
       }
 
-      gimp_pixel_rgn_set_rect(&pixel_region, pixels, 0, y - n,
-                              drawable->width, n);
-
+      gegl_buffer_set(buffer, GEGL_RECTANGLE(0, y - n, layerw, n), 1.0,
+                      bablfmt, pixels, GEGL_AUTO_ROWSTRIDE);
+      
       g_free(dst);
    }
 
+   gegl_buffer_flush(buffer);
+   
+   g_object_unref(buffer);
+   
    /* gimp dds specific.  decode encoded images */
    if(dds_read_vals.decode_images &&
       hdr->reserved.gimp_dds_special.magic1 == FOURCC('G','I','M','P') &&
@@ -1071,21 +1095,18 @@ static int load_layer(FILE *fp, dds_header_t *hdr, dds_load_info_t *d,
       switch(hdr->reserved.gimp_dds_special.extra_fourcc)
       {
          case FOURCC('A','E','X','P'):
-            decode_alpha_exp_image(drawable->drawable_id);
+            decode_alpha_exp_image(layer, FALSE);
             break;
          case FOURCC('Y','C','G','1'):
-            decode_ycocg_image(drawable->drawable_id);
+            decode_ycocg_image(layer, FALSE);
             break;
          case FOURCC('Y','C','G','2'):
-            decode_ycocg_scaled_image(drawable->drawable_id);
+            decode_ycocg_scaled_image(layer, FALSE);
             break;
          default:
             break;
       }
    }
-
-   gimp_drawable_flush(drawable);
-   gimp_drawable_detach(drawable);
 
    return(1);
 }

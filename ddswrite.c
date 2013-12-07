@@ -204,7 +204,6 @@ static int check_cubemap(gint32 image_id)
    gint *layers, num_layers;
    int cubemap = 0, i, j, k, w, h;
    char *layer_name;
-   GimpDrawable *drawable;
    GimpImageType type;
 
    layers = gimp_image_get_layers(image_id, &num_layers);
@@ -216,7 +215,7 @@ static int check_cubemap(gint32 image_id)
 
       for(i = 0; i < 6; ++i)
       {
-         layer_name = (char*)gimp_drawable_get_name(layers[i]);
+         layer_name = (char*)gimp_item_get_name(layers[i]);
          for(j = 0; j < 6; ++j)
          {
             for(k = 0; k < 4; ++k)
@@ -248,19 +247,16 @@ static int check_cubemap(gint32 image_id)
       /* make sure they are all the same size */
       if(cubemap)
       {
-         drawable = gimp_drawable_get(cubemap_faces[0]);
-         w = drawable->width;
-         h = drawable->height;
-         gimp_drawable_detach(drawable);
+         w = gimp_drawable_width(cubemap_faces[0]);
+         h = gimp_drawable_height(cubemap_faces[0]);
+         
          for(i = 1; i < 6 && cubemap; ++i)
          {
-            drawable = gimp_drawable_get(cubemap_faces[i]);
-            if(drawable->width  != w ||
-               drawable->height != h)
+            if((gimp_drawable_width(cubemap_faces[i])  != w) ||
+               (gimp_drawable_height(cubemap_faces[0]) != h))
             {
                cubemap = 0;
             }
-            gimp_drawable_detach(drawable);
          }
          /*
          if(cubemap == 0)
@@ -304,7 +300,6 @@ static int check_volume(gint32 image_id)
 {
    gint *layers, num_layers;
    int volume = 0, i, w, h;
-   GimpDrawable *drawable;
    GimpImageType type;
 
    layers = gimp_image_get_layers(image_id, &num_layers);
@@ -313,19 +308,16 @@ static int check_volume(gint32 image_id)
    {
       volume = 1;
 
-      drawable = gimp_drawable_get(layers[0]);
-      w = drawable->width;
-      h = drawable->height;
-      gimp_drawable_detach(drawable);
+      w = gimp_drawable_width(layers[0]);
+      h = gimp_drawable_height(layers[0]);
+      
       for(i = 1; i < num_layers && volume; ++i)
       {
-         drawable = gimp_drawable_get(layers[i]);
-         if(drawable->width  != w ||
-            drawable->height != h)
+         if((gimp_drawable_width(layers[i])  != w) ||
+            (gimp_drawable_height(layers[i]) != h))
          {
             volume = 0;
          }
-         gimp_drawable_detach(drawable);
       }
 
       /*
@@ -367,7 +359,6 @@ static int check_volume(gint32 image_id)
 static int check_mipmap_chain_consitency(gint32 image_id)
 {
    gint *layers, num_layers;
-   GimpDrawable *drawable = NULL;
    GimpImageType type = GIMP_RGB_IMAGE;
    int i, w, h, mipw, miph, mipmaps = 1;
    int max_w = 0, max_h = 0;
@@ -379,14 +370,12 @@ static int check_mipmap_chain_consitency(gint32 image_id)
    /* find largest layer */
    for(i = 0; i < num_layers; ++i)
    {
-      drawable = gimp_drawable_get(layers[i]);
-      if((drawable->width * drawable->height) > (max_w * max_h))
+      if((gimp_drawable_width(layers[i]) * gimp_drawable_height(layers[i])) > (max_w * max_h))
       {
          type = gimp_drawable_type(layers[i]);
-         max_w = drawable->width;
-         max_h = drawable->height;
+         max_w = gimp_drawable_width(layers[i]);
+         max_h = gimp_drawable_height(layers[i]);
       }
-      gimp_drawable_detach(drawable);
    }
 
    w = max_w;
@@ -398,16 +387,11 @@ static int check_mipmap_chain_consitency(gint32 image_id)
       /* search layers for the next mipmap */
       for(i = 0; i < num_layers; ++i)
       {
-         drawable = gimp_drawable_get(layers[i]);
-         if((drawable->width  == mipw) &&
-            (drawable->height == miph) &&
+         if((gimp_drawable_width(layers[i])  == mipw) &&
+            (gimp_drawable_height(layers[i]) == miph) &&
             (gimp_drawable_type(layers[i]) == type))
          {
             break;
-         }
-         else
-         {
-            gimp_drawable_detach(drawable);
          }
       }
 
@@ -418,8 +402,6 @@ static int check_mipmap_chain_consitency(gint32 image_id)
       ++mipmaps;
       w = mipw;
       h = miph;
-
-      gimp_drawable_detach(drawable);
    }
 
    return(mipmaps == num_layers);
@@ -428,7 +410,6 @@ static int check_mipmap_chain_consitency(gint32 image_id)
 static gint32 get_mipmap0_drawable_id(gint32 image_id)
 {
    gint *layers, num_layers;
-   GimpDrawable *drawable = NULL;
    int i, max_w = 0, max_h = 0;
    gint32 max_layer_id = -1;
 
@@ -437,14 +418,12 @@ static gint32 get_mipmap0_drawable_id(gint32 image_id)
    /* find largest layer */
    for(i = 0; i < num_layers; ++i)
    {
-      drawable = gimp_drawable_get(layers[i]);
-      if((drawable->width * drawable->height) > (max_w * max_h))
+      if((gimp_drawable_width(layers[i]) * gimp_drawable_height(layers[i])) > (max_w * max_h))
       {
-         max_w = drawable->width;
-         max_h = drawable->height;
-         max_layer_id = drawable->drawable_id;
+         max_w = gimp_drawable_width(layers[i]);
+         max_h = gimp_drawable_height(layers[i]);
+         max_layer_id = layers[i];
       }
-      gimp_drawable_detach(drawable);
    }
 
    return(max_layer_id);
@@ -692,8 +671,9 @@ static void get_mipmap_chain(unsigned char *dst, int w, int h, int bpp,
                              gint32 image_id)
 {
    gint *layers, num_layers;
-   GimpDrawable *drawable;
-   GimpPixelRgn rgn;
+   gint32 drawable;
+   GeglBuffer *buffer;
+   const Babl *format = 0;
    int i, offset, mipw, miph;
 
    layers = gimp_image_get_layers(image_id, &num_layers);
@@ -702,22 +682,33 @@ static void get_mipmap_chain(unsigned char *dst, int w, int h, int bpp,
 
    while(get_next_mipmap_dimensions(&mipw, &miph, w, h))
    {
-      drawable = NULL;
+      drawable = 0;
 
       /* search layers for the next mipmap */
       for(i = 0; i < num_layers; ++i)
       {
-         drawable = gimp_drawable_get(layers[i]);
-         if((drawable->width  == mipw) &&
-            (drawable->height == miph))
+         drawable = layers[i];
+         if((gimp_drawable_width(drawable)  == mipw) &&
+            (gimp_drawable_height(drawable) == miph))
             break;
       }
 
       if(i == num_layers) return;
-      if(drawable == NULL) return;
+      if(drawable == 0) return;
+      
+      if(bpp == 1)
+         format = babl_format("Y' u8");
+      else if(bpp == 2)
+         format = babl_format("Y'A u8");
+      else if(bpp == 3)
+         format = babl_format("R'G'B' u8");
+      else
+         format = babl_format("R'G'B'A u8");
 
-      gimp_pixel_rgn_init(&rgn, drawable, 0, 0, mipw, miph, 0, 0);
-      gimp_pixel_rgn_get_rect(&rgn, dst + offset, 0, 0, mipw, miph);
+      buffer = gimp_drawable_get_buffer(drawable);
+      gegl_buffer_get(buffer, GEGL_RECTANGLE(0, 0, mipw, miph), 1.0, format,
+                      dst + offset, GEGL_AUTO_ROWSTRIDE, GEGL_ABYSS_NONE);
+      g_object_unref(buffer);
 
       /* we need BGRX or BGRA */
       if(bpp >= 3)
@@ -726,16 +717,14 @@ static void get_mipmap_chain(unsigned char *dst, int w, int h, int bpp,
       offset += (mipw * miph * bpp);
       w = mipw;
       h = miph;
-
-      gimp_drawable_detach(drawable);
    }
 }
 
 static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
                         int w, int h, int bpp, int fmtbpp, int mipmaps)
 {
-   GimpDrawable *drawable;
-   GimpPixelRgn rgn;
+   GeglBuffer *buffer;
+   const Babl *format = 0;
    GimpImageBaseType basetype;
    GimpImageType type;
    unsigned char *src, *dst, *fmtdst, *tmp;
@@ -747,10 +736,21 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
    basetype = gimp_image_base_type(image_id);
    type = gimp_drawable_type(drawable_id);
 
-   drawable = gimp_drawable_get(drawable_id);
+   buffer = gimp_drawable_get_buffer(drawable_id);
+   
    src = g_malloc(w * h * bpp);
-   gimp_pixel_rgn_init(&rgn, drawable, 0, 0, w, h, 0, 0);
-   gimp_pixel_rgn_get_rect(&rgn, src, 0, 0, w, h);
+   
+   if(bpp == 1)
+      format = babl_format("Y' u8");
+   else if(bpp == 2)
+      format = babl_format("Y'A u8");
+   else if(bpp == 3)
+      format = babl_format("R'G'B' u8");
+   else
+      format = babl_format("R'G'B'A u8");
+               
+   gegl_buffer_get(buffer, GEGL_RECTANGLE(0, 0, w, h), 1.0, format, src,
+                   GEGL_AUTO_ROWSTRIDE, GEGL_ABYSS_NONE);
 
    if(basetype == GIMP_INDEXED)
    {
@@ -785,15 +785,15 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
          bpp = 4;
       }
 
-      for(y = 0; y < drawable->height; ++y)
+      for(y = 0; y < h; ++y)
       {
-         for(x = 0; x < drawable->width; ++x)
+         for(x = 0; x < w; ++x)
          {
             /* set alpha to red (x) */
-            src[y * (drawable->width * 4) + (x * 4) + 3] =
-               src[y * (drawable->width * 4) + (x * 4) + 2];
+            src[y * (w * 4) + (x * 4) + 3] =
+               src[y * (w * 4) + (x * 4) + 2];
             /* set red to 1 */
-            src[y * (drawable->width * 4) + (x * 4) + 2] = 255;
+            src[y * (w * 4) + (x * 4) + 2] = 255;
          }
       }
    }
@@ -812,15 +812,15 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
          bpp = 4;
       }
 
-      for(y = 0; y < drawable->height; ++y)
+      for(y = 0; y < h; ++y)
       {
-         for(x = 0; x < drawable->width; ++x)
+         for(x = 0; x < w; ++x)
          {
             /* swap red and alpha */
-            c = src[y * (drawable->width * 4) + (x * 4) + 3];
-            src[y * (drawable->width * 4) + (x * 4) + 3] =
-               src[y * (drawable->width * 4) + (x * 4) + 2];
-            src[y * (drawable->width * 4) + (x * 4) + 2] = c;
+            c = src[y * (w * 4) + (x * 4) + 3];
+            src[y * (w * 4) + (x * 4) + 3] =
+               src[y * (w * 4) + (x * 4) + 2];
+            src[y * (w * 4) + (x * 4) + 2] = c;
          }
       }
    }
@@ -980,7 +980,7 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
 
    g_free(src);
 
-   gimp_drawable_detach(drawable);
+   g_object_unref(buffer);
 }
 
 static void write_volume_mipmaps(FILE *fp, gint32 image_id, gint32 *layers,
@@ -990,8 +990,8 @@ static void write_volume_mipmaps(FILE *fp, gint32 image_id, gint32 *layers,
    int i, size, offset, colors;
    unsigned char *src, *dst, *tmp, *fmtdst;
    unsigned char *palette = 0;
-   GimpDrawable *drawable;
-   GimpPixelRgn rgn;
+   GeglBuffer *buffer;
+   const Babl *format;
    GimpImageBaseType type;
 
    type = gimp_image_base_type(image_id);
@@ -1000,17 +1000,26 @@ static void write_volume_mipmaps(FILE *fp, gint32 image_id, gint32 *layers,
 
    src = g_malloc(w * h * bpp * d);
 
+   if(bpp == 1)
+      format = babl_format("Y' u8");
+   else if(bpp == 2)
+      format = babl_format("Y'A u8");
+   else if(bpp == 3)
+      format = babl_format("R'G'B' u8");
+   else
+      format = babl_format("R'G'B'A u8");
+               
    if(gimp_image_base_type(image_id) == GIMP_INDEXED)
       palette = gimp_image_get_colormap(image_id, &colors);
 
    offset = 0;
    for(i = 0; i < d; ++i)
    {
-      drawable = gimp_drawable_get(layers[i]);
-      gimp_pixel_rgn_init(&rgn, drawable, 0, 0, w, h, 0, 0);
-      gimp_pixel_rgn_get_rect(&rgn, src + offset, 0, 0, w, h);
+      buffer = gimp_drawable_get_buffer(layers[i]);
+      gegl_buffer_get(buffer, GEGL_RECTANGLE(0, 0, w, h), 1.0, format,
+                      src + offset, GEGL_AUTO_ROWSTRIDE, GEGL_ABYSS_NONE);
       offset += (w * h * bpp);
-      gimp_drawable_detach(drawable);
+      g_object_unref(buffer);
    }
 
    if(gimp_drawable_type(layers[0]) == GIMP_INDEXEDA_IMAGE)
@@ -1079,10 +1088,8 @@ static void write_volume_mipmaps(FILE *fp, gint32 image_id, gint32 *layers,
 
 static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
 {
-   GimpDrawable *drawable;
    GimpImageType drawable_type;
    GimpImageBaseType basetype;
-   GimpPixelRgn rgn;
    int i, w, h, bpp = 0, fmtbpp = 0, has_alpha = 0;
    int num_mipmaps;
    unsigned char hdr[DDS_HEADERSIZE], hdr10[DDS_HEADERSIZE_DX10];
@@ -1098,14 +1105,11 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
 
    layers = gimp_image_get_layers(image_id, &num_layers);
 
-   drawable = gimp_drawable_get(drawable_id);
-
-   w = drawable->width;
-   h = drawable->height;
+   w = gimp_drawable_width(drawable_id);
+   h = gimp_drawable_height(drawable_id);
 
    basetype = gimp_image_base_type(image_id);
    drawable_type = gimp_drawable_type(drawable_id);
-   gimp_pixel_rgn_init(&rgn, drawable, 0, 0, w, h, 0, 0);
 
    switch(drawable_type)
    {
@@ -1451,8 +1455,6 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    }
 
    gimp_progress_update(1.0);
-
-   gimp_drawable_detach(drawable);
 
    return(1);
 }

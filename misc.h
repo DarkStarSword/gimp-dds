@@ -23,8 +23,8 @@
 #ifndef MISC_H
 #define MISC_H
 
-void decode_ycocg_image(gint32 drawableID);
-void decode_ycocg_scaled_image(gint32 drawableID);
-void decode_alpha_exp_image(gint32 drawableID);
+void decode_ycocg_image(gint32 drawableID, gboolean shadow);
+void decode_ycocg_scaled_image(gint32 drawableID, gboolean shadow);
+void decode_alpha_exp_image(gint32 drawableID, gboolean shadow);
 
 #endif

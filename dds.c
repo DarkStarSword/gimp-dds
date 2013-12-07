@@ -190,6 +190,8 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
 	gint32 imageID;
 	gint32 drawableID;
 	GimpExportReturn export = GIMP_EXPORT_CANCEL;
+   
+   gegl_init(NULL, NULL);
 
 	run_mode = param[0].data.d_int32;
 
@@ -332,7 +334,7 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
 		imageID = param[1].data.d_int32;
 		drawableID = param[2].data.d_int32;
 
-      decode_ycocg_image(drawableID);
+      decode_ycocg_image(drawableID, TRUE);
 
       status = GIMP_PDB_SUCCESS;
 
@@ -344,7 +346,7 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
 		imageID = param[1].data.d_int32;
 		drawableID = param[2].data.d_int32;
 
-      decode_ycocg_scaled_image(drawableID);
+      decode_ycocg_scaled_image(drawableID, TRUE);
 
       status = GIMP_PDB_SUCCESS;
 
@@ -356,7 +358,7 @@ static void run(const gchar *name, gint nparams, const GimpParam *param,
 		imageID = param[1].data.d_int32;
 		drawableID = param[2].data.d_int32;
 
-      decode_alpha_exp_image(drawableID);
+      decode_alpha_exp_image(drawableID, TRUE);
 
       status = GIMP_PDB_SUCCESS;
 

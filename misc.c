@@ -29,28 +29,36 @@ static inline float saturate(float a)
    return(a);
 }
 
-void decode_ycocg_image(gint32 drawableID)
+void decode_ycocg_image(gint32 drawableID, gboolean shadow)
 {
-   GimpDrawable *drawable;
-   GimpPixelRgn srgn, drgn;
+   GeglBuffer *buffer, *sbuffer;
+   const Babl *format;
    unsigned char *data;
    unsigned int i, w, h, num_pixels;
 
    const float offset = 0.5f * 256.0f / 255.0f;
    float Y, Co, Cg, R, G, B;
 
-   drawable = gimp_drawable_get(drawableID);
+   buffer = gimp_drawable_get_buffer(drawableID);
 
-   w = drawable->width;
-   h = drawable->height;
+   if(shadow)
+   {
+      sbuffer = gimp_drawable_get_shadow_buffer(drawableID);
+      gegl_buffer_copy(buffer, NULL, sbuffer, NULL);
+      g_object_unref(buffer);
+      buffer = sbuffer;
+   }
+         
+   format = babl_format("R'G'B'A u8");
+
+   w = gegl_buffer_get_width(buffer);
+   h = gegl_buffer_get_height(buffer);
    num_pixels = w * h;
-
+   
    data = g_malloc(num_pixels * 4);
-
-   gimp_pixel_rgn_init(&srgn, drawable, 0, 0, w, h, 0, 0);
-   gimp_pixel_rgn_init(&drgn, drawable, 0, 0, w, h, 1, 1);
-
-   gimp_pixel_rgn_get_rect(&srgn, data, 0, 0, w, h);
+   
+   gegl_buffer_get(buffer, GEGL_RECTANGLE(0, 0, w, h), 1.0, format, data,
+                   GEGL_AUTO_ROWSTRIDE, GEGL_ABYSS_NONE);
 
    gimp_progress_init("Decoding YCoCg pixels...");
 
@@ -75,45 +83,58 @@ void decode_ycocg_image(gint32 drawableID)
       data[4 * i + 1] = (unsigned char)(G * 255.0f);
       data[4 * i + 2] = (unsigned char)(B * 255.0f);
 
-      if((i & 255) == 0)
+      if((i & 0x7fff) == 0)
          gimp_progress_update((float)i / (float)num_pixels);
    }
 
-   gimp_pixel_rgn_set_rect(&drgn, data, 0, 0, w, h);
+   gegl_buffer_set(buffer, GEGL_RECTANGLE(0, 0, w, h), 1.0, format, data,
+                   GEGL_AUTO_ROWSTRIDE);
 
    gimp_progress_update(1.0);
 
-   gimp_drawable_flush(drawable);
-   gimp_drawable_merge_shadow(drawable->drawable_id, 1);
-   gimp_drawable_update(drawable->drawable_id, 0, 0, w, h);
-   gimp_drawable_detach(drawable);
+   gegl_buffer_flush(buffer);
+   
+   if(shadow)
+      gimp_drawable_merge_shadow(drawableID, TRUE);
+   
+   gimp_drawable_update(drawableID, 0, 0, w, h);
 
    g_free(data);
+   
+   g_object_unref(buffer);
 }
 
-void decode_ycocg_scaled_image(gint32 drawableID)
+void decode_ycocg_scaled_image(gint32 drawableID, gboolean shadow)
 {
-   GimpDrawable *drawable;
-   GimpPixelRgn srgn, drgn;
+   GeglBuffer *buffer, *sbuffer;
+   const Babl *format;
    unsigned char *data;
    unsigned int i, w, h, num_pixels;
 
    const float offset = 0.5f * 256.0f / 255.0f;
    float Y, Co, Cg, R, G, B, s;
 
-   drawable = gimp_drawable_get(drawableID);
-
-   w = drawable->width;
-   h = drawable->height;
+   buffer = gimp_drawable_get_buffer(drawableID);
+   
+   if(shadow)
+   {
+      sbuffer = gimp_drawable_get_shadow_buffer(drawableID);
+      gegl_buffer_copy(buffer, NULL, sbuffer, NULL);
+      g_object_unref(buffer);
+      buffer = sbuffer;
+   }
+   
+   format = babl_format("R'G'B'A u8");
+   
+   w = gegl_buffer_get_width(buffer);
+   h = gegl_buffer_get_height(buffer);
    num_pixels = w * h;
-
+      
    data = g_malloc(num_pixels * 4);
-
-   gimp_pixel_rgn_init(&srgn, drawable, 0, 0, w, h, 0, 0);
-   gimp_pixel_rgn_init(&drgn, drawable, 0, 0, w, h, 1, 1);
-
-   gimp_pixel_rgn_get_rect(&srgn, data, 0, 0, w, h);
-
+   
+   gegl_buffer_get(buffer, GEGL_RECTANGLE(0, 0, w, h), 1.0, format, data,
+                   GEGL_AUTO_ROWSTRIDE, GEGL_ABYSS_NONE);
+   
    gimp_progress_init("Decoding YCoCg (scaled) pixels...");
 
    for(i = 0; i < num_pixels; ++i)
@@ -140,43 +161,56 @@ void decode_ycocg_scaled_image(gint32 drawableID)
       /* set alpha to 1 */
       data[4 * i + 3] = 255;
 
-      if((i & 255) == 0)
+      if((i & 0x7fff) == 0)
          gimp_progress_update((float)i / (float)num_pixels);
    }
 
-   gimp_pixel_rgn_set_rect(&drgn, data, 0, 0, w, h);
-
+   gegl_buffer_set(buffer, GEGL_RECTANGLE(0, 0, w, h), 1.0, format, data,
+                   GEGL_AUTO_ROWSTRIDE);
+   
    gimp_progress_update(1.0);
+   
+   gegl_buffer_flush(buffer);
 
-   gimp_drawable_flush(drawable);
-   gimp_drawable_merge_shadow(drawable->drawable_id, 1);
-   gimp_drawable_update(drawable->drawable_id, 0, 0, w, h);
-   gimp_drawable_detach(drawable);
+   if(shadow)
+      gimp_drawable_merge_shadow(drawableID, TRUE);
 
+   gimp_drawable_update(drawableID, 0, 0, w, h);
+   
    g_free(data);
+   
+   g_object_unref(buffer);
 }
 
-void decode_alpha_exp_image(gint32 drawableID)
+void decode_alpha_exp_image(gint32 drawableID, gboolean shadow)
 {
-   GimpDrawable *drawable;
-   GimpPixelRgn srgn, drgn;
+   GeglBuffer *buffer, *sbuffer;
+   const Babl *format;
    unsigned char *data;
    unsigned int i, w, h, num_pixels;
    int R, G, B, A;
 
-   drawable = gimp_drawable_get(drawableID);
-
-   w = drawable->width;
-   h = drawable->height;
+   buffer = gimp_drawable_get_buffer(drawableID);
+   
+   if(shadow)
+   {
+      sbuffer = gimp_drawable_get_shadow_buffer(drawableID);
+      gegl_buffer_copy(buffer, NULL, sbuffer, NULL);
+      g_object_unref(buffer);
+      buffer = sbuffer;
+   }
+   
+   format = babl_format("R'G'B'A u8");
+   
+   w = gegl_buffer_get_width(buffer);
+   h = gegl_buffer_get_height(buffer);
    num_pixels = w * h;
-
+      
    data = g_malloc(num_pixels * 4);
-
-   gimp_pixel_rgn_init(&srgn, drawable, 0, 0, w, h, 0, 0);
-   gimp_pixel_rgn_init(&drgn, drawable, 0, 0, w, h, 1, 1);
-
-   gimp_pixel_rgn_get_rect(&srgn, data, 0, 0, w, h);
-
+   
+   gegl_buffer_get(buffer, GEGL_RECTANGLE(0, 0, w, h), 1.0, format, data,
+                   GEGL_AUTO_ROWSTRIDE, GEGL_ABYSS_NONE);
+   
    gimp_progress_init("Decoding Alpha-exponent pixels...");
 
    for(i = 0; i < num_pixels; ++i)
@@ -196,18 +230,23 @@ void decode_alpha_exp_image(gint32 drawableID)
       data[4 * i + 2] = B;
       data[4 * i + 3] = A;
 
-      if((i & 255) == 0)
+      if((i & 0x7fff) == 0)
          gimp_progress_update((float)i / (float)num_pixels);
    }
 
-   gimp_pixel_rgn_set_rect(&drgn, data, 0, 0, w, h);
-
+   gegl_buffer_set(buffer, GEGL_RECTANGLE(0, 0, w, h), 1.0, format, data,
+                   GEGL_AUTO_ROWSTRIDE);
+   
    gimp_progress_update(1.0);
+   
+   gegl_buffer_flush(buffer);
 
-   gimp_drawable_flush(drawable);
-   gimp_drawable_merge_shadow(drawable->drawable_id, 1);
-   gimp_drawable_update(drawable->drawable_id, 0, 0, w, h);
-   gimp_drawable_detach(drawable);
+   if(shadow)
+      gimp_drawable_merge_shadow(drawableID, TRUE);
 
+   gimp_drawable_update(drawableID, 0, 0, w, h);
+   
    g_free(data);
+   
+   g_object_unref(buffer);
 }
