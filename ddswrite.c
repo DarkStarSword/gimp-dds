@@ -26,6 +26,7 @@
 #include <math.h>
 
 #include <gtk/gtk.h>
+#include <glib/gstdio.h>
 
 #include <libgimp/gimp.h>
 #include <libgimp/gimpui.h>
@@ -508,7 +509,7 @@ GimpPDBStatusType write_dds(gchar *filename, gint32 image_id, gint32 drawable_id
       }
    }
 
-   fp = fopen(filename, "wb");
+   fp = g_fopen(filename, "wb");
    if(fp == 0)
    {
       g_message("Error opening %s", filename);
