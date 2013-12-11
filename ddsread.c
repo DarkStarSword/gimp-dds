@@ -33,6 +33,7 @@
 #include <string.h>
 
 #include <gtk/gtk.h>
+#include <glib/gstdio.h>
 
 #include <libgimp/gimp.h>
 #include <libgimp/gimpui.h>
@@ -94,7 +95,7 @@ GimpPDBStatusType read_dds(gchar *filename, gint32 *imageID)
          return(GIMP_PDB_CANCEL);
    }
 
-   fp = fopen(filename, "rb");
+   fp = g_fopen(filename, "rb");
    if(fp == 0)
    {
       g_message("Error opening file.\n");
