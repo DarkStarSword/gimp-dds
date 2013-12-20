@@ -77,10 +77,12 @@ static const char *cubemap_face_names[4][6] =
 static gint cubemap_faces[6];
 static gint is_cubemap = 0;
 static gint is_volume = 0;
+static gint is_array = 0;
 static gint is_mipmap_chain_valid = 0;
 
 static GtkWidget *compress_opt;
 static GtkWidget *format_opt;
+static GtkWidget *mipmap_opt;
 static GtkWidget *mipmap_filter_opt;
 static GtkWidget *mipmap_wrap_opt;
 static GtkWidget *srgb_chk;
@@ -165,7 +167,7 @@ static string_value_t mipmap_wrap_strings[] =
 
 static string_value_t save_type_strings[] =
 {
-   {DDS_SAVE_SELECTED_LAYER, "Selected layer"},
+   {DDS_SAVE_SELECTED_LAYER, "Image / Selected layer"},
    {DDS_SAVE_CUBEMAP,        "As cube map"},
    {DDS_SAVE_VOLUMEMAP,      "As volume map"},
    {DDS_SAVE_ARRAY,          "As texture array"},
@@ -200,20 +202,157 @@ static struct
    {DDS_FORMAT_YCOCG,   DXGI_FORMAT_B8G8R8A8_UNORM,    4, 1, 0x00ff0000, 0x0000ff00, 0x000000ff, 0xff000000}
 };
 
+static int check_mipmaps(gint32 image_id, int savetype)
+{
+   gint *layers, num_layers;
+   int i, j, w, h, mipw, miph, num_mipmaps, num_surfaces = 0;
+   int min_surfaces = 1, max_surfaces = 1;
+   int valid = 1;
+   GimpImageType type;
+   
+   /* not handling volume maps for the moment... */
+   if(savetype == DDS_SAVE_VOLUMEMAP)
+      return(0);
+   
+   if(savetype == DDS_SAVE_CUBEMAP)
+   {
+      min_surfaces = 6;
+      max_surfaces = 6;
+   }
+   else if(savetype == DDS_SAVE_ARRAY)
+   {
+      min_surfaces = 2;
+      max_surfaces = INT_MAX;
+   }
+   
+   layers = gimp_image_get_layers(image_id, &num_layers);
+   
+   w = gimp_image_width(image_id);
+   h = gimp_image_height(image_id);
+   
+   num_mipmaps = get_num_mipmaps(w, h);
+   
+   type = gimp_drawable_type(layers[0]);
+   
+   for(i = 0; i < num_layers; ++i)
+   {
+      if(type != gimp_drawable_type(layers[i]))
+         return(0);
+      
+      if((gimp_drawable_width(layers[i])  == w) &&
+         (gimp_drawable_height(layers[i]) == h))
+         ++num_surfaces;
+   }
+   
+   if((num_surfaces < min_surfaces) ||
+      (num_surfaces > max_surfaces) ||
+      (num_layers != (num_surfaces * num_mipmaps)))
+      return(0);
+   
+   for(i = 0; valid && i < num_layers; i += num_mipmaps)
+   {
+      if((gimp_drawable_width(layers[i])  != w) ||
+         (gimp_drawable_height(layers[i]) != h))
+      {
+         valid = 0;
+         break;
+      }
+      
+      for(j = 1; j < num_mipmaps; ++j)
+      {
+         mipw = w >> j;
+         miph = h >> j;
+         if(mipw < 1) mipw = 1;
+         if(miph < 1) miph = 1;
+         if((gimp_drawable_width(layers[i + j])  != mipw) ||
+            (gimp_drawable_height(layers[i + j]) != miph))
+         {
+            valid = 0;
+            break;
+         }
+      }
+   }
+   
+   return(valid);
+}
+
 static int check_cubemap(gint32 image_id)
 {
    gint *layers, num_layers;
-   int cubemap = 0, i, j, k, w, h;
+   int cubemap = 1, i, j, k, w, h;
    char *layer_name;
    GimpImageType type;
-
+   
    layers = gimp_image_get_layers(image_id, &num_layers);
-
-   if(num_layers == 6)
+   
+   if(num_layers < 6) return(0);
+   
+   /* check for a valid cubemap with mipmap layers */
+   if(num_layers > 6)
    {
+      /* check that mipmap layers are in order for a cubemap */
+      if(!check_mipmaps(image_id, DDS_SAVE_CUBEMAP))
+         return(0);
+      
+      /* invalidate cubemap faces */
       for(i = 0; i < 6; ++i)
          cubemap_faces[i] = -1;
-
+      
+      /* find the mipmap level 0 layers */
+      w = gimp_image_width(image_id);
+      h = gimp_image_height(image_id);
+      
+      for(i = 0; i < num_layers; ++i)
+      {
+         if((gimp_drawable_width(layers[i])  != w) ||
+            (gimp_drawable_height(layers[i]) != h))
+            continue;
+         
+         layer_name = (char*)gimp_item_get_name(layers[i]);
+         for(j = 0; j < 6; ++j)
+         {
+            for(k = 0; k < 4; ++k)
+            {
+               if(strstr(layer_name, cubemap_face_names[k][j]))
+               {
+                  if(cubemap_faces[j] == -1)
+                  {
+                     cubemap_faces[j] = layers[i];
+                     break;
+                  }
+               }
+            }
+         }
+      }
+      
+      /* check for 6 valid faces */
+      for(i = 0; i < 6; ++i)
+      {
+         if(cubemap_faces[i] == -1)
+         {
+            cubemap = 0;
+            break;
+         }
+      }
+      
+      /* make sure they are all the same type */
+      if(cubemap)
+      {
+         type = gimp_drawable_type(cubemap_faces[0]);
+         for(i = 1; i < 6 && cubemap; ++i)
+         {
+            if(gimp_drawable_type(cubemap_faces[i]) != type)
+               cubemap = 0;
+         }
+      }
+   }   
+   
+   if(num_layers == 6)
+   {
+      /* invalidate cubemap faces */
+      for(i = 0; i < 6; ++i)
+         cubemap_faces[i] = -1;
+      
       for(i = 0; i < 6; ++i)
       {
          layer_name = (char*)gimp_item_get_name(layers[i]);
@@ -232,9 +371,7 @@ static int check_cubemap(gint32 image_id)
             }
          }
       }
-
-      cubemap = 1;
-
+      
       /* check for 6 valid faces */
       for(i = 0; i < 6; ++i)
       {
@@ -244,7 +381,7 @@ static int check_cubemap(gint32 image_id)
             break;
          }
       }
-
+      
       /* make sure they are all the same size */
       if(cubemap)
       {
@@ -254,46 +391,23 @@ static int check_cubemap(gint32 image_id)
          for(i = 1; i < 6 && cubemap; ++i)
          {
             if((gimp_drawable_width(cubemap_faces[i])  != w) ||
-               (gimp_drawable_height(cubemap_faces[0]) != h))
-            {
+               (gimp_drawable_height(cubemap_faces[i]) != h))
                cubemap = 0;
-            }
          }
-         /*
-         if(cubemap == 0)
-         {
-            g_message("DDS: It appears that your image is a cube map,\n"
-                      "but not all layers are the same size, thus a cube\n"
-                      "map cannot be written.");
-         }
-         */
       }
-
+      
       /* make sure they are all the same type */
       if(cubemap)
       {
          type = gimp_drawable_type(cubemap_faces[0]);
-         for(i = 1; i < 6; ++i)
+         for(i = 1; i < 6 && cubemap; ++i)
          {
             if(gimp_drawable_type(cubemap_faces[i]) != type)
-            {
                cubemap = 0;
-               break;
-            }
          }
-
-         /*
-         if(cubemap == 0)
-         {
-            g_message("DDS: It appears that your image is a cube map,\n"
-                      "but not all layers are the same type, thus a cube\n"
-                      "map cannot be written (Perhaps some layers have\n"
-                      "transparency and others do not?).");
-         }
-         */
       }
    }
-
+   
    return(cubemap);
 }
 
@@ -302,13 +416,14 @@ static int check_volume(gint32 image_id)
    gint *layers, num_layers;
    int volume = 0, i, w, h;
    GimpImageType type;
-
+   
    layers = gimp_image_get_layers(image_id, &num_layers);
-
+   
    if(num_layers > 1)
    {
       volume = 1;
-
+      
+      /* make sure all layers are the same size */
       w = gimp_drawable_width(layers[0]);
       h = gimp_drawable_height(layers[0]);
       
@@ -316,118 +431,85 @@ static int check_volume(gint32 image_id)
       {
          if((gimp_drawable_width(layers[i])  != w) ||
             (gimp_drawable_height(layers[i]) != h))
-         {
             volume = 0;
-         }
       }
-
-      /*
-      if(!volume)
-      {
-         g_message("DDS: It appears your image may be a volume map,\n"
-                   "but not all layers are the same size, thus a volume\n"
-                   "map cannot be written.");
-      }
-      */
-
+      
       if(volume)
       {
+         /* make sure all layers are the same type */
+         type = gimp_drawable_type(layers[0]);
+         for(i = 1; i < num_layers && volume; ++i)
+         {
+            if(gimp_drawable_type(layers[i]) != type)
+               volume = 0;
+         }
+      }
+   }
+   
+   return(volume);
+}
+
+static int check_array(gint32 image_id)
+{
+   gint *layers, num_layers;
+   int array = 0, i, w, h;
+   GimpImageType type;
+   
+   if(check_mipmaps(image_id, DDS_SAVE_ARRAY))
+      return(1);
+   
+   layers = gimp_image_get_layers(image_id, &num_layers);
+   
+   if(num_layers > 1)
+   {
+      array = 1;
+      
+      /* make sure all layers are the same size */
+      w = gimp_drawable_width(layers[0]);
+      h = gimp_drawable_height(layers[0]);
+      
+      for(i = 1; i < num_layers && array; ++i)
+      {
+         if((gimp_drawable_width(layers[i])  != w) ||
+            (gimp_drawable_height(layers[i]) != h))
+            array = 0;
+      }
+      
+      if(array)
+      {
+         /* make sure all layers are the same type */
          type = gimp_drawable_type(layers[0]);
          for(i = 1; i < num_layers; ++i)
          {
             if(gimp_drawable_type(layers[i]) != type)
             {
-               volume = 0;
+               array = 0;
                break;
             }
          }
-
-         /*
-         if(!volume)
-         {
-            g_message("DDS: It appears your image may be a volume map,\n"
-                      "but not all layers are the same type, thus a volume\n"
-                      "map cannot be written (Perhaps some layers have\n"
-                      "transparency and others do not?).");
-         }
-         */
       }
    }
-
-   return(volume);
+   
+   return(array);
 }
 
-static int check_mipmap_chain_consitency(gint32 image_id)
+static int get_array_size(gint32 image_id)
 {
    gint *layers, num_layers;
-   GimpImageType type = GIMP_RGB_IMAGE;
-   int i, w, h, mipw, miph, mipmaps = 1;
-   int max_w = 0, max_h = 0;
-
+   int i, w, h, elements = 0;
+   
    layers = gimp_image_get_layers(image_id, &num_layers);
-
-   if(num_layers == 1) return(0);
-
-   /* find largest layer */
+   
+   w = gimp_image_width(image_id);
+   h = gimp_image_height(image_id);
+   
    for(i = 0; i < num_layers; ++i)
    {
-      if((gimp_drawable_width(layers[i]) * gimp_drawable_height(layers[i])) > (max_w * max_h))
-      {
-         type = gimp_drawable_type(layers[i]);
-         max_w = gimp_drawable_width(layers[i]);
-         max_h = gimp_drawable_height(layers[i]);
-      }
+      if((gimp_drawable_width(layers[i]) == w) && (gimp_drawable_height(layers[i]) == h))
+         ++elements;
    }
-
-   w = max_w;
-   h = max_h;
-
-   /* look for a complete mipmap chain */
-   while(get_next_mipmap_dimensions(&mipw, &miph, w, h))
-   {
-      /* search layers for the next mipmap */
-      for(i = 0; i < num_layers; ++i)
-      {
-         if((gimp_drawable_width(layers[i])  == mipw) &&
-            (gimp_drawable_height(layers[i]) == miph) &&
-            (gimp_drawable_type(layers[i]) == type))
-         {
-            break;
-         }
-      }
-
-      /* a layer meeting the needed mipmap dimensions was not found */
-      if(i == num_layers)
-         break;
-
-      ++mipmaps;
-      w = mipw;
-      h = miph;
-   }
-
-   return(mipmaps == num_layers);
-}
-
-static gint32 get_mipmap0_drawable_id(gint32 image_id)
-{
-   gint *layers, num_layers;
-   int i, max_w = 0, max_h = 0;
-   gint32 max_layer_id = -1;
-
-   layers = gimp_image_get_layers(image_id, &num_layers);
-
-   /* find largest layer */
-   for(i = 0; i < num_layers; ++i)
-   {
-      if((gimp_drawable_width(layers[i]) * gimp_drawable_height(layers[i])) > (max_w * max_h))
-      {
-         max_w = gimp_drawable_width(layers[i]);
-         max_h = gimp_drawable_height(layers[i]);
-         max_layer_id = layers[i];
-      }
-   }
-
-   return(max_layer_id);
+   
+   return(elements);
 }
 
 GimpPDBStatusType write_dds(gchar *filename, gint32 image_id, gint32 drawable_id)
@@ -436,20 +518,12 @@ GimpPDBStatusType write_dds(gchar *filename, gint32 image_id, gint32 drawable_id
    gchar *tmp;
    int rc = 0;
 
-   is_mipmap_chain_valid = check_mipmap_chain_consitency(image_id);
-
+   is_mipmap_chain_valid = check_mipmaps(image_id, dds_write_vals.savetype);
+   
    is_cubemap = check_cubemap(image_id);
    is_volume = check_volume(image_id);
-
-   /*
-    a valid mipmap chain was detected, and user wants to save with
-    existing mipmaps.  Override the drawable_id passed (selected layer)
-    and find the drawable_id of the top level (largest) mipmap layer.
-   */
-   if(is_mipmap_chain_valid &&
-      dds_write_vals.mipmaps == DDS_MIPMAP_EXISTING)
-      drawable_id = get_mipmap0_drawable_id(image_id);
-
+   is_array = check_array(image_id);
+   
    if(interactive_dds)
    {
       if(!is_mipmap_chain_valid &&
@@ -669,44 +743,48 @@ static void convert_pixels(unsigned char *dst, unsigned char *src,
 }
 
 static void get_mipmap_chain(unsigned char *dst, int w, int h, int bpp,
-                             gint32 image_id)
+                             gint32 image_id, gint drawable_id)
 {
    gint *layers, num_layers;
-   gint32 drawable;
    GeglBuffer *buffer;
    const Babl *format = 0;
-   int i, offset, mipw, miph;
+   int i, idx = 0, offset, mipw, miph;
 
+   if(bpp == 1)
+      format = babl_format("Y' u8");
+   else if(bpp == 2)
+      format = babl_format("Y'A u8");
+   else if(bpp == 3)
+      format = babl_format("R'G'B' u8");
+   else
+      format = babl_format("R'G'B'A u8");
+               
    layers = gimp_image_get_layers(image_id, &num_layers);
-
+   
+   for(i = 0; i < num_layers; ++i)
+   {
+      if(layers[i] == drawable_id)
+      {
+         idx = i;
+         break;
+      }
+   }
+   
+   if(i == num_layers) return;
+   
    offset = 0;
 
    while(get_next_mipmap_dimensions(&mipw, &miph, w, h))
    {
-      drawable = 0;
-
-      /* search layers for the next mipmap */
-      for(i = 0; i < num_layers; ++i)
-      {
-         drawable = layers[i];
-         if((gimp_drawable_width(drawable)  == mipw) &&
-            (gimp_drawable_height(drawable) == miph))
-            break;
-      }
-
-      if(i == num_layers) return;
-      if(drawable == 0) return;
+      buffer = gimp_drawable_get_buffer(layers[++idx]);
       
-      if(bpp == 1)
-         format = babl_format("Y' u8");
-      else if(bpp == 2)
-         format = babl_format("Y'A u8");
-      else if(bpp == 3)
-         format = babl_format("R'G'B' u8");
-      else
-         format = babl_format("R'G'B'A u8");
-
-      buffer = gimp_drawable_get_buffer(drawable);
+      if((gegl_buffer_get_width(buffer)  != mipw) ||
+         (gegl_buffer_get_height(buffer) != miph))
+      {
+         g_object_unref(buffer);
+         return;
+      }
+      
       gegl_buffer_get(buffer, GEGL_RECTANGLE(0, 0, mipw, miph), 1.0, format,
                       dst + offset, GEGL_AUTO_ROWSTRIDE, GEGL_ABYSS_NONE);
       g_object_unref(buffer);
@@ -883,7 +961,7 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
          else
          {
             memcpy(dst, src, w * h * bpp);
-            get_mipmap_chain(dst + (w * h * bpp), w, h, bpp, image_id);
+            get_mipmap_chain(dst + (w * h * bpp), w, h, bpp, image_id, drawable_id);
          }
 
          if(dds_write_vals.format > DDS_FORMAT_DEFAULT)
@@ -962,7 +1040,7 @@ static void write_layer(FILE *fp, gint32 image_id, gint32 drawable_id,
          else
          {
             memcpy(fmtdst, src, w * h * bpp);
-            get_mipmap_chain(fmtdst + (w * h * bpp), w, h, bpp, image_id);
+            get_mipmap_chain(fmtdst + (w * h * bpp), w, h, bpp, image_id, drawable_id);
          }
 
          g_free(src);
@@ -1105,9 +1183,20 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    int is_dx10 = 0, array_size = 1;
 
    layers = gimp_image_get_layers(image_id, &num_layers);
+   
+   if(dds_write_vals.mipmaps == DDS_MIPMAP_EXISTING)
+      drawable_id = layers[0];
 
-   w = gimp_drawable_width(drawable_id);
-   h = gimp_drawable_height(drawable_id);
+   if(dds_write_vals.savetype == DDS_SAVE_SELECTED_LAYER)
+   {
+      w = gimp_drawable_width(drawable_id);
+      h = gimp_drawable_height(drawable_id);
+   }
+   else
+   {
+      w = gimp_image_width(image_id);
+      h = gimp_image_height(image_id);
+   }
 
    basetype = gimp_image_base_type(image_id);
    drawable_type = gimp_drawable_type(drawable_id);
@@ -1227,10 +1316,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    {
       flags |= DDSD_MIPMAPCOUNT;
       caps |= (DDSCAPS_COMPLEX | DDSCAPS_MIPMAP);
-      if(dds_write_vals.mipmaps == DDS_MIPMAP_GENERATE)
-         num_mipmaps = get_num_mipmaps(w, h);
-      else
-         num_mipmaps = num_layers;
+      num_mipmaps = get_num_mipmaps(w, h);
    }
    else
       num_mipmaps = 1;
@@ -1385,7 +1471,7 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
 
    if(is_dx10)
    {
-      array_size = (dds_write_vals.savetype == DDS_SAVE_SELECTED_LAYER) ? 1 : num_layers;
+      array_size = (dds_write_vals.savetype == DDS_SAVE_SELECTED_LAYER) ? 1 : get_array_size(image_id);
 
       PUTL32(hdr10 +  0, dxgi_format);
       PUTL32(hdr10 +  4, D3D10_RESOURCE_DIMENSION_TEXTURE2D);
@@ -1446,7 +1532,9 @@ static int write_image(FILE *fp, gint32 image_id, gint32 drawable_id)
    {
       for(i = 0; i < num_layers; ++i)
       {
-         write_layer(fp, image_id, layers[i], w, h, bpp, fmtbpp, num_mipmaps);
+         if((gimp_drawable_width(layers[i]) == w) && (gimp_drawable_height(layers[i]) == h))
+            write_layer(fp, image_id, layers[i], w, h, bpp, fmtbpp, num_mipmaps);
+
          gimp_progress_update((float)i / (float)num_layers);
       }
    }
@@ -1579,6 +1667,8 @@ static void compression_selected(GtkWidget *widget, gpointer data)
 
 static void savetype_selected(GtkWidget *widget, gpointer data)
 {
+   gint32 image_id = *((gint32 *)data);
+
    dds_write_vals.savetype = gtk_combo_box_get_active(GTK_COMBO_BOX(widget));
 
    switch(dds_write_vals.savetype)
@@ -1595,6 +1685,9 @@ static void savetype_selected(GtkWidget *widget, gpointer data)
          gtk_widget_set_sensitive(compress_opt, 0);
          break;
    }
+
+   string_value_combo_set_item_sensitive(mipmap_opt, DDS_MIPMAP_EXISTING,
+                                         check_mipmaps(image_id, dds_write_vals.savetype));   
 }
 
 static void mipmaps_selected(GtkWidget *widget, gpointer data)
@@ -1692,7 +1785,7 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
    GtkWidget *frame;
    GimpImageBaseType basetype;
 
-   if(is_cubemap || is_volume)
+   if(is_cubemap || is_volume || is_array)
       dds_write_vals.savetype = DDS_SAVE_SELECTED_LAYER;
 
    basetype = gimp_image_base_type(image_id);
@@ -1777,13 +1870,11 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
                     (GtkAttachOptions)(GTK_EXPAND), 0, 0);
 
    gtk_signal_connect(GTK_OBJECT(opt), "changed",
-                      GTK_SIGNAL_FUNC(savetype_selected), 0);
+                      GTK_SIGNAL_FUNC(savetype_selected), &image_id);
 
    string_value_combo_set_item_sensitive(opt, DDS_SAVE_CUBEMAP, is_cubemap);
    string_value_combo_set_item_sensitive(opt, DDS_SAVE_VOLUMEMAP, is_volume);
-   string_value_combo_set_item_sensitive(opt, DDS_SAVE_ARRAY, is_volume);
-
-   gtk_widget_set_sensitive(opt, is_cubemap || is_volume);
+   string_value_combo_set_item_sensitive(opt, DDS_SAVE_ARRAY, is_array);
 
    label = gtk_label_new("Mipmaps:");
    gtk_widget_show(label);
@@ -1800,7 +1891,12 @@ static gint save_dialog(gint32 image_id, gint32 drawable_id)
                     (GtkAttachOptions)(GTK_EXPAND), 0, 0);
 
    gtk_signal_connect(GTK_OBJECT(opt), "changed",
-                      GTK_SIGNAL_FUNC(mipmaps_selected), 0);
+                      GTK_SIGNAL_FUNC(mipmaps_selected), &image_id);
+   
+   string_value_combo_set_item_sensitive(opt, DDS_MIPMAP_EXISTING,
+                                         check_mipmaps(image_id, dds_write_vals.savetype));
+
+   mipmap_opt = opt;
 
    string_value_combo_set_item_sensitive(opt, DDS_MIPMAP_EXISTING,
                                          !(is_volume || is_cubemap) &&
